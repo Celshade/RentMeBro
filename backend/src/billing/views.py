@@ -111,6 +111,10 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
                 month=serializer.validated_data['month'],
                 kind=serializer.validated_data['kind'],
             )
+        except services.InvoiceAlreadyExistsError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+            )
         except services.BillingConfigError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
@@ -129,9 +133,12 @@ class BillingPeriodPreviewView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, lease_id: int, year: int, month: int) -> Response:
-        lease = get_object_or_404(Lease, id=lease_id)
-        if request.user not in (lease.landlord, lease.renter):
-            return Response(status=status.HTTP_403_FORBIDDEN)
+        lease = get_object_or_404(
+            Lease.objects.filter(
+                Q(landlord=request.user) | Q(renter=request.user)
+            ),
+            id=lease_id,
+        )
 
         try:
             preview = services.compute_period_preview(

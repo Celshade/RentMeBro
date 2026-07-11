@@ -146,6 +146,9 @@ class Invoice(models.Model):
     stripe_payment_intent_id = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('lease', 'billing_period', 'kind')
+
     def __str__(self) -> str:
         return (
             f'Invoice({self.lease_id}, {self.billing_period}, {self.kind})'

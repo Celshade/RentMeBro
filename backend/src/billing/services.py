@@ -3,7 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from billing.models import (
@@ -19,6 +19,10 @@ from billing.models import (
 
 class BillingConfigError(Exception):
     """Raised when a lease is missing mileage/gas config for a date."""
+
+
+class InvoiceAlreadyExistsError(Exception):
+    """Raised when an invoice of this kind already exists for the period."""
 
 
 def get_mileage_profile_for_date(lease: Lease, on_date: date) -> MileageProfile:
@@ -144,13 +148,24 @@ def generate_invoice(
 
     Returns:
         The created Invoice, with its line items already attached.
+
+    Raises:
+        InvoiceAlreadyExistsError: If an invoice of this kind already
+            exists for the lease's billing period.
     """
     billing_period, _ = BillingPeriod.objects.get_or_create(
         lease=lease, year=year, month=month
     )
-    invoice = Invoice.objects.create(
-        lease=lease, billing_period=billing_period, kind=kind
-    )
+    try:
+        with transaction.atomic():
+            invoice = Invoice.objects.create(
+                lease=lease, billing_period=billing_period, kind=kind
+            )
+    except IntegrityError as exc:
+        raise InvoiceAlreadyExistsError(
+            f'An invoice of kind {kind!r} already exists for lease '
+            f'{lease.id} in {year}-{month:02d}.'
+        ) from exc
 
     if kind in (Invoice.Kind.COMBINED, Invoice.Kind.RENT_ONLY):
         InvoiceLineItem.objects.create(
