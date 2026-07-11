@@ -20,7 +20,7 @@ import environ
 # project root (where .env and db.sqlite3 live), two levels up.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-env = environ.Env(DEBUG=(bool, True))
+env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / '.env')
 
 
@@ -28,14 +28,13 @@ environ.Env.read_env(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env(
-    'DJANGO_SECRET_KEY',
-    default=(
-        'django-insecure-g=q4-k4%h8gk_a$!^%yw$5!+63ort2lr_7z7_^bcj$5!&*j7#z'
-    ),
-)
+# No default: a shared fallback key would let anyone forge signed data
+# (sessions, tokens) across every install that forgot to set this.
+SECRET_KEY = env('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# Defaults to False so a deployment that forgets to set DEBUG doesn't
+# leak stack traces/settings; local dev sets DEBUG=True via .env.
 DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = env.list(
@@ -83,6 +82,12 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
+    # Scoped throttles for the anonymous (AllowAny) auth endpoints, to
+    # stop unlimited magic-link email sends / token-guessing attempts.
+    'DEFAULT_THROTTLE_RATES': {
+        'magic_link_request': '5/hour',
+        'magic_link_verify': '20/hour',
+    },
 }
 
 SPECTACULAR_SETTINGS = {

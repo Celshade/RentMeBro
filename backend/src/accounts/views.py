@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -23,6 +24,8 @@ class MagicLinkRequestView(APIView):
     """
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'magic_link_request'
 
     def post(self, request) -> Response:
         serializer = MagicLinkRequestSerializer(data=request.data)
@@ -50,6 +53,8 @@ class MagicLinkVerifyView(APIView):
     """Exchanges a valid magic-link token for a JWT token pair."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'magic_link_verify'
 
     def post(self, request) -> Response:
         serializer = MagicLinkVerifySerializer(data=request.data)
