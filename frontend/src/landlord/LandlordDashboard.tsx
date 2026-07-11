@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import type { DrivenDayLog, Invoice, Lease } from '../api/types';
+import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
 
@@ -57,7 +58,8 @@ export function LandlordDashboard() {
             <li key={invoice.id}>
               {invoice.billing_period.year}-{month}
               {' — '}
-              {invoice.kind} — ${invoice.total} — {invoice.status}
+              {invoice.kind} — ${invoice.total}{' '}
+              <InvoiceStatusBadge status={invoice.status} />
             </li>
           );
         })}

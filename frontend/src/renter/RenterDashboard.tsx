@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import type { DrivenDayLog, Invoice, Lease } from '../api/types';
+import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDayForm } from './DrivenDayForm';
 import { PayInvoice } from './PayInvoice';
 
@@ -53,7 +54,8 @@ export function RenterDashboard() {
             <li key={invoice.id}>
               {invoice.billing_period.year}-{month}
               {' — '}
-              {invoice.kind} — ${invoice.total} — {invoice.status}
+              {invoice.kind} — ${invoice.total}{' '}
+              <InvoiceStatusBadge status={invoice.status} />
               {invoice.status !== 'paid' && (
                 <>
                   {' '}

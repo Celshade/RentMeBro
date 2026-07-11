@@ -109,3 +109,46 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.status-badge--paid {
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.12);
+}
+
+.status-badge--sent {
+  color: #b45309;
+  background: rgba(180, 83, 9, 0.12);
+}
+
+.status-badge--draft {
+  color: var(--text);
+  background: var(--code-bg);
+}
+
+.status-badge--void {
+  color: var(--text);
+  background: var(--code-bg);
+  text-decoration: line-through;
+}
+
+@media (prefers-color-scheme: dark) {
+  .status-badge--paid {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.15);
+  }
+
+  .status-badge--sent {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.15);
+  }
+}
