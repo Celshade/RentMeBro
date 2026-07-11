@@ -19,9 +19,9 @@ class InvoicePaymentIntentView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, invoice_id: int) -> Response:
-        invoice = get_object_or_404(Invoice, id=invoice_id)
-        if request.user.id != invoice.lease.renter_id:
-            return Response(status=status.HTTP_403_FORBIDDEN)
+        invoice = get_object_or_404(
+            Invoice, id=invoice_id, lease__renter=request.user
+        )
         if invoice.status == Invoice.Status.PAID:
             return Response(
                 {'detail': 'Invoice is already paid.'},
