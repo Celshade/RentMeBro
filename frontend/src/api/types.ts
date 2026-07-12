@@ -14,6 +14,10 @@ export interface User {
 }
 
 
+/** Whether a lease is a landlord-uploaded document or the default lease. */
+export type LeaseType = 'custom' | 'default';
+
+
 /**
  * @property id - Primary key.
  * @property landlord - User id of the landlord on this lease.
@@ -21,6 +25,12 @@ export interface User {
  * @property monthly_rent - Base monthly rent, as a decimal string.
  * @property start_date - Lease start date (ISO 8601).
  * @property active - Whether the lease is currently active.
+ * @property lease_type - Custom uploaded document or the default lease.
+ * @property document - URL of the uploaded document, if lease_type is
+ *   'custom'; otherwise null.
+ * @property term_months - Lease term in months, set for 'default' leases.
+ * @property terms_text - Generated boilerplate terms text for 'default'
+ *   leases; null for 'custom' leases.
  */
 export interface Lease {
   id: number;
@@ -29,6 +39,10 @@ export interface Lease {
   monthly_rent: string;
   start_date: string;
   active: boolean;
+  lease_type: LeaseType;
+  document: string | null;
+  term_months: number | null;
+  terms_text: string | null;
 }
 
 
