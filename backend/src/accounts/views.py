@@ -31,8 +31,9 @@ class MagicLinkRequestView(APIView):
         serializer = MagicLinkRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
+        role = serializer.validated_data['role']
 
-        user = User.objects.filter(email__iexact=email).first()
+        user = User.objects.filter(email__iexact=email, role=role).first()
         if user is not None:
             magic_link = MagicLinkToken.objects.create(user=user)
             verify_url = (

@@ -20,6 +20,13 @@ class User(AbstractUser):
 
     role = models.CharField(max_length=16, choices=Role.choices)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['email', 'role'], name='unique_email_role'
+            ),
+        ]
+
 
 def _generate_token() -> str:
     return secrets.token_urlsafe(32)

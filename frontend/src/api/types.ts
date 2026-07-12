@@ -1,3 +1,7 @@
+/** Whether a user/account is a landlord or a renter. */
+export type Role = 'landlord' | 'renter';
+
+
 /**
  * @property id - Primary key.
  * @property email - Login email address.
@@ -6,7 +10,7 @@
 export interface User {
   id: number;
   email: string;
-  role: 'landlord' | 'renter';
+  role: Role;
 }
 
 
