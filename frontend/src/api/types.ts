@@ -64,6 +64,24 @@ export interface DrivenDayLog {
 
 /**
  * @property id - Primary key.
+ * @property lease - Id of the lease this profile belongs to.
+ * @property one_way_miles - One-way commute distance, as a decimal string.
+ * @property mpg - Vehicle fuel efficiency, as a decimal string.
+ * @property effective_from - Date this profile takes effect (ISO 8601).
+ * @property full_day_miles - one_way_miles * 4, as a decimal string.
+ */
+export interface MileageProfile {
+  id: number;
+  lease: number;
+  one_way_miles: string;
+  mpg: string;
+  effective_from: string;
+  full_day_miles: string;
+}
+
+
+/**
+ * @property id - Primary key.
  * @property description - Human-readable line description.
  * @property amount - Line amount, as a decimal string.
  * @property kind - Whether this line is a rent or gas charge.
