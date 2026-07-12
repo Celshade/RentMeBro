@@ -124,3 +124,7 @@ class InvoiceCreateSerializer(serializers.Serializer):
 class PeriodPreviewSerializer(serializers.Serializer):
     rent = serializers.DecimalField(max_digits=10, decimal_places=2)
     gas = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+class RenterLookupQuerySerializer(serializers.Serializer):
+    email = serializers.EmailField()

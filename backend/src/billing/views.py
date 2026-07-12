@@ -5,6 +5,8 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import User
+from accounts.serializers import UserSerializer
 from billing import services
 from billing.models import (
     DrivenDayLog,
@@ -22,6 +24,7 @@ from billing.serializers import (
     LeaseSerializer,
     MileageProfileSerializer,
     PeriodPreviewSerializer,
+    RenterLookupQuerySerializer,
 )
 
 
@@ -127,6 +130,32 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'create':
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
+
+
+class RenterLookupView(APIView):
+    """Exact-match renter lookup by email, for attaching to a new lease.
+
+    Deliberately exact-match only (no partial/prefix search, no list
+    endpoint) so landlords can't enumerate renter emails on the
+    platform.
+    """
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def get(self, request) -> Response:
+        serializer = RenterLookupQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+
+        renter = User.objects.filter(
+            email__iexact=email, role=User.Role.RENTER
+        ).first()
+        if renter is None:
+            return Response(
+                {'detail': 'No matching renter found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(UserSerializer(renter).data)
 
 
 class BillingPeriodPreviewView(APIView):

@@ -8,6 +8,7 @@ from billing.views import (
     InvoiceViewSet,
     LeaseViewSet,
     MileageProfileViewSet,
+    RenterLookupView,
 )
 
 router = DefaultRouter()
@@ -28,5 +29,10 @@ urlpatterns = [
         '<int:year>-<int:month>/preview/',
         BillingPeriodPreviewView.as_view(),
         name='billing-period-preview',
+    ),
+    path(
+        'renters/lookup/',
+        RenterLookupView.as_view(),
+        name='renter-lookup',
     ),
 ]
