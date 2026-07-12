@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
-import type { DrivenDayLog, Invoice, Lease } from '../api/types';
+import type {
+  DrivenDayLog,
+  Invoice,
+  Lease,
+  MileageProfile,
+} from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { CreateLease } from './CreateLease';
 import { GenerateInvoice } from './GenerateInvoice';
@@ -15,6 +20,7 @@ export function LandlordDashboard() {
   const [lease, setLease] = useState<Lease | null>(null);
   const [logs, setLogs] = useState<DrivenDayLog[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [gasBillingEnabled, setGasBillingEnabled] = useState(false);
 
   useEffect(() => {
     apiFetch<Lease[]>('/api/leases/').then(
@@ -24,6 +30,13 @@ export function LandlordDashboard() {
     apiFetch<Invoice[]>('/api/invoices/').then(setInvoices);
   }, []);
 
+  useEffect(() => {
+    if (!lease) return;
+    apiFetch<MileageProfile[]>('/api/mileage-profiles/').then(
+      (profiles) => setGasBillingEnabled(profiles.length > 0)
+    );
+  }, [lease]);
+
   if (!lease) return <CreateLease onCreated={setLease} />;
 
   return (
@@ -31,7 +44,13 @@ export function LandlordDashboard() {
       <h1>Landlord dashboard</h1>
       <p>Monthly rent: ${lease.monthly_rent}</p>
 
-      <LeaseSettings leaseId={lease.id} />
+      {gasBillingEnabled ? (
+        <LeaseSettings leaseId={lease.id} />
+      ) : (
+        <button type="button" onClick={() => setGasBillingEnabled(true)}>
+          Set up gas billing
+        </button>
+      )}
 
       <h2>Renter's logged days</h2>
       <ul>
