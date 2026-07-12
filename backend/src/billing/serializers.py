@@ -13,12 +13,33 @@ from billing.models import (
 
 class LeaseSerializer(serializers.ModelSerializer):
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
+    terms_text = serializers.SerializerMethodField()
 
     class Meta:
         model = Lease
         fields = [
-            'id', 'landlord', 'renter', 'monthly_rent', 'start_date', 'active'
+            'id', 'landlord', 'renter', 'monthly_rent', 'start_date',
+            'active', 'lease_type', 'document', 'term_months', 'terms_text',
         ]
+
+    def get_terms_text(self, obj: Lease) -> str | None:
+        if obj.lease_type == Lease.LeaseType.DEFAULT:
+            return obj.default_terms_text
+        return None
+
+    def validate(self, attrs: dict) -> dict:
+        lease_type = attrs.get('lease_type', Lease.LeaseType.DEFAULT)
+        if lease_type == Lease.LeaseType.CUSTOM and not attrs.get('document'):
+            raise serializers.ValidationError(
+                'A document is required for a custom lease.'
+            )
+        if lease_type == Lease.LeaseType.DEFAULT and not attrs.get(
+            'term_months'
+        ):
+            raise serializers.ValidationError(
+                'term_months is required for a default lease.'
+            )
+        return attrs
 
     def create(self, validated_data: dict) -> Lease:
         validated_data['landlord'] = self.context['request'].user
