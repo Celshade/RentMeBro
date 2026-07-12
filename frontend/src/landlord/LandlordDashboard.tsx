@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import type { DrivenDayLog, Invoice, Lease } from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import { CreateLease } from './CreateLease';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
 
@@ -23,7 +24,7 @@ export function LandlordDashboard() {
     apiFetch<Invoice[]>('/api/invoices/').then(setInvoices);
   }, []);
 
-  if (!lease) return <p>No lease yet — create one via the admin.</p>;
+  if (!lease) return <CreateLease onCreated={setLease} />;
 
   return (
     <div>
