@@ -7,6 +7,10 @@ from django.db import models
 class Lease(models.Model):
     """Links one landlord to one renter for billing purposes."""
 
+    class LeaseType(models.TextChoices):
+        CUSTOM = 'custom', 'Custom'
+        DEFAULT = 'default', 'Default'
+
     landlord = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -20,6 +24,24 @@ class Lease(models.Model):
     monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
     start_date = models.DateField()
     active = models.BooleanField(default=True)
+    lease_type = models.CharField(
+        max_length=16, choices=LeaseType.choices, default=LeaseType.DEFAULT
+    )
+    document = models.FileField(
+        upload_to='lease_documents/', null=True, blank=True
+    )
+    term_months = models.PositiveIntegerField(null=True, blank=True)
+
+    @property
+    def default_terms_text(self) -> str:
+        return (
+            f'This lease sets monthly rent at ${self.monthly_rent} for a '
+            f'term of {self.term_months} months beginning '
+            f'{self.start_date}. This agreement is subject to change '
+            'based on future circumstances. Any revisions will be '
+            'provided to the renter in writing at least 30 days before '
+            'taking effect.'
+        )
 
     def __str__(self) -> str:
         return f'Lease({self.landlord} -> {self.renter})'
