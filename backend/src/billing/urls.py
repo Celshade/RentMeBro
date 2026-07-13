@@ -25,7 +25,7 @@ router.register('invoices', InvoiceViewSet, basename='invoice')
 urlpatterns = [
     path('', include(router.urls)),
     path(
-        'leases/<int:lease_id>/billing-periods/'
+        'renters/<int:renter_id>/billing-periods/'
         '<int:year>-<int:month>/preview/',
         BillingPeriodPreviewView.as_view(),
         name='billing-period-preview',
