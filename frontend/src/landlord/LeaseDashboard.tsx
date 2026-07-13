@@ -43,20 +43,24 @@ export function LeaseDashboard({
 
   useEffect(() => {
     apiFetch<DrivenDayLog[]>('/api/driven-days/').then((allLogs) =>
-      setLogs(allLogs.filter((log) => log.lease === lease.id))
+      setLogs(allLogs.filter((log) => log.renter === lease.renter))
     );
     apiFetch<Invoice[]>('/api/invoices/').then((allInvoices) =>
-      setInvoices(allInvoices.filter((inv) => inv.lease === lease.id))
+      setInvoices(
+        allInvoices.filter(
+          (inv) => inv.billing_period.renter === lease.renter
+        )
+      )
     );
-  }, [lease.id]);
+  }, [lease.renter]);
 
   useEffect(() => {
     apiFetch<MileageProfile[]>('/api/mileage-profiles/').then((profiles) =>
       onGasBillingEnabledChange(
-        profiles.some((profile) => profile.lease === lease.id)
+        profiles.some((profile) => profile.renter === lease.renter)
       )
     );
-  }, [lease.id, onGasBillingEnabledChange]);
+  }, [lease.renter, onGasBillingEnabledChange]);
 
   return (
     <div>
@@ -67,7 +71,7 @@ export function LeaseDashboard({
 
       {gasBillingEnabled ? (
         <>
-          <LeaseSettings leaseId={lease.id} />
+          <LeaseSettings renterId={lease.renter} />
 
           <h2>Renter's logged days</h2>
           <ul>
@@ -87,7 +91,7 @@ export function LeaseDashboard({
 
       {showGenerateInvoice ? (
         <GenerateInvoice
-          leaseId={lease.id}
+          renterId={lease.renter}
           onGenerated={(invoice) => {
             setInvoices([invoice, ...invoices]);
             setShowGenerateInvoice(false);
