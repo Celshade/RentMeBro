@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from accounts.models import User
@@ -9,21 +12,27 @@ from billing.models import (
     Invoice,
     InvoiceLineItem,
     Lease,
+    LeaseRentRevision,
     MileageProfile,
 )
+
+MIN_RENT_REVISION_NOTICE_DAYS = 30
 
 
 class LeaseSerializer(serializers.ModelSerializer):
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
     renter_detail = UserSerializer(source='renter', read_only=True)
     terms_text = serializers.SerializerMethodField()
+    current_monthly_rent = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
 
     class Meta:
         model = Lease
         fields = [
             'id', 'landlord', 'renter', 'renter_detail', 'monthly_rent',
-            'start_date', 'active', 'lease_type', 'document', 'term_months',
-            'terms_text',
+            'current_monthly_rent', 'start_date', 'active', 'lease_type',
+            'document', 'term_months', 'terms_text',
         ]
 
     def get_terms_text(self, obj: Lease) -> str | None:
@@ -160,3 +169,21 @@ class PeriodPreviewSerializer(serializers.Serializer):
 
 class RenterLookupQuerySerializer(serializers.Serializer):
     email = serializers.EmailField()
+
+
+class LeaseRentRevisionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LeaseRentRevision
+        fields = ['id', 'lease', 'new_monthly_rent', 'effective_date']
+        read_only_fields = ['lease']
+
+    def validate_effective_date(self, value: date) -> date:
+        min_date = timezone.now().date() + timedelta(
+            days=MIN_RENT_REVISION_NOTICE_DAYS
+        )
+        if value < min_date:
+            raise serializers.ValidationError(
+                f'Effective date must be at least '
+                f'{MIN_RENT_REVISION_NOTICE_DAYS} days from today.'
+            )
+        return value
