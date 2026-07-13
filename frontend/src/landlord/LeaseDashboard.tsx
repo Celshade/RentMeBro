@@ -11,6 +11,7 @@ import type {
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
+import { LogDrivenDay } from './LogDrivenDay';
 
 /** Formats a renter's name (if set) and email for display. */
 function formatRenter(renter: User): string {
@@ -74,6 +75,14 @@ export function LeaseDashboard({
           <LeaseSettings renterId={lease.renter} />
 
           <h2>Renter's logged days</h2>
+          <LogDrivenDay
+            renterId={lease.renter}
+            onLogged={(log) =>
+              setLogs(
+                [...logs, log].sort((a, b) => a.date.localeCompare(b.date))
+              )
+            }
+          />
           <ul>
             {logs.map((log) => (
               <li key={log.id}>
