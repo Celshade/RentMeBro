@@ -7,6 +7,7 @@ from billing.models import (
     Invoice,
     InvoiceLineItem,
     Lease,
+    LeaseRentRevision,
     MileageProfile,
 )
 
@@ -14,6 +15,18 @@ from billing.models import (
 @admin.register(Lease)
 class LeaseAdmin(admin.ModelAdmin):
     list_display = ('id', 'landlord', 'renter', 'monthly_rent', 'active')
+
+
+@admin.register(LeaseRentRevision)
+class LeaseRentRevisionAdmin(admin.ModelAdmin):
+    """Registered so staff can apply/override a rent change directly.
+
+    Editing here bypasses the API's 30-day-minimum effective_date
+    restriction, since that's enforced in the serializer, not the
+    model - saving still emails the renter immediately either way.
+    """
+
+    list_display = ('lease', 'new_monthly_rent', 'effective_date')
 
 
 @admin.register(MileageProfile)
