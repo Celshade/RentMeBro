@@ -4,14 +4,14 @@ import type { Invoice, InvoiceKind, PeriodPreview } from '../api/types';
 
 /**
  * Landlord form to preview a period's charges and generate an invoice.
- * @param props.leaseId - The lease to generate the invoice for.
+ * @param props.renterId - The renter to generate the invoice for.
  * @param props.onGenerated - Called with the created invoice on success.
  */
 export function GenerateInvoice({
-  leaseId,
+  renterId,
   onGenerated,
 }: {
-  leaseId: number;
+  renterId: number;
   onGenerated: (invoice: Invoice) => void;
 }) {
   const now = new Date();
@@ -25,7 +25,7 @@ export function GenerateInvoice({
     setError(null);
     try {
       const data = await apiFetch<PeriodPreview>(
-        `/api/leases/${leaseId}/billing-periods/${year}-${month}/preview/`
+        `/api/renters/${renterId}/billing-periods/${year}-${month}/preview/`
       );
       setPreview(data);
     } catch (err) {
@@ -40,7 +40,7 @@ export function GenerateInvoice({
       const invoice = await apiFetch<Invoice>('/api/invoices/', {
         method: 'POST',
         body: {
-          lease: leaseId,
+          renter: renterId,
           year: Number(year),
           month: Number(month),
           kind,
