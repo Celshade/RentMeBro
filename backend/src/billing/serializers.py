@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from accounts.serializers import UserSerializer
 from billing.models import (
     BillingPeriod,
     DrivenDayLog,
@@ -13,13 +14,15 @@ from billing.models import (
 
 class LeaseSerializer(serializers.ModelSerializer):
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
+    renter_detail = UserSerializer(source='renter', read_only=True)
     terms_text = serializers.SerializerMethodField()
 
     class Meta:
         model = Lease
         fields = [
-            'id', 'landlord', 'renter', 'monthly_rent', 'start_date',
-            'active', 'lease_type', 'document', 'term_months', 'terms_text',
+            'id', 'landlord', 'renter', 'renter_detail', 'monthly_rent',
+            'start_date', 'active', 'lease_type', 'document', 'term_months',
+            'terms_text',
         ]
 
     def get_terms_text(self, obj: Lease) -> str | None:
