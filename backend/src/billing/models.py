@@ -48,15 +48,24 @@ class Lease(models.Model):
 
 
 class MileageProfile(models.Model):
-    """Per-lease trip constants used to compute gas cost per driven day.
+    """Trip constants used to compute gas cost per driven day.
 
-    A full day driven is a round trip drop-off + pick-up, i.e. the
-    one-way commute distance driven four times (matches the manual
-    tracking this replaces).
+    Gas billing is a secondary, optional feature tied to a
+    (landlord, renter) pair directly rather than a specific lease, so
+    it persists across lease renewals/changes. A full day driven is a
+    round trip drop-off + pick-up, i.e. the one-way commute distance
+    driven four times (matches the manual tracking this replaces).
     """
 
-    lease = models.ForeignKey(
-        Lease, on_delete=models.CASCADE, related_name='mileage_profiles'
+    landlord = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='mileage_profiles_as_landlord',
+    )
+    renter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='mileage_profiles_as_renter',
     )
     one_way_miles = models.DecimalField(max_digits=6, decimal_places=2)
     mpg = models.DecimalField(max_digits=6, decimal_places=2)
@@ -71,8 +80,8 @@ class MileageProfile(models.Model):
 
     def __str__(self) -> str:
         return (
-            f'MileageProfile(lease={self.lease_id}, '
-            f'from={self.effective_from})'
+            f'MileageProfile(landlord={self.landlord_id}, '
+            f'renter={self.renter_id}, from={self.effective_from})'
         )
 
 
@@ -80,11 +89,19 @@ class GasPriceEntry(models.Model):
     """A gas price (per gallon) in effect for a date range.
 
     Gas price fluctuates period to period, so it's logged rather than
-    treated as a fixed rate.
+    treated as a fixed rate. Tied to a (landlord, renter) pair, same
+    as MileageProfile.
     """
 
-    lease = models.ForeignKey(
-        Lease, on_delete=models.CASCADE, related_name='gas_price_entries'
+    landlord = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='gas_price_entries_as_landlord',
+    )
+    renter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='gas_price_entries_as_renter',
     )
     price_per_gallon = models.DecimalField(max_digits=6, decimal_places=3)
     effective_from = models.DateField()
@@ -95,16 +112,24 @@ class GasPriceEntry(models.Model):
 
     def __str__(self) -> str:
         return (
-            f'GasPriceEntry(lease={self.lease_id}, '
-            f'${self.price_per_gallon}, from={self.effective_from})'
+            f'GasPriceEntry(landlord={self.landlord_id}, '
+            f'renter={self.renter_id}, ${self.price_per_gallon}, '
+            f'from={self.effective_from})'
         )
 
 
 class DrivenDayLog(models.Model):
-    """A renter-logged day (or partial day) driven to the worksite."""
+    """A landlord-logged day (or partial day) a renter was driven."""
 
-    lease = models.ForeignKey(
-        Lease, on_delete=models.CASCADE, related_name='driven_day_logs'
+    landlord = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='driven_day_logs_as_landlord',
+    )
+    renter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='driven_day_logs_as_renter',
     )
     date = models.DateField()
     day_fraction = models.DecimalField(
@@ -114,32 +139,39 @@ class DrivenDayLog(models.Model):
 
     class Meta:
         ordering = ['date']
-        unique_together = ('lease', 'date')
+        unique_together = ('landlord', 'renter', 'date')
 
     def __str__(self) -> str:
         return (
-            f'DrivenDayLog(lease={self.lease_id}, {self.date}, '
-            f'{self.day_fraction})'
+            f'DrivenDayLog(landlord={self.landlord_id}, '
+            f'renter={self.renter_id}, {self.date}, {self.day_fraction})'
         )
 
 
 class BillingPeriod(models.Model):
-    """A single month scope for a lease's rent + driven-day charges."""
+    """A single month scope for a (landlord, renter) pair's charges."""
 
-    lease = models.ForeignKey(
-        Lease, on_delete=models.CASCADE, related_name='billing_periods'
+    landlord = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='billing_periods_as_landlord',
+    )
+    renter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='billing_periods_as_renter',
     )
     year = models.PositiveSmallIntegerField()
     month = models.PositiveSmallIntegerField()
 
     class Meta:
         ordering = ['-year', '-month']
-        unique_together = ('lease', 'year', 'month')
+        unique_together = ('landlord', 'renter', 'year', 'month')
 
     def __str__(self) -> str:
         return (
-            f'BillingPeriod(lease={self.lease_id}, '
-            f'{self.year}-{self.month:02d})'
+            f'BillingPeriod(landlord={self.landlord_id}, '
+            f'renter={self.renter_id}, {self.year}-{self.month:02d})'
         )
 
 
@@ -155,9 +187,6 @@ class Invoice(models.Model):
         PAID = 'paid', 'Paid'
         VOID = 'void', 'Void'
 
-    lease = models.ForeignKey(
-        Lease, on_delete=models.CASCADE, related_name='invoices'
-    )
     billing_period = models.ForeignKey(
         BillingPeriod, on_delete=models.CASCADE, related_name='invoices'
     )
@@ -169,12 +198,10 @@ class Invoice(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('lease', 'billing_period', 'kind')
+        unique_together = ('billing_period', 'kind')
 
     def __str__(self) -> str:
-        return (
-            f'Invoice({self.lease_id}, {self.billing_period}, {self.kind})'
-        )
+        return f'Invoice({self.billing_period}, {self.kind})'
 
     @property
     def total(self) -> Decimal:
