@@ -18,25 +18,28 @@ class LeaseAdmin(admin.ModelAdmin):
 
 @admin.register(MileageProfile)
 class MileageProfileAdmin(admin.ModelAdmin):
-    list_display = ('lease', 'one_way_miles', 'mpg', 'effective_from')
+    list_display = (
+        'landlord', 'renter', 'one_way_miles', 'mpg', 'effective_from'
+    )
 
 
 @admin.register(GasPriceEntry)
 class GasPriceEntryAdmin(admin.ModelAdmin):
     list_display = (
-        'lease', 'price_per_gallon', 'effective_from', 'effective_to'
+        'landlord', 'renter', 'price_per_gallon', 'effective_from',
+        'effective_to',
     )
 
 
 @admin.register(DrivenDayLog)
 class DrivenDayLogAdmin(admin.ModelAdmin):
-    list_display = ('lease', 'date', 'day_fraction')
-    list_filter = ('lease',)
+    list_display = ('landlord', 'renter', 'date', 'day_fraction')
+    list_filter = ('landlord', 'renter')
 
 
 @admin.register(BillingPeriod)
 class BillingPeriodAdmin(admin.ModelAdmin):
-    list_display = ('lease', 'year', 'month')
+    list_display = ('landlord', 'renter', 'year', 'month')
 
 
 class InvoiceLineItemInline(admin.TabularInline):
@@ -46,5 +49,5 @@ class InvoiceLineItemInline(admin.TabularInline):
 
 @admin.register(Invoice)
 class InvoiceAdmin(admin.ModelAdmin):
-    list_display = ('id', 'lease', 'billing_period', 'kind', 'status', 'total')
+    list_display = ('id', 'billing_period', 'kind', 'status', 'total')
     inlines = [InvoiceLineItemInline]
