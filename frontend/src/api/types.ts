@@ -54,14 +54,16 @@ export interface Lease {
 
 /**
  * @property id - Primary key.
- * @property lease - Id of the lease this log entry belongs to.
+ * @property landlord - User id of the landlord who logged this day.
+ * @property renter - User id of the renter who was driven.
  * @property date - The date driven (ISO 8601).
  * @property day_fraction - Fraction of a full day driven (e.g. "0.50").
  * @property note - Optional free-text note.
  */
 export interface DrivenDayLog {
   id: number;
-  lease: number;
+  landlord: number;
+  renter: number;
   date: string;
   day_fraction: string;
   note: string;
@@ -70,7 +72,8 @@ export interface DrivenDayLog {
 
 /**
  * @property id - Primary key.
- * @property lease - Id of the lease this profile belongs to.
+ * @property landlord - User id of the landlord this profile belongs to.
+ * @property renter - User id of the renter this profile is for.
  * @property one_way_miles - One-way commute distance, as a decimal string.
  * @property mpg - Vehicle fuel efficiency, as a decimal string.
  * @property effective_from - Date this profile takes effect (ISO 8601).
@@ -78,7 +81,8 @@ export interface DrivenDayLog {
  */
 export interface MileageProfile {
   id: number;
-  lease: number;
+  landlord: number;
+  renter: number;
   one_way_miles: string;
   mpg: string;
   effective_from: string;
@@ -102,13 +106,15 @@ export interface InvoiceLineItem {
 
 /**
  * @property id - Primary key.
- * @property lease - Id of the lease this period belongs to.
+ * @property landlord - User id of the landlord this period belongs to.
+ * @property renter - User id of the renter this period belongs to.
  * @property year - Calendar year of the billing period.
  * @property month - Calendar month of the billing period (1-12).
  */
 export interface BillingPeriod {
   id: number;
-  lease: number;
+  landlord: number;
+  renter: number;
   year: number;
   month: number;
 }
@@ -120,7 +126,6 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void';
 
 /**
  * @property id - Primary key.
- * @property lease - Id of the lease this invoice belongs to.
  * @property billing_period - The billing period this invoice covers.
  * @property kind - Whether the invoice covers rent, gas, or both.
  * @property status - Current payment status.
@@ -131,7 +136,6 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void';
  */
 export interface Invoice {
   id: number;
-  lease: number;
   billing_period: BillingPeriod;
   kind: InvoiceKind;
   status: InvoiceStatus;
