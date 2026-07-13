@@ -6,6 +6,7 @@ from billing.views import (
     DrivenDayLogViewSet,
     GasPriceEntryViewSet,
     InvoiceViewSet,
+    LeaseRentRevisionView,
     LeaseViewSet,
     MileageProfileViewSet,
     RenterLookupView,
@@ -34,5 +35,10 @@ urlpatterns = [
         'renters/lookup/',
         RenterLookupView.as_view(),
         name='renter-lookup',
+    ),
+    path(
+        'leases/<int:lease_id>/rent-revisions/',
+        LeaseRentRevisionView.as_view(),
+        name='lease-rent-revision',
     ),
 ]
