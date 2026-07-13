@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
+import { formatUserName } from '../api/format';
 import type {
   DrivenDayLog,
   Invoice,
@@ -14,22 +15,30 @@ import { LeaseSettings } from './LeaseSettings';
 
 /** Formats a renter's name (if set) and email for display. */
 function formatRenter(renter: User): string {
-  const name = [renter.first_name, renter.last_name]
-    .filter(Boolean)
-    .join(' ');
-  return name ? `${name} (${renter.email})` : renter.email;
+  const name = formatUserName(renter);
+  return name === renter.email ? name : `${name} (${renter.email})`;
 }
 
 
 /**
  * Landlord's home screen: manage lease config, review logged days,
  * generate invoices.
+ * @param props.gasBillingEnabled - Whether the gas-billing section
+ *   (mileage profile, gas prices, logged days) is expanded.
+ * @param props.onGasBillingEnabledChange - Called to expand/collapse the
+ *   gas-billing section; the caller renders the matching "back to
+ *   dashboard" control in the shared header.
  */
-export function LandlordDashboard() {
+export function LandlordDashboard({
+  gasBillingEnabled,
+  onGasBillingEnabledChange,
+}: {
+  gasBillingEnabled: boolean;
+  onGasBillingEnabledChange: (enabled: boolean) => void;
+}) {
   const [lease, setLease] = useState<Lease | null>(null);
   const [logs, setLogs] = useState<DrivenDayLog[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [gasBillingEnabled, setGasBillingEnabled] = useState(false);
 
   useEffect(() => {
     apiFetch<Lease[]>('/api/leases/').then(
@@ -42,9 +51,9 @@ export function LandlordDashboard() {
   useEffect(() => {
     if (!lease) return;
     apiFetch<MileageProfile[]>('/api/mileage-profiles/').then(
-      (profiles) => setGasBillingEnabled(profiles.length > 0)
+      (profiles) => onGasBillingEnabledChange(profiles.length > 0)
     );
-  }, [lease]);
+  }, [lease, onGasBillingEnabledChange]);
 
   if (!lease) return <CreateLease onCreated={setLease} />;
 
@@ -69,13 +78,12 @@ export function LandlordDashboard() {
               </li>
             ))}
           </ul>
-
-          <button type="button" onClick={() => setGasBillingEnabled(false)}>
-            Back to dashboard
-          </button>
         </>
       ) : (
-        <button type="button" onClick={() => setGasBillingEnabled(true)}>
+        <button
+          type="button"
+          onClick={() => onGasBillingEnabledChange(true)}
+        >
           Set up gas billing
         </button>
       )}
