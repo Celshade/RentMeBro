@@ -6,11 +6,15 @@ export type Role = 'landlord' | 'renter';
  * @property id - Primary key.
  * @property email - Login email address.
  * @property role - Whether this user is the landlord or the renter.
+ * @property first_name - Optional given name.
+ * @property last_name - Optional family name.
  */
 export interface User {
   id: number;
   email: string;
   role: Role;
+  first_name: string;
+  last_name: string;
 }
 
 
@@ -22,6 +26,7 @@ export type LeaseType = 'custom' | 'default';
  * @property id - Primary key.
  * @property landlord - User id of the landlord on this lease.
  * @property renter - User id of the renter on this lease.
+ * @property renter_detail - Full renter record (name/email/role).
  * @property monthly_rent - Base monthly rent, as a decimal string.
  * @property start_date - Lease start date (ISO 8601).
  * @property active - Whether the lease is currently active.
@@ -36,6 +41,7 @@ export interface Lease {
   id: number;
   landlord: number;
   renter: number;
+  renter_detail: User;
   monthly_rent: string;
   start_date: string;
   active: boolean;
