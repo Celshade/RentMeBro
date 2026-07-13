@@ -1,30 +1,16 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { formatUserName } from '../api/format';
-import type {
-  DrivenDayLog,
-  Invoice,
-  Lease,
-  MileageProfile,
-  User,
-} from '../api/types';
-import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import type { Lease } from '../api/types';
 import { CreateLease } from './CreateLease';
-import { GenerateInvoice } from './GenerateInvoice';
-import { LeaseSettings } from './LeaseSettings';
-
-/** Formats a renter's name (if set) and email for display. */
-function formatRenter(renter: User): string {
-  const name = formatUserName(renter);
-  return name === renter.email ? name : `${name} (${renter.email})`;
-}
-
+import { LeaseDashboard } from './LeaseDashboard';
 
 /**
- * Landlord's home screen: manage lease config, review logged days,
- * generate invoices.
- * @param props.gasBillingEnabled - Whether the gas-billing section
- *   (mileage profile, gas prices, logged days) is expanded.
+ * Landlord's home screen: with a single active renter, goes straight
+ * to that lease's dashboard. With more than one, shows a renter
+ * picker first.
+ * @param props.gasBillingEnabled - Whether the gas-billing section is
+ *   expanded.
  * @param props.onGasBillingEnabledChange - Called to expand/collapse the
  *   gas-billing section; the caller renders the matching "back to
  *   dashboard" control in the shared header.
@@ -36,90 +22,81 @@ export function LandlordDashboard({
   gasBillingEnabled: boolean;
   onGasBillingEnabledChange: (enabled: boolean) => void;
 }) {
-  const [lease, setLease] = useState<Lease | null>(null);
-  const [logs, setLogs] = useState<DrivenDayLog[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
+  const [leases, setLeases] = useState<Lease[] | null>(null);
+  const [selectedLeaseId, setSelectedLeaseId] = useState<number | null>(null);
+  const [addingLease, setAddingLease] = useState(false);
 
   useEffect(() => {
-    apiFetch<Lease[]>('/api/leases/').then(
-      (leases) => setLease(leases[0] ?? null)
-    );
-    apiFetch<DrivenDayLog[]>('/api/driven-days/').then(setLogs);
-    apiFetch<Invoice[]>('/api/invoices/').then(setInvoices);
+    apiFetch<Lease[]>('/api/leases/').then((fetched) => {
+      setLeases(fetched);
+      if (fetched.length === 1) setSelectedLeaseId(fetched[0].id);
+    });
   }, []);
 
-  useEffect(() => {
-    if (!lease) return;
-    apiFetch<MileageProfile[]>('/api/mileage-profiles/').then(
-      (profiles) => onGasBillingEnabledChange(profiles.length > 0)
-    );
-  }, [lease, onGasBillingEnabledChange]);
+  if (leases === null) return null;
 
-  if (!lease) return <CreateLease onCreated={setLease} />;
+  function handleLeaseCreated(lease: Lease) {
+    setLeases([...(leases ?? []), lease]);
+    setSelectedLeaseId(lease.id);
+    setAddingLease(false);
+  }
+
+  if (leases.length === 0 || addingLease) {
+    return (
+      <div>
+        <CreateLease onCreated={handleLeaseCreated} />
+        {leases.length > 0 && (
+          <button type="button" onClick={() => setAddingLease(false)}>
+            Cancel
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const selectedLease = leases.find((l) => l.id === selectedLeaseId) ?? null;
+
+  if (!selectedLease) {
+    return (
+      <div>
+        <h1>Your renters</h1>
+        <ul>
+          {leases.map((lease) => (
+            <li key={lease.id}>
+              <button
+                type="button"
+                onClick={() => setSelectedLeaseId(lease.id)}
+              >
+                {formatUserName(lease.renter_detail)}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button type="button" onClick={() => setAddingLease(true)}>
+          Add another renter
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>
       <h1>Landlord dashboard</h1>
-      <p>
-        Monthly rent: ${lease.monthly_rent} — Renter:{' '}
-        {formatRenter(lease.renter_detail)}
-      </p>
-
-      {gasBillingEnabled ? (
-        <>
-          <LeaseSettings leaseId={lease.id} />
-
-          <h2>Renter's logged days</h2>
-          <ul>
-            {logs.map((log) => (
-              <li key={log.id}>
-                {log.date} — {log.day_fraction} day
-                {log.note ? ` (${log.note})` : ''}
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => onGasBillingEnabledChange(true)}
-        >
-          Set up gas billing
+      <div>
+        {leases.length > 1 && (
+          <button type="button" onClick={() => setSelectedLeaseId(null)}>
+            ← All renters
+          </button>
+        )}
+        <button type="button" onClick={() => setAddingLease(true)}>
+          Add another renter
         </button>
-      )}
-
-      {showGenerateInvoice ? (
-        <GenerateInvoice
-          leaseId={lease.id}
-          onGenerated={(invoice) => {
-            setInvoices([invoice, ...invoices]);
-            setShowGenerateInvoice(false);
-          }}
-        />
-      ) : (
-        <button type="button" onClick={() => setShowGenerateInvoice(true)}>
-          Generate invoice
-        </button>
-      )}
-
-      <h2>Invoices</h2>
-      <ul>
-        {invoices.map((invoice) => {
-          const month = String(invoice.billing_period.month).padStart(
-            2,
-            '0'
-          );
-          return (
-            <li key={invoice.id}>
-              {invoice.billing_period.year}-{month}
-              {' — '}
-              {invoice.kind} — ${invoice.total}{' '}
-              <InvoiceStatusBadge status={invoice.status} />
-            </li>
-          );
-        })}
-      </ul>
+      </div>
+      <LeaseDashboard
+        lease={selectedLease}
+        gasBillingEnabled={gasBillingEnabled}
+        onGasBillingEnabledChange={onGasBillingEnabledChange}
+      />
     </div>
   );
 }
