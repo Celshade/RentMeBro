@@ -28,6 +28,8 @@ export type LeaseType = 'custom' | 'default';
  * @property renter - User id of the renter on this lease.
  * @property renter_detail - Full renter record (name/email/role).
  * @property monthly_rent - Base monthly rent, as a decimal string.
+ * @property current_monthly_rent - Rent in effect today, applying any
+ *   due rent revision, as a decimal string.
  * @property start_date - Lease start date (ISO 8601).
  * @property active - Whether the lease is currently active.
  * @property lease_type - Custom uploaded document or the default lease.
@@ -43,6 +45,7 @@ export interface Lease {
   renter: number;
   renter_detail: User;
   monthly_rent: string;
+  current_monthly_rent: string;
   start_date: string;
   active: boolean;
   lease_type: LeaseType;
