@@ -1,7 +1,9 @@
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.mail import send_mail
 from django.db import models
+from django.utils import timezone
 
 
 class Lease(models.Model):
@@ -43,8 +45,65 @@ class Lease(models.Model):
             'taking effect.'
         )
 
+    @property
+    def current_monthly_rent(self) -> Decimal:
+        """The rent in effect today, applying any due rent revision."""
+        today = timezone.now().date()
+        revision = (
+            self.rent_revisions.filter(effective_date__lte=today)
+            .order_by('-effective_date')
+            .first()
+        )
+        return revision.new_monthly_rent if revision else self.monthly_rent
+
     def __str__(self) -> str:
         return f'Lease({self.landlord} -> {self.renter})'
+
+
+class LeaseRentRevision(models.Model):
+    """A scheduled change to a lease's monthly rent.
+
+    Landlord-submitted revisions must take effect at least 30 days
+    out (enforced in the serializer, not here); Django admin can
+    create/edit a revision with an earlier effective_date directly,
+    since admin edits bypass that API-level restriction. Either way,
+    saving a new revision immediately emails the renter so they have
+    advance notice, regardless of how far out it's scheduled.
+    """
+
+    lease = models.ForeignKey(
+        Lease, on_delete=models.CASCADE, related_name='rent_revisions'
+    )
+    new_monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
+    effective_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-effective_date']
+
+    def __str__(self) -> str:
+        return (
+            f'LeaseRentRevision(lease={self.lease_id}, '
+            f'${self.new_monthly_rent}, {self.effective_date})'
+        )
+
+    def save(self, *args, **kwargs) -> None:
+        is_new = self._state.adding
+        super().save(*args, **kwargs)
+        if is_new:
+            self._notify_renter()
+
+    def _notify_renter(self) -> None:
+        send_mail(
+            subject='Your RentMeBro rent is changing',
+            message=(
+                f'Your monthly rent will change to '
+                f'${self.new_monthly_rent}, effective '
+                f'{self.effective_date}.'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[self.lease.renter.email],
+        )
 
 
 class MileageProfile(models.Model):
