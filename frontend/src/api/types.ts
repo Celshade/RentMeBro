@@ -92,6 +92,25 @@ export interface MileageProfile {
 
 /**
  * @property id - Primary key.
+ * @property landlord - User id of the landlord this entry belongs to.
+ * @property renter - User id of the renter this entry is for.
+ * @property price_per_gallon - Price per gallon, as a decimal string.
+ * @property effective_from - Date this price takes effect (ISO 8601).
+ * @property effective_to - Date this price stops applying (ISO 8601), or
+ *   null if still in effect.
+ */
+export interface GasPriceEntry {
+  id: number;
+  landlord: number;
+  renter: number;
+  price_per_gallon: string;
+  effective_from: string;
+  effective_to: string | null;
+}
+
+
+/**
+ * @property id - Primary key.
  * @property description - Human-readable line description.
  * @property amount - Line amount, as a decimal string.
  * @property kind - Whether this line is a rent or gas charge.
