@@ -6,6 +6,7 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from accounts.models import User
 from billing.models import (
     BillingPeriod,
     DrivenDayLog,
@@ -18,18 +19,47 @@ from billing.models import (
 
 
 class BillingConfigError(Exception):
-    """Raised when a lease is missing mileage/gas config for a date."""
+    """Raised when a (landlord, renter) pair is missing config for a date."""
 
 
 class InvoiceAlreadyExistsError(Exception):
     """Raised when an invoice of this kind already exists for the period."""
 
 
-def get_mileage_profile_for_date(lease: Lease, on_date: date) -> MileageProfile:
-    """Finds the MileageProfile in effect for a lease on a given date.
+def get_active_lease(landlord: User, renter: User) -> Lease:
+    """Finds the active lease between a landlord and renter.
 
     Args:
-        lease: The lease to look up mileage config for.
+        landlord: The landlord to look up the lease for.
+        renter: The renter to look up the lease for.
+
+    Returns:
+        The most recently started active Lease between the two.
+
+    Raises:
+        BillingConfigError: If there's no active lease between them.
+    """
+    lease = (
+        Lease.objects.filter(landlord=landlord, renter=renter, active=True)
+        .order_by('-start_date')
+        .first()
+    )
+    if lease is None:
+        raise BillingConfigError(
+            f'No active lease between landlord {landlord.id} and '
+            f'renter {renter.id}'
+        )
+    return lease
+
+
+def get_mileage_profile_for_date(
+    landlord: User, renter: User, on_date: date
+) -> MileageProfile:
+    """Finds the MileageProfile in effect for a pair on a given date.
+
+    Args:
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
         on_date: The date the profile must be effective on or before.
 
     Returns:
@@ -39,22 +69,28 @@ def get_mileage_profile_for_date(lease: Lease, on_date: date) -> MileageProfile:
         BillingConfigError: If no profile is in effect for that date.
     """
     profile = (
-        lease.mileage_profiles.filter(effective_from__lte=on_date)
+        MileageProfile.objects.filter(
+            landlord=landlord, renter=renter, effective_from__lte=on_date
+        )
         .order_by('-effective_from')
         .first()
     )
     if profile is None:
         raise BillingConfigError(
-            f'No MileageProfile in effect for lease {lease.id} on {on_date}'
+            f'No MileageProfile in effect for landlord {landlord.id}, '
+            f'renter {renter.id} on {on_date}'
         )
     return profile
 
 
-def get_gas_price_for_date(lease: Lease, on_date: date) -> GasPriceEntry:
-    """Finds the GasPriceEntry in effect for a lease on a given date.
+def get_gas_price_for_date(
+    landlord: User, renter: User, on_date: date
+) -> GasPriceEntry:
+    """Finds the GasPriceEntry in effect for a pair on a given date.
 
     Args:
-        lease: The lease to look up the gas price for.
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
         on_date: The date the price must be effective on.
 
     Returns:
@@ -64,14 +100,17 @@ def get_gas_price_for_date(lease: Lease, on_date: date) -> GasPriceEntry:
         BillingConfigError: If no price entry covers that date.
     """
     entry = (
-        lease.gas_price_entries.filter(effective_from__lte=on_date)
+        GasPriceEntry.objects.filter(
+            landlord=landlord, renter=renter, effective_from__lte=on_date
+        )
         .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=on_date))
         .order_by('-effective_from')
         .first()
     )
     if entry is None:
         raise BillingConfigError(
-            f'No GasPriceEntry in effect for lease {lease.id} on {on_date}'
+            f'No GasPriceEntry in effect for landlord {landlord.id}, '
+            f'renter {renter.id} on {on_date}'
         )
     return entry
 
@@ -89,26 +128,31 @@ def compute_gas_cost_for_log(log: DrivenDayLog) -> Decimal:
     Returns:
         The gas cost for that day, rounded to the nearest cent.
     """
-    profile = get_mileage_profile_for_date(log.lease, log.date)
-    gas_price = get_gas_price_for_date(log.lease, log.date)
+    profile = get_mileage_profile_for_date(log.landlord, log.renter, log.date)
+    gas_price = get_gas_price_for_date(log.landlord, log.renter, log.date)
     miles = log.day_fraction * profile.full_day_miles
     gallons = miles / profile.mpg
     cost = gallons * gas_price.price_per_gallon
     return cost.quantize(Decimal('0.01'))
 
 
-def compute_period_gas_total(lease: Lease, year: int, month: int) -> Decimal:
+def compute_period_gas_total(
+    landlord: User, renter: User, year: int, month: int
+) -> Decimal:
     """Sums gas cost across all driven-day logs in a billing period.
 
     Args:
-        lease: The lease whose driven-day logs to total.
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
         year: The billing period's year.
         month: The billing period's month (1-12).
 
     Returns:
         The total gas cost for the period, rounded to the nearest cent.
     """
-    logs = lease.driven_day_logs.filter(date__year=year, date__month=month)
+    logs = DrivenDayLog.objects.filter(
+        landlord=landlord, renter=renter, date__year=year, date__month=month
+    )
     return sum(
         (compute_gas_cost_for_log(log) for log in logs),
         start=Decimal('0.00'),
@@ -116,32 +160,35 @@ def compute_period_gas_total(lease: Lease, year: int, month: int) -> Decimal:
 
 
 def compute_period_preview(
-    lease: Lease, year: int, month: int
+    landlord: User, renter: User, year: int, month: int
 ) -> dict[str, Decimal]:
     """Computes rent + gas totals for a period without creating an invoice.
 
     Args:
-        lease: The lease to preview.
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
         year: The billing period's year.
         month: The billing period's month (1-12).
 
     Returns:
         A dict with 'rent' and 'gas' Decimal totals.
     """
+    lease = get_active_lease(landlord, renter)
     return {
         'rent': lease.monthly_rent,
-        'gas': compute_period_gas_total(lease, year, month),
+        'gas': compute_period_gas_total(landlord, renter, year, month),
     }
 
 
 @transaction.atomic
 def generate_invoice(
-    lease: Lease, year: int, month: int, kind: str
+    landlord: User, renter: User, year: int, month: int, kind: str
 ) -> Invoice:
     """Creates (or reuses) the BillingPeriod and builds an Invoice.
 
     Args:
-        lease: The lease to bill.
+        landlord: The landlord side of the pair to bill.
+        renter: The renter side of the pair to bill.
         year: The billing period's year.
         month: The billing period's month (1-12).
         kind: One of Invoice.Kind (combined / rent_only / gas_only).
@@ -151,23 +198,24 @@ def generate_invoice(
 
     Raises:
         InvoiceAlreadyExistsError: If an invoice of this kind already
-            exists for the lease's billing period.
+            exists for the pair's billing period.
     """
     billing_period, _ = BillingPeriod.objects.get_or_create(
-        lease=lease, year=year, month=month
+        landlord=landlord, renter=renter, year=year, month=month
     )
     try:
         with transaction.atomic():
             invoice = Invoice.objects.create(
-                lease=lease, billing_period=billing_period, kind=kind
+                billing_period=billing_period, kind=kind
             )
     except IntegrityError as exc:
         raise InvoiceAlreadyExistsError(
-            f'An invoice of kind {kind!r} already exists for lease '
-            f'{lease.id} in {year}-{month:02d}.'
+            f'An invoice of kind {kind!r} already exists for landlord '
+            f'{landlord.id}, renter {renter.id} in {year}-{month:02d}.'
         ) from exc
 
     if kind in (Invoice.Kind.COMBINED, Invoice.Kind.RENT_ONLY):
+        lease = get_active_lease(landlord, renter)
         InvoiceLineItem.objects.create(
             invoice=invoice,
             description=f'Rent for {year}-{month:02d}',
@@ -176,7 +224,7 @@ def generate_invoice(
         )
 
     if kind in (Invoice.Kind.COMBINED, Invoice.Kind.GAS_ONLY):
-        gas_total = compute_period_gas_total(lease, year, month)
+        gas_total = compute_period_gas_total(landlord, renter, year, month)
         InvoiceLineItem.objects.create(
             invoice=invoice,
             description=f'Gas for {year}-{month:02d}',
