@@ -66,6 +66,37 @@ body {
   margin: 0;
 }
 
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header__identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.app-header__name {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.app-header__role {
+  color: var(--text);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 h1,
 h2 {
   font-family: var(--heading);
