@@ -15,7 +15,7 @@ from billing.models import (
     Lease,
     MileageProfile,
 )
-from billing.permissions import IsLandlord, IsRenterOwner
+from billing.permissions import IsLandlord
 from billing.serializers import (
     DrivenDayLogSerializer,
     GasPriceEntrySerializer,
@@ -43,20 +43,18 @@ class LeaseViewSet(viewsets.ModelViewSet):
 
 
 class DrivenDayLogViewSet(viewsets.ModelViewSet):
-    """Renters log their own driven days; landlords have read-only access."""
+    """Landlords log driven days for a renter; renters have read-only access."""
 
     serializer_class = DrivenDayLogSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self) -> QuerySet[DrivenDayLog]:
         user = self.request.user
-        return DrivenDayLog.objects.filter(
-            Q(lease__landlord=user) | Q(lease__renter=user)
-        )
+        return DrivenDayLog.objects.filter(Q(landlord=user) | Q(renter=user))
 
     def get_permissions(self) -> list[BasePermission]:
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsRenterOwner()]
+            return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
 
 
@@ -66,9 +64,7 @@ class MileageProfileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self) -> QuerySet[MileageProfile]:
         user = self.request.user
-        return MileageProfile.objects.filter(
-            Q(lease__landlord=user) | Q(lease__renter=user)
-        )
+        return MileageProfile.objects.filter(Q(landlord=user) | Q(renter=user))
 
     def get_permissions(self) -> list[BasePermission]:
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
@@ -82,9 +78,7 @@ class GasPriceEntryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self) -> QuerySet[GasPriceEntry]:
         user = self.request.user
-        return GasPriceEntry.objects.filter(
-            Q(lease__landlord=user) | Q(lease__renter=user)
-        )
+        return GasPriceEntry.objects.filter(Q(landlord=user) | Q(renter=user))
 
     def get_permissions(self) -> list[BasePermission]:
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
@@ -99,7 +93,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self) -> QuerySet[Invoice]:
         user = self.request.user
         return Invoice.objects.filter(
-            Q(lease__landlord=user) | Q(lease__renter=user)
+            Q(billing_period__landlord=user) | Q(billing_period__renter=user)
         )
 
     def create(self, request, *args, **kwargs) -> Response:
@@ -109,7 +103,8 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             invoice = services.generate_invoice(
-                lease=serializer.validated_data['lease'],
+                landlord=request.user,
+                renter=serializer.validated_data['renter'],
                 year=serializer.validated_data['year'],
                 month=serializer.validated_data['month'],
                 kind=serializer.validated_data['kind'],
@@ -159,19 +154,23 @@ class RenterLookupView(APIView):
 
 
 class BillingPeriodPreviewView(APIView):
-    permission_classes = [IsAuthenticated]
+    """Previews a billing period's rent + gas totals for a renter.
 
-    def get(self, request, lease_id: int, year: int, month: int) -> Response:
-        lease = get_object_or_404(
-            Lease.objects.filter(
-                Q(landlord=request.user) | Q(renter=request.user)
-            ),
-            id=lease_id,
+    Landlord-only: renters are strictly view/pay on already-generated
+    invoices, not previews of upcoming ones.
+    """
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def get(self, request, renter_id: int, year: int, month: int) -> Response:
+        renter = get_object_or_404(
+            User.objects.filter(role=User.Role.RENTER), id=renter_id
         )
+        get_object_or_404(Lease, landlord=request.user, renter=renter)
 
         try:
             preview = services.compute_period_preview(
-                lease, int(year), int(month)
+                request.user, renter, int(year), int(month)
             )
         except services.BillingConfigError as exc:
             return Response(
