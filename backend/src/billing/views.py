@@ -21,6 +21,7 @@ from billing.serializers import (
     GasPriceEntrySerializer,
     InvoiceCreateSerializer,
     InvoiceSerializer,
+    LeaseRentRevisionSerializer,
     LeaseSerializer,
     MileageProfileSerializer,
     PeriodPreviewSerializer,
@@ -125,6 +126,26 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'create':
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
+
+
+class LeaseRentRevisionView(APIView):
+    """Schedules a rent change for a lease, at least 30 days out.
+
+    Immediately emails the renter regardless of how far out the
+    change is scheduled, so they have advance notice.
+    """
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def post(self, request, lease_id: int) -> Response:
+        lease = get_object_or_404(Lease, id=lease_id, landlord=request.user)
+        serializer = LeaseRentRevisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        revision = serializer.save(lease=lease)
+        return Response(
+            LeaseRentRevisionSerializer(revision).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class RenterLookupView(APIView):
