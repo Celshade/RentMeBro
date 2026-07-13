@@ -1,35 +1,67 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
+import type { GasPriceEntry, MileageProfile } from '../api/types';
 
 /**
- * Landlord form to set the mileage profile and log a gas price for a
- * lease.
- * @param props.leaseId - The lease to configure.
+ * Landlord form to set (or edit) the mileage profile and gas price
+ * for a renter. Gas billing is optional and tied to the renter
+ * directly rather than a specific lease, so it persists across
+ * lease renewals/changes.
+ * @param props.renterId - The renter to configure gas billing for.
  */
-export function LeaseSettings({ leaseId }: { leaseId: number }) {
+export function LeaseSettings({ renterId }: { renterId: number }) {
+  const [profileId, setProfileId] = useState<number | null>(null);
   const [oneWayMiles, setOneWayMiles] = useState('');
   const [mpg, setMpg] = useState('');
   const [mileageEffectiveFrom, setMileageEffectiveFrom] = useState('');
   const [mileageStatus, setMileageStatus] = useState<string | null>(null);
 
+  const [priceId, setPriceId] = useState<number | null>(null);
   const [pricePerGallon, setPricePerGallon] = useState('');
   const [priceEffectiveFrom, setPriceEffectiveFrom] = useState('');
   const [priceEffectiveTo, setPriceEffectiveTo] = useState('');
   const [priceStatus, setPriceStatus] = useState<string | null>(null);
 
+  useEffect(() => {
+    apiFetch<MileageProfile[]>('/api/mileage-profiles/').then((profiles) => {
+      const current = profiles.find((profile) => profile.renter === renterId);
+      if (!current) return;
+      setProfileId(current.id);
+      setOneWayMiles(current.one_way_miles);
+      setMpg(current.mpg);
+      setMileageEffectiveFrom(current.effective_from);
+    });
+  }, [renterId]);
+
+  useEffect(() => {
+    apiFetch<GasPriceEntry[]>('/api/gas-price-entries/').then((entries) => {
+      const current = entries.find((entry) => entry.renter === renterId);
+      if (!current) return;
+      setPriceId(current.id);
+      setPricePerGallon(current.price_per_gallon);
+      setPriceEffectiveFrom(current.effective_from);
+      setPriceEffectiveTo(current.effective_to ?? '');
+    });
+  }, [renterId]);
+
   async function handleMileageSubmit(event: FormEvent) {
     event.preventDefault();
     setMileageStatus(null);
     try {
-      await apiFetch('/api/mileage-profiles/', {
-        method: 'POST',
-        body: {
-          lease: leaseId,
-          one_way_miles: oneWayMiles,
-          mpg,
-          effective_from: mileageEffectiveFrom,
-        },
+      const body = {
+        renter: renterId,
+        one_way_miles: oneWayMiles,
+        mpg,
+        effective_from: mileageEffectiveFrom,
+      };
+      const path = profileId
+        ? `/api/mileage-profiles/${profileId}/`
+        : '/api/mileage-profiles/';
+      const profile = await apiFetch<MileageProfile>(path, {
+        method: profileId ? 'PATCH' : 'POST',
+        body,
       });
+      setProfileId(profile.id);
       setMileageStatus('Saved.');
     } catch (err) {
       setMileageStatus((err as Error).message);
@@ -40,15 +72,20 @@ export function LeaseSettings({ leaseId }: { leaseId: number }) {
     event.preventDefault();
     setPriceStatus(null);
     try {
-      await apiFetch('/api/gas-price-entries/', {
-        method: 'POST',
-        body: {
-          lease: leaseId,
-          price_per_gallon: pricePerGallon,
-          effective_from: priceEffectiveFrom,
-          effective_to: priceEffectiveTo || null,
-        },
+      const body = {
+        renter: renterId,
+        price_per_gallon: pricePerGallon,
+        effective_from: priceEffectiveFrom,
+        effective_to: priceEffectiveTo || null,
+      };
+      const path = priceId
+        ? `/api/gas-price-entries/${priceId}/`
+        : '/api/gas-price-entries/';
+      const entry = await apiFetch<GasPriceEntry>(path, {
+        method: priceId ? 'PATCH' : 'POST',
+        body,
       });
+      setPriceId(entry.id);
       setPriceStatus('Saved.');
     } catch (err) {
       setPriceStatus((err as Error).message);
@@ -85,7 +122,9 @@ export function LeaseSettings({ leaseId }: { leaseId: number }) {
           value={mileageEffectiveFrom}
           onChange={(e) => setMileageEffectiveFrom(e.target.value)}
         />
-        <button type="submit">Save mileage profile</button>
+        <button type="submit">
+          {profileId ? 'Update mileage profile' : 'Save mileage profile'}
+        </button>
         {mileageStatus && <p>{mileageStatus}</p>}
       </form>
 
@@ -115,7 +154,9 @@ export function LeaseSettings({ leaseId }: { leaseId: number }) {
           value={priceEffectiveTo}
           onChange={(e) => setPriceEffectiveTo(e.target.value)}
         />
-        <button type="submit">Save gas price</button>
+        <button type="submit">
+          {priceId ? 'Update gas price' : 'Save gas price'}
+        </button>
         {priceStatus && <p>{priceStatus}</p>}
       </form>
     </div>
