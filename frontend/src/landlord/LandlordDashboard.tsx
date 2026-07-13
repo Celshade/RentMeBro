@@ -39,6 +39,7 @@ export function LandlordDashboard({
   const [lease, setLease] = useState<Lease | null>(null);
   const [logs, setLogs] = useState<DrivenDayLog[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
 
   useEffect(() => {
     apiFetch<Lease[]>('/api/leases/').then(
@@ -88,10 +89,19 @@ export function LandlordDashboard({
         </button>
       )}
 
-      <GenerateInvoice
-        leaseId={lease.id}
-        onGenerated={(invoice) => setInvoices([invoice, ...invoices])}
-      />
+      {showGenerateInvoice ? (
+        <GenerateInvoice
+          leaseId={lease.id}
+          onGenerated={(invoice) => {
+            setInvoices([invoice, ...invoices]);
+            setShowGenerateInvoice(false);
+          }}
+        />
+      ) : (
+        <button type="button" onClick={() => setShowGenerateInvoice(true)}>
+          Generate invoice
+        </button>
+      )}
 
       <h2>Invoices</h2>
       <ul>
