@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from accounts.models import User
 from accounts.serializers import UserSerializer
 from billing.models import (
     BillingPeriod,
@@ -49,21 +50,32 @@ class LeaseSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+def _validate_is_own_renter(renter: User, landlord: User) -> User:
+    """Confirms a landlord has (or had) a lease with the given renter."""
+    if not Lease.objects.filter(landlord=landlord, renter=renter).exists():
+        raise serializers.ValidationError(
+            'You can only do this for a renter you have a lease with.'
+        )
+    return renter
+
+
 class DrivenDayLogSerializer(serializers.ModelSerializer):
+    landlord = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = DrivenDayLog
-        fields = ['id', 'lease', 'date', 'day_fraction', 'note']
+        fields = ['id', 'landlord', 'renter', 'date', 'day_fraction', 'note']
 
-    def validate_lease(self, lease: Lease) -> Lease:
-        request = self.context['request']
-        if lease.renter_id != request.user.id:
-            raise serializers.ValidationError(
-                'You can only log driven days for your own lease.'
-            )
-        return lease
+    def validate_renter(self, renter: User) -> User:
+        return _validate_is_own_renter(renter, self.context['request'].user)
+
+    def create(self, validated_data: dict) -> DrivenDayLog:
+        validated_data['landlord'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 class MileageProfileSerializer(serializers.ModelSerializer):
+    landlord = serializers.PrimaryKeyRelatedField(read_only=True)
     full_day_miles = serializers.DecimalField(
         max_digits=6, decimal_places=2, read_only=True
     )
@@ -71,35 +83,34 @@ class MileageProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = MileageProfile
         fields = [
-            'id', 'lease', 'one_way_miles', 'mpg', 'effective_from',
-            'full_day_miles',
+            'id', 'landlord', 'renter', 'one_way_miles', 'mpg',
+            'effective_from', 'full_day_miles',
         ]
 
-    def validate_lease(self, lease: Lease) -> Lease:
-        request = self.context['request']
-        if lease.landlord_id != request.user.id:
-            raise serializers.ValidationError(
-                'You can only configure mileage profiles for your own '
-                'leases.'
-            )
-        return lease
+    def validate_renter(self, renter: User) -> User:
+        return _validate_is_own_renter(renter, self.context['request'].user)
+
+    def create(self, validated_data: dict) -> MileageProfile:
+        validated_data['landlord'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 class GasPriceEntrySerializer(serializers.ModelSerializer):
+    landlord = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = GasPriceEntry
         fields = [
-            'id', 'lease', 'price_per_gallon', 'effective_from',
-            'effective_to',
+            'id', 'landlord', 'renter', 'price_per_gallon',
+            'effective_from', 'effective_to',
         ]
 
-    def validate_lease(self, lease: Lease) -> Lease:
-        request = self.context['request']
-        if lease.landlord_id != request.user.id:
-            raise serializers.ValidationError(
-                'You can only configure gas prices for your own leases.'
-            )
-        return lease
+    def validate_renter(self, renter: User) -> User:
+        return _validate_is_own_renter(renter, self.context['request'].user)
+
+    def create(self, validated_data: dict) -> GasPriceEntry:
+        validated_data['landlord'] = self.context['request'].user
+        return super().create(validated_data)
 
 
 class InvoiceLineItemSerializer(serializers.ModelSerializer):
@@ -111,7 +122,7 @@ class InvoiceLineItemSerializer(serializers.ModelSerializer):
 class BillingPeriodSerializer(serializers.ModelSerializer):
     class Meta:
         model = BillingPeriod
-        fields = ['id', 'lease', 'year', 'month']
+        fields = ['id', 'landlord', 'renter', 'year', 'month']
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -124,25 +135,22 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = [
-            'id', 'lease', 'billing_period', 'kind', 'status',
+            'id', 'billing_period', 'kind', 'status',
             'stripe_payment_intent_id', 'created_at', 'line_items', 'total',
         ]
         read_only_fields = ['status', 'stripe_payment_intent_id', 'created_at']
 
 
 class InvoiceCreateSerializer(serializers.Serializer):
-    lease = serializers.PrimaryKeyRelatedField(queryset=Lease.objects.all())
+    renter = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role=User.Role.RENTER)
+    )
     year = serializers.IntegerField()
     month = serializers.IntegerField(min_value=1, max_value=12)
     kind = serializers.ChoiceField(choices=Invoice.Kind.choices)
 
-    def validate_lease(self, lease: Lease) -> Lease:
-        request = self.context['request']
-        if lease.landlord_id != request.user.id:
-            raise serializers.ValidationError(
-                'You can only generate invoices for your own leases.'
-            )
-        return lease
+    def validate_renter(self, renter: User) -> User:
+        return _validate_is_own_renter(renter, self.context['request'].user)
 
 
 class PeriodPreviewSerializer(serializers.Serializer):
