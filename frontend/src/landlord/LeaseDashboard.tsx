@@ -9,6 +9,7 @@ import type {
   User,
 } from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
 import { LogDrivenDay } from './LogDrivenDay';
@@ -41,6 +42,7 @@ export function LeaseDashboard({
   const [logs, setLogs] = useState<DrivenDayLog[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
+  const [showEditRent, setShowEditRent] = useState(false);
 
   useEffect(() => {
     apiFetch<DrivenDayLog[]>('/api/driven-days/').then((allLogs) =>
@@ -66,9 +68,20 @@ export function LeaseDashboard({
   return (
     <div>
       <p>
-        Monthly rent: ${lease.monthly_rent} — Renter:{' '}
+        Monthly rent: ${lease.current_monthly_rent} — Renter:{' '}
         {formatRenter(lease.renter_detail)}
       </p>
+
+      {showEditRent ? (
+        <EditRent
+          leaseId={lease.id}
+          onScheduled={() => setShowEditRent(false)}
+        />
+      ) : (
+        <button type="button" onClick={() => setShowEditRent(true)}>
+          Edit rent
+        </button>
+      )}
 
       {gasBillingEnabled ? (
         <>
