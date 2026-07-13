@@ -5,11 +5,20 @@ import type {
   Invoice,
   Lease,
   MileageProfile,
+  User,
 } from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { CreateLease } from './CreateLease';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
+
+/** Formats a renter's name (if set) and email for display. */
+function formatRenter(renter: User): string {
+  const name = [renter.first_name, renter.last_name]
+    .filter(Boolean)
+    .join(' ');
+  return name ? `${name} (${renter.email})` : renter.email;
+}
 
 
 /**
@@ -42,25 +51,34 @@ export function LandlordDashboard() {
   return (
     <div>
       <h1>Landlord dashboard</h1>
-      <p>Monthly rent: ${lease.monthly_rent}</p>
+      <p>
+        Monthly rent: ${lease.monthly_rent} — Renter:{' '}
+        {formatRenter(lease.renter_detail)}
+      </p>
 
       {gasBillingEnabled ? (
-        <LeaseSettings leaseId={lease.id} />
+        <>
+          <LeaseSettings leaseId={lease.id} />
+
+          <h2>Renter's logged days</h2>
+          <ul>
+            {logs.map((log) => (
+              <li key={log.id}>
+                {log.date} — {log.day_fraction} day
+                {log.note ? ` (${log.note})` : ''}
+              </li>
+            ))}
+          </ul>
+
+          <button type="button" onClick={() => setGasBillingEnabled(false)}>
+            Back to dashboard
+          </button>
+        </>
       ) : (
         <button type="button" onClick={() => setGasBillingEnabled(true)}>
           Set up gas billing
         </button>
       )}
-
-      <h2>Renter's logged days</h2>
-      <ul>
-        {logs.map((log) => (
-          <li key={log.id}>
-            {log.date} — {log.day_fraction} day
-            {log.note ? ` (${log.note})` : ''}
-          </li>
-        ))}
-      </ul>
 
       <GenerateInvoice
         leaseId={lease.id}
