@@ -39,7 +39,7 @@ export function LandlordDashboard({
 
   if (leases.length === 0 || addingLease) {
     return (
-      <div>
+      <div className="card">
         <CreateLease onCreated={handleLeaseCreated} />
         {leases.length > 0 && (
           <button type="button" onClick={() => setAddingLease(false)}>
@@ -55,10 +55,17 @@ export function LandlordDashboard({
   if (!selectedLease) {
     return (
       <div>
-        <h1>Your renters</h1>
-        <ul>
+        <div className="dashboard-toolbar">
+          <h1>Your renters</h1>
+          <div className="dashboard-toolbar__actions">
+            <button type="button" onClick={() => setAddingLease(true)}>
+              Add another renter
+            </button>
+          </div>
+        </div>
+        <ul className="list">
           {leases.map((lease) => (
-            <li key={lease.id}>
+            <li key={lease.id} className="list-row">
               <button
                 type="button"
                 onClick={() => setSelectedLeaseId(lease.id)}
@@ -68,25 +75,24 @@ export function LandlordDashboard({
             </li>
           ))}
         </ul>
-        <button type="button" onClick={() => setAddingLease(true)}>
-          Add another renter
-        </button>
       </div>
     );
   }
 
   return (
     <div>
-      <h1>Landlord dashboard</h1>
-      <div>
-        {leases.length > 1 && (
-          <button type="button" onClick={() => setSelectedLeaseId(null)}>
-            ← All renters
+      <div className="dashboard-toolbar">
+        <h1>Landlord dashboard</h1>
+        <div className="dashboard-toolbar__actions">
+          {leases.length > 1 && (
+            <button type="button" onClick={() => setSelectedLeaseId(null)}>
+              ← All renters
+            </button>
+          )}
+          <button type="button" onClick={() => setAddingLease(true)}>
+            Add another renter
           </button>
-        )}
-        <button type="button" onClick={() => setAddingLease(true)}>
-          Add another renter
-        </button>
+        </div>
       </div>
       <LeaseDashboard
         lease={selectedLease}
