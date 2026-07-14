@@ -9,6 +9,7 @@ import type {
   User,
 } from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
@@ -39,10 +40,13 @@ export function LeaseDashboard({
 }) {
   const [logs, setLogs] = useState<DrivenDayLog[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [hasMileageProfile, setHasMileageProfile] = useState(false);
+  const [mileageProfile, setMileageProfile] = useState<MileageProfile | null>(
+    null
+  );
   const [showGasSettings, setShowGasSettings] = useState(false);
   const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
   const [showEditRent, setShowEditRent] = useState(false);
+  const [showLogDrivenDay, setShowLogDrivenDay] = useState(false);
 
   useEffect(() => {
     apiFetch<DrivenDayLog[]>('/api/driven-days/').then((allLogs) =>
@@ -59,8 +63,8 @@ export function LeaseDashboard({
 
   useEffect(() => {
     apiFetch<MileageProfile[]>('/api/mileage-profiles/').then((profiles) =>
-      setHasMileageProfile(
-        profiles.some((profile) => profile.renter === lease.renter)
+      setMileageProfile(
+        profiles.find((profile) => profile.renter === lease.renter) ?? null
       )
     );
   }, [lease.renter, showGasSettings]);
@@ -72,6 +76,8 @@ export function LeaseDashboard({
       onBackHandlerChange(() => setShowGenerateInvoice(false));
     } else if (showGasSettings) {
       onBackHandlerChange(() => setShowGasSettings(false));
+    } else if (showLogDrivenDay) {
+      onBackHandlerChange(() => setShowLogDrivenDay(false));
     } else {
       onBackHandlerChange(null);
     }
@@ -80,6 +86,7 @@ export function LeaseDashboard({
     showEditRent,
     showGenerateInvoice,
     showGasSettings,
+    showLogDrivenDay,
     onBackHandlerChange,
   ]);
 
@@ -88,6 +95,14 @@ export function LeaseDashboard({
       <p>
         Monthly rent: ${lease.current_monthly_rent} — Renter:{' '}
         {formatRenter(lease.renter_detail)}
+        {mileageProfile && (
+          <>
+            {' '}
+            — Mileage profile: {mileageProfile.one_way_miles} mi one-way,{' '}
+            {mileageProfile.mpg} MPG (effective{' '}
+            {mileageProfile.effective_from})
+          </>
+        )}
       </p>
 
       {showEditRent ? (
@@ -106,31 +121,31 @@ export function LeaseDashboard({
         <LeaseSettings renterId={lease.renter} />
       ) : (
         <button type="button" onClick={() => setShowGasSettings(true)}>
-          {hasMileageProfile
+          {mileageProfile
             ? 'Edit gas billing settings'
             : 'Set up gas billing'}
         </button>
       )}
 
-      {hasMileageProfile && (
+      {mileageProfile && (
         <>
           <h2>Renter's logged days</h2>
-          <LogDrivenDay
-            renterId={lease.renter}
-            onLogged={(log) =>
-              setLogs(
-                [...logs, log].sort((a, b) => a.date.localeCompare(b.date))
-              )
-            }
-          />
-          <ul>
-            {logs.map((log) => (
-              <li key={log.id}>
-                {log.date} — {log.day_fraction} day
-                {log.note ? ` (${log.note})` : ''}
-              </li>
-            ))}
-          </ul>
+          {showLogDrivenDay ? (
+            <LogDrivenDay
+              renterId={lease.renter}
+              onLogged={(log) => {
+                setLogs(
+                  [...logs, log].sort((a, b) => a.date.localeCompare(b.date))
+                );
+                setShowLogDrivenDay(false);
+              }}
+            />
+          ) : (
+            <button type="button" onClick={() => setShowLogDrivenDay(true)}>
+              Log a day
+            </button>
+          )}
+          <DrivenDaysCalendar logs={logs} />
         </>
       )}
 
