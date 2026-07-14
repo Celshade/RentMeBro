@@ -97,6 +97,45 @@ body {
   gap: 8px;
 }
 
+.driven-days-calendar {
+  max-width: 320px;
+}
+
+.driven-days-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.driven-days-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.driven-days-calendar__weekday {
+  font-size: 12px;
+  color: var(--text);
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.driven-days-calendar__cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.driven-days-calendar__cell--blank {
+  border: none;
+}
+
 h1,
 h2 {
   font-family: var(--heading);
