@@ -27,10 +27,20 @@ function toDateKey(date: Date): string {
 
 /**
  * Month-grid calendar highlighting driven days, with a small bar
- * under the date proportional to the fraction of the day logged.
+ * under the date proportional to the fraction of the day logged and a
+ * distinct color for half vs. full days. Clicking a day logs it (or
+ * edits the existing entry, if any).
  * @param props.logs - All driven-day logs for the renter.
+ * @param props.onDayClick - Called with a date (YYYY-MM-DD) and its
+ *   existing log, if any, when a day cell is clicked.
  */
-export function DrivenDaysCalendar({ logs }: { logs: DrivenDayLog[] }) {
+export function DrivenDaysCalendar({
+  logs,
+  onDayClick,
+}: {
+  logs: DrivenDayLog[];
+  onDayClick: (date: string, log: DrivenDayLog | null) => void;
+}) {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -75,25 +85,35 @@ export function DrivenDaysCalendar({ logs }: { logs: DrivenDayLog[] }) {
             return (
               <div
                 key={`blank-${index}`}
-                className="driven-days-calendar__cell driven-days-calendar__cell--blank"
+                className={
+                  'driven-days-calendar__cell ' +
+                  'driven-days-calendar__cell--blank'
+                }
               />
             );
           }
           const dateKey = toDateKey(new Date(viewYear, viewMonth, day));
-          const log = logsByDate.get(dateKey);
+          const log = logsByDate.get(dateKey) ?? null;
+          const isFullDay = log !== null && Number(log.day_fraction) >= 1;
           const title = log
             ? `${log.day_fraction} day${log.note ? ` — ${log.note}` : ''}`
-            : undefined;
+            : `Log ${dateKey}`;
+          const cellClass = [
+            'driven-days-calendar__cell',
+            log &&
+              (isFullDay
+                ? 'driven-days-calendar__cell--full'
+                : 'driven-days-calendar__cell--half'),
+          ]
+            .filter(Boolean)
+            .join(' ');
           return (
-            <div
+            <button
               key={dateKey}
-              className={
-                log
-                  ? 'driven-days-calendar__cell ' +
-                    'driven-days-calendar__cell--logged'
-                  : 'driven-days-calendar__cell'
-              }
+              type="button"
+              className={cellClass}
               title={title}
+              onClick={() => onDayClick(dateKey, log)}
             >
               <span className="driven-days-calendar__day-number">{day}</span>
               {log && (
@@ -102,7 +122,7 @@ export function DrivenDaysCalendar({ logs }: { logs: DrivenDayLog[] }) {
                   style={{ width: `${Number(log.day_fraction) * 100}%` }}
                 />
               )}
-            </div>
+            </button>
           );
         })}
       </div>
