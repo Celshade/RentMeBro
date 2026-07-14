@@ -26,8 +26,8 @@ function toDateKey(date: Date): string {
 }
 
 /**
- * Month-grid calendar highlighting driven days, with a color
- * intensity indicator proportional to the fraction of the day logged.
+ * Month-grid calendar highlighting driven days, with a small bar
+ * under the date proportional to the fraction of the day logged.
  * @param props.logs - All driven-day logs for the renter.
  */
 export function DrivenDaysCalendar({ logs }: { logs: DrivenDayLog[] }) {
@@ -81,24 +81,27 @@ export function DrivenDaysCalendar({ logs }: { logs: DrivenDayLog[] }) {
           }
           const dateKey = toDateKey(new Date(viewYear, viewMonth, day));
           const log = logsByDate.get(dateKey);
-          const style = log
-            ? {
-                backgroundColor: `color-mix(in srgb, var(--accent) ${
-                  Number(log.day_fraction) * 100
-                }%, transparent)`,
-              }
-            : undefined;
           const title = log
             ? `${log.day_fraction} day${log.note ? ` — ${log.note}` : ''}`
             : undefined;
           return (
             <div
               key={dateKey}
-              className="driven-days-calendar__cell"
-              style={style}
+              className={
+                log
+                  ? 'driven-days-calendar__cell ' +
+                    'driven-days-calendar__cell--logged'
+                  : 'driven-days-calendar__cell'
+              }
               title={title}
             >
-              {day}
+              <span className="driven-days-calendar__day-number">{day}</span>
+              {log && (
+                <span
+                  className="driven-days-calendar__fraction-bar"
+                  style={{ width: `${Number(log.day_fraction) * 100}%` }}
+                />
+              )}
             </div>
           );
         })}
