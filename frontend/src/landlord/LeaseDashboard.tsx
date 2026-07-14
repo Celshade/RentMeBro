@@ -91,46 +91,100 @@ export function LeaseDashboard({
   ]);
 
   return (
-    <div>
-      <p>
-        Monthly rent: ${lease.current_monthly_rent} — Renter:{' '}
-        {formatRenter(lease.renter_detail)}
-        {mileageProfile && (
-          <>
-            {' '}
-            — Mileage profile: {mileageProfile.one_way_miles} mi one-way,{' '}
-            {mileageProfile.mpg} MPG (effective{' '}
-            {mileageProfile.effective_from})
-          </>
-        )}
-      </p>
+    <div className="lease-dashboard">
+      <div className="stat-grid">
+        <div className="stat-tile">
+          <div className="stat-tile__header">
+            <span className="stat-tile__label">Monthly rent</span>
+            {!showEditRent && (
+              <button
+                type="button"
+                className="stat-tile__edit"
+                onClick={() => setShowEditRent(true)}
+              >
+                Edit
+              </button>
+            )}
+          </div>
+          <span className="stat-tile__value">
+            ${lease.current_monthly_rent}
+          </span>
+        </div>
 
-      {showEditRent ? (
-        <EditRent
-          leaseId={lease.id}
-          onScheduled={() => setShowEditRent(false)}
-          onCancel={() => setShowEditRent(false)}
-        />
-      ) : (
-        <button type="button" onClick={() => setShowEditRent(true)}>
-          Edit rent
-        </button>
+        <div className="stat-tile">
+          <span className="stat-tile__label">Renter</span>
+          <span className="stat-tile__value">
+            {formatRenter(lease.renter_detail)}
+          </span>
+        </div>
+
+        <div className="stat-tile">
+          <div className="stat-tile__header">
+            <span className="stat-tile__label">Mileage profile</span>
+            {!showGasSettings && (
+              <button
+                type="button"
+                className="stat-tile__edit"
+                onClick={() => setShowGasSettings(true)}
+              >
+                {mileageProfile ? 'Edit' : 'Set up'}
+              </button>
+            )}
+          </div>
+          {mileageProfile ? (
+            <>
+              <span className="stat-tile__value">
+                {mileageProfile.one_way_miles} mi one-way,{' '}
+                {mileageProfile.mpg} MPG
+              </span>
+              <span className="stat-tile__meta">
+                Effective {mileageProfile.effective_from}
+              </span>
+            </>
+          ) : (
+            <span className="stat-tile__value stat-tile__value--muted">
+              Not set up
+            </span>
+          )}
+        </div>
+      </div>
+
+      {showEditRent && (
+        <section className="card">
+          <div className="card__header">
+            <h2>Edit rent</h2>
+          </div>
+          <EditRent
+            leaseId={lease.id}
+            onScheduled={() => setShowEditRent(false)}
+            onCancel={() => setShowEditRent(false)}
+          />
+        </section>
       )}
 
-      {showGasSettings ? (
-        <LeaseSettings renterId={lease.renter} />
-      ) : (
-        <button type="button" onClick={() => setShowGasSettings(true)}>
-          {mileageProfile
-            ? 'Edit gas billing settings'
-            : 'Set up gas billing'}
-        </button>
+      {showGasSettings && (
+        <section className="card">
+          <div className="card__header">
+            <h2>Gas billing settings</h2>
+          </div>
+          <LeaseSettings renterId={lease.renter} />
+        </section>
       )}
 
       {mileageProfile && (
-        <>
-          <h2>Renter's logged days</h2>
-          {showLogDrivenDay ? (
+        <section className="card">
+          <div className="card__header">
+            <h2>Renter's logged days</h2>
+            {!showLogDrivenDay && (
+              <button
+                type="button"
+                onClick={() => setShowLogDrivenDay(true)}
+              >
+                Log a day
+              </button>
+            )}
+          </div>
+          {showLogDrivenDay && (
             <LogDrivenDay
               renterId={lease.renter}
               onLogged={(log) => {
@@ -140,46 +194,54 @@ export function LeaseDashboard({
                 setShowLogDrivenDay(false);
               }}
             />
-          ) : (
-            <button type="button" onClick={() => setShowLogDrivenDay(true)}>
-              Log a day
-            </button>
           )}
           <DrivenDaysCalendar logs={logs} />
-        </>
+        </section>
       )}
 
-      {showGenerateInvoice ? (
-        <GenerateInvoice
-          renterId={lease.renter}
-          onGenerated={(invoice) => {
-            setInvoices([invoice, ...invoices]);
-            setShowGenerateInvoice(false);
-          }}
-        />
-      ) : (
-        <button type="button" onClick={() => setShowGenerateInvoice(true)}>
-          Generate invoice
-        </button>
-      )}
-
-      <h2>Invoices</h2>
-      <ul>
-        {invoices.map((invoice) => {
-          const month = String(invoice.billing_period.month).padStart(
-            2,
-            '0'
-          );
-          return (
-            <li key={invoice.id}>
-              {invoice.billing_period.year}-{month}
-              {' — '}
-              {invoice.kind} — ${invoice.total}{' '}
-              <InvoiceStatusBadge status={invoice.status} />
-            </li>
-          );
-        })}
-      </ul>
+      <section className="card">
+        <div className="card__header">
+          <h2>Invoices</h2>
+          {!showGenerateInvoice && (
+            <button
+              type="button"
+              onClick={() => setShowGenerateInvoice(true)}
+            >
+              Generate invoice
+            </button>
+          )}
+        </div>
+        {showGenerateInvoice && (
+          <GenerateInvoice
+            renterId={lease.renter}
+            onGenerated={(invoice) => {
+              setInvoices([invoice, ...invoices]);
+              setShowGenerateInvoice(false);
+            }}
+          />
+        )}
+        {invoices.length === 0 ? (
+          <p className="empty-state">No invoices yet.</p>
+        ) : (
+          <ul className="list">
+            {invoices.map((invoice) => {
+              const month = String(invoice.billing_period.month).padStart(
+                2,
+                '0'
+              );
+              return (
+                <li key={invoice.id} className="list-row">
+                  <span>
+                    {invoice.billing_period.year}-{month} — {invoice.kind} —
+                    ${invoice.total}
+                  </span>
+                  <InvoiceStatusBadge status={invoice.status} />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
