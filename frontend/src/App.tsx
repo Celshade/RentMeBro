@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { formatUserName } from './api/format';
 import { AuthProvider, useAuth } from './auth/AuthContext';
@@ -9,7 +9,19 @@ import { LandlordDashboard } from './landlord/LandlordDashboard';
 
 function Home() {
   const { user, logout } = useAuth();
-  const [gasBillingEnabled, setGasBillingEnabled] = useState(false);
+  const [backHandler, setBackHandler] = useState<(() => void) | null>(null);
+
+  /**
+   * Registers (or clears) the handler for the shared header's "back to
+   * dashboard" button, so any active sub-view can offer a way back
+   * without the header needing to know which one is open.
+   */
+  const handleBackHandlerChange = useCallback(
+    (handler: (() => void) | null) => {
+      setBackHandler(() => handler);
+    },
+    []
+  );
 
   if (!user) return <Navigate to="/login" replace />;
 
@@ -21,10 +33,8 @@ function Home() {
           <span className="app-header__role">{user.role}</span>
         </div>
         <div className="app-header__actions">
-          {gasBillingEnabled && (
-            <button onClick={() => setGasBillingEnabled(false)}>
-              Back to dashboard
-            </button>
+          {backHandler && (
+            <button onClick={backHandler}>Back to dashboard</button>
           )}
           <button onClick={logout}>Log out</button>
         </div>
@@ -32,10 +42,7 @@ function Home() {
       {user.role === 'renter' ? (
         <RenterDashboard />
       ) : (
-        <LandlordDashboard
-          gasBillingEnabled={gasBillingEnabled}
-          onGasBillingEnabledChange={setGasBillingEnabled}
-        />
+        <LandlordDashboard onBackHandlerChange={handleBackHandlerChange} />
       )}
     </div>
   );
