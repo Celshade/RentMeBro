@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
 import type { GasPriceEntry, MileageProfile } from '../api/types';
 
@@ -10,6 +10,7 @@ import type { GasPriceEntry, MileageProfile } from '../api/types';
  * @param props.renterId - The renter to configure gas billing for.
  */
 export function LeaseSettings({ renterId }: { renterId: number }) {
+  const [profiles, setProfiles] = useState<MileageProfile[]>([]);
   const [profileId, setProfileId] = useState<number | null>(null);
   const [oneWayMiles, setOneWayMiles] = useState('');
   const [mpg, setMpg] = useState('');
@@ -22,16 +23,26 @@ export function LeaseSettings({ renterId }: { renterId: number }) {
   const [priceEffectiveTo, setPriceEffectiveTo] = useState('');
   const [priceStatus, setPriceStatus] = useState<string | null>(null);
 
-  useEffect(() => {
-    apiFetch<MileageProfile[]>('/api/mileage-profiles/').then((profiles) => {
-      const current = profiles.find((profile) => profile.renter === renterId);
-      if (!current) return;
-      setProfileId(current.id);
-      setOneWayMiles(current.one_way_miles);
-      setMpg(current.mpg);
-      setMileageEffectiveFrom(current.effective_from);
-    });
+  const loadProfiles = useCallback(() => {
+    apiFetch<MileageProfile[]>('/api/mileage-profiles/').then(
+      (allProfiles) => {
+        const renterProfiles = allProfiles.filter(
+          (profile) => profile.renter === renterId
+        );
+        setProfiles(renterProfiles);
+        const current = renterProfiles[0];
+        if (!current) return;
+        setProfileId(current.id);
+        setOneWayMiles(current.one_way_miles);
+        setMpg(current.mpg);
+        setMileageEffectiveFrom(current.effective_from);
+      }
+    );
   }, [renterId]);
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
 
   useEffect(() => {
     apiFetch<GasPriceEntry[]>('/api/gas-price-entries/').then((entries) => {
@@ -63,6 +74,7 @@ export function LeaseSettings({ renterId }: { renterId: number }) {
       });
       setProfileId(profile.id);
       setMileageStatus('Saved.');
+      loadProfiles();
     } catch (err) {
       setMileageStatus((err as Error).message);
     }
@@ -95,6 +107,17 @@ export function LeaseSettings({ renterId }: { renterId: number }) {
   return (
     <div>
       <h3>Mileage profile</h3>
+      {profiles.length > 0 && (
+        <ul>
+          {profiles.map((profile) => (
+            <li key={profile.id}>
+              {profile.one_way_miles} mi one-way, {profile.mpg} MPG —
+              effective {profile.effective_from} ({profile.full_day_miles}{' '}
+              mi/day)
+            </li>
+          ))}
+        </ul>
+      )}
       <form onSubmit={handleMileageSubmit}>
         <label htmlFor="one_way_miles">One-way commute miles</label>
         <input
