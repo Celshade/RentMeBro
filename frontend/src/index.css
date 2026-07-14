@@ -183,6 +183,13 @@ body {
   box-shadow: var(--shadow);
 }
 
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
 .card__header {
   display: flex;
   align-items: center;
