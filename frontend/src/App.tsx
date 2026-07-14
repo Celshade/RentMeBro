@@ -39,11 +39,13 @@ function Home() {
           <button onClick={logout}>Log out</button>
         </div>
       </header>
-      {user.role === 'renter' ? (
-        <RenterDashboard />
-      ) : (
-        <LandlordDashboard onBackHandlerChange={handleBackHandlerChange} />
-      )}
+      <main className="app-main">
+        {user.role === 'renter' ? (
+          <RenterDashboard />
+        ) : (
+          <LandlordDashboard onBackHandlerChange={handleBackHandlerChange} />
+        )}
+      </main>
     </div>
   );
 }
