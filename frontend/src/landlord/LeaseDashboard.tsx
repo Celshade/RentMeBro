@@ -171,77 +171,82 @@ export function LeaseDashboard({
         </section>
       )}
 
-      {mileageProfile && (
+      <div className="dashboard-columns">
+        {mileageProfile && (
+          <section className="card">
+            <div className="card__header">
+              <h2>Renter's logged days</h2>
+              {!showLogDrivenDay && (
+                <button
+                  type="button"
+                  onClick={() => setShowLogDrivenDay(true)}
+                >
+                  Log a day
+                </button>
+              )}
+            </div>
+            {showLogDrivenDay && (
+              <LogDrivenDay
+                renterId={lease.renter}
+                onLogged={(log) => {
+                  setLogs(
+                    [...logs, log].sort((a, b) =>
+                      a.date.localeCompare(b.date)
+                    )
+                  );
+                  setShowLogDrivenDay(false);
+                }}
+              />
+            )}
+            <DrivenDaysCalendar logs={logs} />
+          </section>
+        )}
+
         <section className="card">
           <div className="card__header">
-            <h2>Renter's logged days</h2>
-            {!showLogDrivenDay && (
+            <h2>Invoices</h2>
+            {!showGenerateInvoice && (
               <button
                 type="button"
-                onClick={() => setShowLogDrivenDay(true)}
+                onClick={() => setShowGenerateInvoice(true)}
               >
-                Log a day
+                Generate invoice
               </button>
             )}
           </div>
-          {showLogDrivenDay && (
-            <LogDrivenDay
+          {showGenerateInvoice && (
+            <GenerateInvoice
               renterId={lease.renter}
-              onLogged={(log) => {
-                setLogs(
-                  [...logs, log].sort((a, b) => a.date.localeCompare(b.date))
-                );
-                setShowLogDrivenDay(false);
+              onGenerated={(invoice) => {
+                setInvoices([invoice, ...invoices]);
+                setShowGenerateInvoice(false);
               }}
             />
           )}
-          <DrivenDaysCalendar logs={logs} />
-        </section>
-      )}
-
-      <section className="card">
-        <div className="card__header">
-          <h2>Invoices</h2>
-          {!showGenerateInvoice && (
-            <button
-              type="button"
-              onClick={() => setShowGenerateInvoice(true)}
-            >
-              Generate invoice
-            </button>
+          {invoices.length === 0 ? (
+            <p className="empty-state">No invoices yet.</p>
+          ) : (
+            <ul className="list">
+              {invoices.map((invoice) => {
+                const month = String(invoice.billing_period.month).padStart(
+                  2,
+                  '0'
+                );
+                return (
+                  <li key={invoice.id} className="list-row">
+                    <span>
+                      {invoice.billing_period.year}-{month}
+                      {' — '}
+                      {invoice.kind} — ${invoice.total}
+                    </span>
+                    <InvoiceStatusBadge status={invoice.status} />
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </div>
-        {showGenerateInvoice && (
-          <GenerateInvoice
-            renterId={lease.renter}
-            onGenerated={(invoice) => {
-              setInvoices([invoice, ...invoices]);
-              setShowGenerateInvoice(false);
-            }}
-          />
-        )}
-        {invoices.length === 0 ? (
-          <p className="empty-state">No invoices yet.</p>
-        ) : (
-          <ul className="list">
-            {invoices.map((invoice) => {
-              const month = String(invoice.billing_period.month).padStart(
-                2,
-                '0'
-              );
-              return (
-                <li key={invoice.id} className="list-row">
-                  <span>
-                    {invoice.billing_period.year}-{month} — {invoice.kind} —
-                    ${invoice.total}
-                  </span>
-                  <InvoiceStatusBadge status={invoice.status} />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
