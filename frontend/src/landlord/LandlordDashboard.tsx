@@ -9,18 +9,14 @@ import { LeaseDashboard } from './LeaseDashboard';
  * Landlord's home screen: with a single active renter, goes straight
  * to that lease's dashboard. With more than one, shows a renter
  * picker first.
- * @param props.gasBillingEnabled - Whether the gas-billing section is
- *   expanded.
- * @param props.onGasBillingEnabledChange - Called to expand/collapse the
- *   gas-billing section; the caller renders the matching "back to
- *   dashboard" control in the shared header.
+ * @param props.onBackHandlerChange - Forwarded to the selected lease's
+ *   dashboard, so its active sub-view can register the shared header's
+ *   "back to dashboard" control.
  */
 export function LandlordDashboard({
-  gasBillingEnabled,
-  onGasBillingEnabledChange,
+  onBackHandlerChange,
 }: {
-  gasBillingEnabled: boolean;
-  onGasBillingEnabledChange: (enabled: boolean) => void;
+  onBackHandlerChange: (handler: (() => void) | null) => void;
 }) {
   const [leases, setLeases] = useState<Lease[] | null>(null);
   const [selectedLeaseId, setSelectedLeaseId] = useState<number | null>(null);
@@ -94,8 +90,7 @@ export function LandlordDashboard({
       </div>
       <LeaseDashboard
         lease={selectedLease}
-        gasBillingEnabled={gasBillingEnabled}
-        onGasBillingEnabledChange={onGasBillingEnabledChange}
+        onBackHandlerChange={onBackHandlerChange}
       />
     </div>
   );
