@@ -46,17 +46,16 @@ export function LogDrivenDay({
         value={date}
         onChange={(e) => setDate(e.target.value)}
       />
-      <label htmlFor="day_fraction">Fraction of day</label>
-      <input
+      <label htmlFor="day_fraction">Trip</label>
+      <select
         id="day_fraction"
-        type="number"
-        step="0.25"
-        min="0"
-        max="1"
         required
         value={dayFraction}
         onChange={(e) => setDayFraction(e.target.value)}
-      />
+      >
+        <option value="1">Full day (drop-off + pick-up)</option>
+        <option value="0.5">Half day (drop-off or pick-up only)</option>
+      </select>
       <label htmlFor="driven_note">Note (optional)</label>
       <input
         id="driven_note"
