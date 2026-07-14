@@ -22,7 +22,8 @@ function formatRenter(renter: User): string {
 
 /**
  * Manages a single lease: rent/renter summary, optional gas billing
- * (mileage profile, gas price, logged days), and invoice generation.
+ * settings (mileage profile, gas price), driven-day logging (shown
+ * once a mileage profile exists), and invoice generation.
  * @param props.lease - The lease to manage.
  * @param props.onBackHandlerChange - Called whenever the active
  *   sub-view changes, with a handler that closes it (or null when no
@@ -38,7 +39,8 @@ export function LeaseDashboard({
 }) {
   const [logs, setLogs] = useState<DrivenDayLog[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [gasBillingEnabled, setGasBillingEnabled] = useState(false);
+  const [hasMileageProfile, setHasMileageProfile] = useState(false);
+  const [showGasSettings, setShowGasSettings] = useState(false);
   const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
   const [showEditRent, setShowEditRent] = useState(false);
 
@@ -57,19 +59,19 @@ export function LeaseDashboard({
 
   useEffect(() => {
     apiFetch<MileageProfile[]>('/api/mileage-profiles/').then((profiles) =>
-      setGasBillingEnabled(
+      setHasMileageProfile(
         profiles.some((profile) => profile.renter === lease.renter)
       )
     );
-  }, [lease.renter]);
+  }, [lease.renter, showGasSettings]);
 
   useEffect(() => {
     if (showEditRent) {
       onBackHandlerChange(() => setShowEditRent(false));
     } else if (showGenerateInvoice) {
       onBackHandlerChange(() => setShowGenerateInvoice(false));
-    } else if (gasBillingEnabled) {
-      onBackHandlerChange(() => setGasBillingEnabled(false));
+    } else if (showGasSettings) {
+      onBackHandlerChange(() => setShowGasSettings(false));
     } else {
       onBackHandlerChange(null);
     }
@@ -77,7 +79,7 @@ export function LeaseDashboard({
   }, [
     showEditRent,
     showGenerateInvoice,
-    gasBillingEnabled,
+    showGasSettings,
     onBackHandlerChange,
   ]);
 
@@ -100,10 +102,18 @@ export function LeaseDashboard({
         </button>
       )}
 
-      {gasBillingEnabled ? (
-        <>
-          <LeaseSettings renterId={lease.renter} />
+      {showGasSettings ? (
+        <LeaseSettings renterId={lease.renter} />
+      ) : (
+        <button type="button" onClick={() => setShowGasSettings(true)}>
+          {hasMileageProfile
+            ? 'Edit gas billing settings'
+            : 'Set up gas billing'}
+        </button>
+      )}
 
+      {hasMileageProfile && (
+        <>
           <h2>Renter's logged days</h2>
           <LogDrivenDay
             renterId={lease.renter}
@@ -122,10 +132,6 @@ export function LeaseDashboard({
             ))}
           </ul>
         </>
-      ) : (
-        <button type="button" onClick={() => setGasBillingEnabled(true)}>
-          Set up gas billing
-        </button>
       )}
 
       {showGenerateInvoice ? (
