@@ -46,7 +46,10 @@ export function LeaseDashboard({
   const [showGasSettings, setShowGasSettings] = useState(false);
   const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
   const [showEditRent, setShowEditRent] = useState(false);
-  const [showLogDrivenDay, setShowLogDrivenDay] = useState(false);
+  const [logDayTarget, setLogDayTarget] = useState<{
+    date: string;
+    log: DrivenDayLog | null;
+  } | null>(null);
 
   useEffect(() => {
     apiFetch<DrivenDayLog[]>('/api/driven-days/').then((allLogs) =>
@@ -76,8 +79,8 @@ export function LeaseDashboard({
       onBackHandlerChange(() => setShowGenerateInvoice(false));
     } else if (showGasSettings) {
       onBackHandlerChange(() => setShowGasSettings(false));
-    } else if (showLogDrivenDay) {
-      onBackHandlerChange(() => setShowLogDrivenDay(false));
+    } else if (logDayTarget) {
+      onBackHandlerChange(() => setLogDayTarget(null));
     } else {
       onBackHandlerChange(null);
     }
@@ -86,7 +89,7 @@ export function LeaseDashboard({
     showEditRent,
     showGenerateInvoice,
     showGasSettings,
-    showLogDrivenDay,
+    logDayTarget,
     onBackHandlerChange,
   ]);
 
@@ -176,29 +179,36 @@ export function LeaseDashboard({
           <section className="card">
             <div className="card__header">
               <h2>Renter's logged days</h2>
-              {!showLogDrivenDay && (
+              {!logDayTarget && (
                 <button
                   type="button"
-                  onClick={() => setShowLogDrivenDay(true)}
+                  onClick={() => setLogDayTarget({ date: '', log: null })}
                 >
                   Log a day
                 </button>
               )}
             </div>
-            {showLogDrivenDay && (
+            {logDayTarget && (
               <LogDrivenDay
+                key={logDayTarget.log?.id ?? logDayTarget.date ?? 'new'}
                 renterId={lease.renter}
-                onLogged={(log) => {
+                initialDate={logDayTarget.date}
+                editingLog={logDayTarget.log}
+                onSaved={(log) => {
                   setLogs(
-                    [...logs, log].sort((a, b) =>
-                      a.date.localeCompare(b.date)
+                    [...logs.filter((l) => l.id !== log.id), log].sort(
+                      (a, b) => a.date.localeCompare(b.date)
                     )
                   );
-                  setShowLogDrivenDay(false);
+                  setLogDayTarget(null);
                 }}
+                onCancel={() => setLogDayTarget(null)}
               />
             )}
-            <DrivenDaysCalendar logs={logs} />
+            <DrivenDaysCalendar
+              logs={logs}
+              onDayClick={(date, log) => setLogDayTarget({ date, log })}
+            />
           </section>
         )}
 
