@@ -26,7 +26,7 @@ export function RenterDashboard() {
   return (
     <div>
       <h1>Your rental</h1>
-      <p>Monthly rent: ${lease.monthly_rent}</p>
+      <p>Monthly rent: ${lease.current_monthly_rent}</p>
 
       <DrivenDayForm
         leaseId={lease.id}
