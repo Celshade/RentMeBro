@@ -125,15 +125,32 @@ body {
 .driven-days-calendar__cell {
   aspect-ratio: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 3px;
   border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 13px;
+  color: var(--text-h);
 }
 
 .driven-days-calendar__cell--blank {
   border: none;
+}
+
+.driven-days-calendar__cell--logged {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  font-weight: 600;
+}
+
+.driven-days-calendar__fraction-bar {
+  height: 3px;
+  min-width: 20%;
+  max-width: 70%;
+  background: var(--accent);
+  border-radius: 2px;
 }
 
 h1,
