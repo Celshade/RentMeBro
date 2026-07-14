@@ -21,47 +21,75 @@ export function RenterDashboard() {
     apiFetch<Invoice[]>('/api/invoices/').then(setInvoices);
   }, []);
 
-  if (!lease) return <p>No active lease found.</p>;
+  if (!lease) return <p className="empty-state">No active lease found.</p>;
 
   return (
-    <div>
+    <div className="renter-dashboard">
       <h1>Your rental</h1>
-      <p>Monthly rent: ${lease.current_monthly_rent}</p>
 
-      <DrivenDayForm
-        leaseId={lease.id}
-        onLogged={(log) => setLogs([...logs, log])}
-      />
+      <div className="stat-grid">
+        <div className="stat-tile">
+          <span className="stat-tile__label">Monthly rent</span>
+          <span className="stat-tile__value">
+            ${lease.current_monthly_rent}
+          </span>
+        </div>
+      </div>
 
-      <h2>Logged days</h2>
-      <ul>
-        {logs.map((log) => (
-          <li key={log.id}>
-            {log.date} — {log.day_fraction} day
-            {log.note ? ` (${log.note})` : ''}
-          </li>
-        ))}
-      </ul>
+      <section className="card">
+        <div className="card__header">
+          <h2>Logged days</h2>
+        </div>
+        <DrivenDayForm
+          leaseId={lease.id}
+          onLogged={(log) => setLogs([...logs, log])}
+        />
+        {logs.length === 0 ? (
+          <p className="empty-state">No days logged yet.</p>
+        ) : (
+          <ul className="list">
+            {logs.map((log) => (
+              <li key={log.id} className="list-row">
+                <span>
+                  {log.date} — {log.day_fraction} day
+                  {log.note ? ` (${log.note})` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-      <h2>Invoices</h2>
-      <ul>
-        {invoices.map((invoice) => {
-          const month = String(invoice.billing_period.month).padStart(
-            2,
-            '0'
-          );
-          return (
-            <li key={invoice.id}>
-              {invoice.billing_period.year}-{month}
-              {' — '}
-              {invoice.kind} — ${invoice.total}{' '}
-              <InvoiceStatusBadge status={invoice.status} />
-              {invoice.status !== 'paid' && (
-                <>
-                  {' '}
-                  <button onClick={() => setPayingInvoiceId(invoice.id)}>
-                    Pay
-                  </button>
+      <section className="card">
+        <div className="card__header">
+          <h2>Invoices</h2>
+        </div>
+        {invoices.length === 0 ? (
+          <p className="empty-state">No invoices yet.</p>
+        ) : (
+          <ul className="list">
+            {invoices.map((invoice) => {
+              const month = String(invoice.billing_period.month).padStart(
+                2,
+                '0'
+              );
+              return (
+                <li key={invoice.id} className="list-row">
+                  <span>
+                    {invoice.billing_period.year}-{month} — {invoice.kind} —
+                    ${invoice.total}
+                  </span>
+                  <span className="renter-dashboard__invoice-actions">
+                    <InvoiceStatusBadge status={invoice.status} />
+                    {invoice.status !== 'paid' && (
+                      <button
+                        type="button"
+                        onClick={() => setPayingInvoiceId(invoice.id)}
+                      >
+                        Pay
+                      </button>
+                    )}
+                  </span>
                   {payingInvoiceId === invoice.id && (
                     <PayInvoice
                       invoiceId={invoice.id}
@@ -73,12 +101,12 @@ export function RenterDashboard() {
                       }}
                     />
                   )}
-                </>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
