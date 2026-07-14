@@ -24,23 +24,21 @@ function formatRenter(renter: User): string {
  * Manages a single lease: rent/renter summary, optional gas billing
  * (mileage profile, gas price, logged days), and invoice generation.
  * @param props.lease - The lease to manage.
- * @param props.gasBillingEnabled - Whether the gas-billing section is
- *   expanded.
- * @param props.onGasBillingEnabledChange - Called to expand/collapse the
- *   gas-billing section; the caller renders the matching "back to
- *   dashboard" control in the shared header.
+ * @param props.onBackHandlerChange - Called whenever the active
+ *   sub-view changes, with a handler that closes it (or null when no
+ *   sub-view is open) so the shared header can render a matching
+ *   "back to dashboard" control.
  */
 export function LeaseDashboard({
   lease,
-  gasBillingEnabled,
-  onGasBillingEnabledChange,
+  onBackHandlerChange,
 }: {
   lease: Lease;
-  gasBillingEnabled: boolean;
-  onGasBillingEnabledChange: (enabled: boolean) => void;
+  onBackHandlerChange: (handler: (() => void) | null) => void;
 }) {
   const [logs, setLogs] = useState<DrivenDayLog[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [gasBillingEnabled, setGasBillingEnabled] = useState(false);
   const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
   const [showEditRent, setShowEditRent] = useState(false);
 
@@ -59,11 +57,29 @@ export function LeaseDashboard({
 
   useEffect(() => {
     apiFetch<MileageProfile[]>('/api/mileage-profiles/').then((profiles) =>
-      onGasBillingEnabledChange(
+      setGasBillingEnabled(
         profiles.some((profile) => profile.renter === lease.renter)
       )
     );
-  }, [lease.renter, onGasBillingEnabledChange]);
+  }, [lease.renter]);
+
+  useEffect(() => {
+    if (showEditRent) {
+      onBackHandlerChange(() => setShowEditRent(false));
+    } else if (showGenerateInvoice) {
+      onBackHandlerChange(() => setShowGenerateInvoice(false));
+    } else if (gasBillingEnabled) {
+      onBackHandlerChange(() => setGasBillingEnabled(false));
+    } else {
+      onBackHandlerChange(null);
+    }
+    return () => onBackHandlerChange(null);
+  }, [
+    showEditRent,
+    showGenerateInvoice,
+    gasBillingEnabled,
+    onBackHandlerChange,
+  ]);
 
   return (
     <div>
@@ -76,6 +92,7 @@ export function LeaseDashboard({
         <EditRent
           leaseId={lease.id}
           onScheduled={() => setShowEditRent(false)}
+          onCancel={() => setShowEditRent(false)}
         />
       ) : (
         <button type="button" onClick={() => setShowEditRent(true)}>
@@ -106,7 +123,7 @@ export function LeaseDashboard({
           </ul>
         </>
       ) : (
-        <button type="button" onClick={() => onGasBillingEnabledChange(true)}>
+        <button type="button" onClick={() => setGasBillingEnabled(true)}>
           Set up gas billing
         </button>
       )}
