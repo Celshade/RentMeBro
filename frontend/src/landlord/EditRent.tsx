@@ -7,13 +7,17 @@ import { apiFetch } from '../api/client';
  * effective date, so they have advance notice.
  * @param props.leaseId - The lease to change rent for.
  * @param props.onScheduled - Called once the change is scheduled.
+ * @param props.onCancel - Called if the landlord backs out without
+ *   scheduling a change.
  */
 export function EditRent({
   leaseId,
   onScheduled,
+  onCancel,
 }: {
   leaseId: number;
   onScheduled: () => void;
+  onCancel: () => void;
 }) {
   const [newMonthlyRent, setNewMonthlyRent] = useState('');
   const [effectiveDate, setEffectiveDate] = useState('');
@@ -57,6 +61,9 @@ export function EditRent({
         onChange={(e) => setEffectiveDate(e.target.value)}
       />
       <button type="submit">Schedule rent change</button>
+      <button type="button" onClick={onCancel}>
+        Cancel
+      </button>
       {status && <p>{status}</p>}
     </form>
   );
