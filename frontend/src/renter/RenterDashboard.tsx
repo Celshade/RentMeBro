@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import type { DrivenDayLog, Invoice, Lease } from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
-import { DrivenDayForm } from './DrivenDayForm';
 import { PayInvoice } from './PayInvoice';
 
 
@@ -40,10 +39,6 @@ export function RenterDashboard() {
         <div className="card__header">
           <h2>Logged days</h2>
         </div>
-        <DrivenDayForm
-          leaseId={lease.id}
-          onLogged={(log) => setLogs([...logs, log])}
-        />
         {logs.length === 0 ? (
           <p className="empty-state">No days logged yet.</p>
         ) : (
