@@ -1,25 +1,13 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
-import { formatUserName } from '../api/format';
-import type {
-  DrivenDayLog,
-  Invoice,
-  Lease,
-  MileageProfile,
-  User,
-} from '../api/types';
+import { formatUserWithEmail } from '../api/format';
+import type { DrivenDayLog, Invoice, Lease, MileageProfile } from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
 import { LogDrivenDay } from './LogDrivenDay';
-
-/** Formats a renter's name (if set) and email for display. */
-function formatRenter(renter: User): string {
-  const name = formatUserName(renter);
-  return name === renter.email ? name : `${name} (${renter.email})`;
-}
 
 /**
  * Manages a single lease: rent/renter summary, optional gas billing
@@ -117,7 +105,7 @@ export function LeaseDashboard({
         <div className="stat-tile">
           <span className="stat-tile__label">Renter</span>
           <span className="stat-tile__value">
-            {formatRenter(lease.renter_detail)}
+            {formatUserWithEmail(lease.renter_detail)}
           </span>
         </div>
 
