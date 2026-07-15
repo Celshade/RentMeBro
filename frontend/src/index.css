@@ -18,7 +18,7 @@
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
+  font: 18px/1.45 var(--sans);
   letter-spacing: 0.18px;
   color-scheme: light dark;
   color: var(--text);
@@ -112,6 +112,59 @@ body {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.auth-page {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: 28px;
+  text-align: center;
+}
+
+.auth-role {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.auth-role legend {
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.auth-role label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .dashboard-toolbar {
