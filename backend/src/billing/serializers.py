@@ -21,6 +21,7 @@ MIN_RENT_REVISION_NOTICE_DAYS = 30
 
 class LeaseSerializer(serializers.ModelSerializer):
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
+    landlord_detail = UserSerializer(source='landlord', read_only=True)
     renter_detail = UserSerializer(source='renter', read_only=True)
     terms_text = serializers.SerializerMethodField()
     current_monthly_rent = serializers.DecimalField(
@@ -30,9 +31,9 @@ class LeaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lease
         fields = [
-            'id', 'landlord', 'renter', 'renter_detail', 'monthly_rent',
-            'current_monthly_rent', 'start_date', 'active', 'lease_type',
-            'document', 'term_months', 'terms_text',
+            'id', 'landlord', 'landlord_detail', 'renter', 'renter_detail',
+            'monthly_rent', 'current_monthly_rent', 'start_date', 'active',
+            'lease_type', 'document', 'term_months', 'terms_text',
         ]
 
     def get_terms_text(self, obj: Lease) -> str | None:
