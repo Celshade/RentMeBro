@@ -16,46 +16,56 @@ export function RequestMagicLink() {
   }
 
   if (sent) {
-    return <p>If that email has an account, a sign-in link is on its way.</p>;
+    return (
+      <div className="auth-page">
+        <p className="card auth-card">
+          If that email has an account, a sign-in link is on its way.
+        </p>
+      </div>
+    );
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h1>Sign in to RentMeBro</h1>
-      <fieldset>
-        <legend>I am signing in as a</legend>
-        <label>
+    <div className="auth-page">
+      <form className="card auth-card" onSubmit={handleSubmit}>
+        <h1>Sign in to RentMeBro</h1>
+        <fieldset className="auth-role">
+          <legend>I am signing in as a</legend>
+          <label>
+            <input
+              type="radio"
+              name="role"
+              value="renter"
+              checked={role === 'renter'}
+              onChange={() => setRole('renter')}
+            />
+            Renter
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="role"
+              value="landlord"
+              checked={role === 'landlord'}
+              onChange={() => setRole('landlord')}
+            />
+            Landlord
+          </label>
+        </fieldset>
+        <label className="auth-field" htmlFor="email">
+          Email
           <input
-            type="radio"
-            name="role"
-            value="renter"
-            checked={role === 'renter'}
-            onChange={() => setRole('renter')}
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
-          Renter
         </label>
-        <label>
-          <input
-            type="radio"
-            name="role"
-            value="landlord"
-            checked={role === 'landlord'}
-            onChange={() => setRole('landlord')}
-          />
-          Landlord
-        </label>
-      </fieldset>
-      <label htmlFor="email">Email</label>
-      <input
-        id="email"
-        type="email"
-        required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <button type="submit" disabled={loading}>
-        Send sign-in link
-      </button>
-    </form>
+        <button type="submit" disabled={loading}>
+          Send sign-in link
+        </button>
+      </form>
+    </div>
   );
 }
