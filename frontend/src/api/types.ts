@@ -25,6 +25,7 @@ export type LeaseType = 'custom' | 'default';
 /**
  * @property id - Primary key.
  * @property landlord - User id of the landlord on this lease.
+ * @property landlord_detail - Full landlord record (name/email/role).
  * @property renter - User id of the renter on this lease.
  * @property renter_detail - Full renter record (name/email/role).
  * @property monthly_rent - Base monthly rent, as a decimal string.
@@ -42,6 +43,7 @@ export type LeaseType = 'custom' | 'default';
 export interface Lease {
   id: number;
   landlord: number;
+  landlord_detail: User;
   renter: number;
   renter_detail: User;
   monthly_rent: string;
