@@ -28,18 +28,20 @@ function toDateKey(date: Date): string {
 /**
  * Month-grid calendar highlighting driven days, with a small bar
  * under the date proportional to the fraction of the day logged and a
- * distinct color for half vs. full days. Clicking a day logs it (or
- * edits the existing entry, if any).
+ * distinct color for half vs. full days. When `onDayClick` is given,
+ * clicking a day logs it (or edits the existing entry, if any);
+ * otherwise the grid is read-only.
  * @param props.logs - All driven-day logs for the renter.
  * @param props.onDayClick - Called with a date (YYYY-MM-DD) and its
- *   existing log, if any, when a day cell is clicked.
+ *   existing log, if any, when a day cell is clicked. Omit to render
+ *   a read-only calendar.
  */
 export function DrivenDaysCalendar({
   logs,
   onDayClick,
 }: {
   logs: DrivenDayLog[];
-  onDayClick: (date: string, log: DrivenDayLog | null) => void;
+  onDayClick?: (date: string, log: DrivenDayLog | null) => void;
 }) {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -107,6 +109,23 @@ export function DrivenDaysCalendar({
           ]
             .filter(Boolean)
             .join(' ');
+          const dayNumber = (
+            <span className="driven-days-calendar__day-number">{day}</span>
+          );
+          const fractionBar = log && (
+            <span
+              className="driven-days-calendar__fraction-bar"
+              style={{ width: `${Number(log.day_fraction) * 100}%` }}
+            />
+          );
+          if (!onDayClick) {
+            return (
+              <div key={dateKey} className={cellClass} title={title}>
+                {dayNumber}
+                {fractionBar}
+              </div>
+            );
+          }
           return (
             <button
               key={dateKey}
@@ -115,13 +134,8 @@ export function DrivenDaysCalendar({
               title={title}
               onClick={() => onDayClick(dateKey, log)}
             >
-              <span className="driven-days-calendar__day-number">{day}</span>
-              {log && (
-                <span
-                  className="driven-days-calendar__fraction-bar"
-                  style={{ width: `${Number(log.day_fraction) * 100}%` }}
-                />
-              )}
+              {dayNumber}
+              {fractionBar}
             </button>
           );
         })}
