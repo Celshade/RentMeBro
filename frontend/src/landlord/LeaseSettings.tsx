@@ -72,6 +72,23 @@ export function LeaseSettings({
     setPriceEffectiveTo(to);
   }
 
+  async function deletePriceEntry(entry: GasPriceEntry) {
+    const confirmed = window.confirm(
+      `Delete the gas price for ${entry.effective_from} to ` +
+        `${entry.effective_to ?? 'ongoing'}?`
+    );
+    if (!confirmed) return;
+    try {
+      await apiFetch(`/api/gas-price-entries/${entry.id}/`, {
+        method: 'DELETE',
+      });
+      loadPriceEntries();
+      if (priceId === entry.id) startNewPriceEntry();
+    } catch (err) {
+      setPriceStatus((err as Error).message);
+    }
+  }
+
   const loadProfiles = useCallback(() => {
     apiFetch<MileageProfile[]>('/api/mileage-profiles/').then(
       (allProfiles) => {
@@ -264,7 +281,13 @@ export function LeaseSettings({
                     >
                       Edit
                     </button>
-                  )}
+                  )}{' '}
+                  <button
+                    type="button"
+                    onClick={() => deletePriceEntry(entry)}
+                  >
+                    Delete
+                  </button>
                 </li>
               ))}
             </ul>
