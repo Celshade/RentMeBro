@@ -1,4 +1,22 @@
-import type { User } from './types';
+import type { InvoiceKind, User } from './types';
+
+
+const INVOICE_KIND_LABELS: Record<InvoiceKind, string> = {
+  combined: 'Rent + Gas',
+  rent_only: 'Rent',
+  gas_only: 'Gas',
+};
+
+
+/**
+ * Formats an invoice kind for display.
+ * @param kind - The invoice kind to format.
+ * @returns A human-readable label (e.g. "Rent + Gas" for 'combined').
+ */
+export function formatInvoiceKind(kind: InvoiceKind): string {
+  return INVOICE_KIND_LABELS[kind];
+}
+
 
 /** Full month names, indexed 0 (January) through 11 (December). */
 export const MONTH_NAMES = [
