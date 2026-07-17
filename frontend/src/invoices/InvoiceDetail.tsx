@@ -2,13 +2,21 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import { formatInvoiceKind, formatMoney } from '../api/format';
-import type { DrivenDayLog, Invoice, InvoiceWeek } from '../api/types';
+import type {
+  DrivenDayLog,
+  Invoice,
+  InvoiceWeek,
+  InvoiceWeekDay,
+} from '../api/types';
+import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
 
-/** Describes a day_fraction the way the mileage log form does, not as a raw number. */
-function formatDayFraction(dayFraction: string): string {
-  return Number(dayFraction) >= 0.75
+/** Describes a logged day the way the mileage log form does, not as raw data. */
+function formatDayDescription(day: InvoiceWeekDay): string {
+  if (day.kind === 'day_off') return 'Day off';
+  if (day.kind === 'other_ride') return 'Other ride';
+  return Number(day.day_fraction) >= 0.75
     ? 'Full day (drop-off + pick-up)'
     : 'Half day (drop-off or pick-up only)';
 }
@@ -22,7 +30,7 @@ function weeksToLogs(weeks: InvoiceWeek[]): DrivenDayLog[] {
     landlord: 0,
     renter: 0,
     date: day.date,
-    kind: 'driven',
+    kind: day.kind,
     day_fraction: day.day_fraction,
     note: '',
   }));
@@ -123,6 +131,7 @@ export function InvoiceDetail() {
               initialYear={invoice.billing_period.year}
               initialMonth={invoice.billing_period.month - 1}
             />
+            <DrivenDaysCalendarKey />
           </section>
 
           <section className="card">
@@ -130,7 +139,7 @@ export function InvoiceDetail() {
               <h2>Weekly breakdown</h2>
             </div>
             {weeks.length === 0 ? (
-              <p className="empty-state">No driven days logged.</p>
+              <p className="empty-state">No days logged.</p>
             ) : (
               <ul className="list">
                 {weeks.map((week) => (
@@ -138,7 +147,8 @@ export function InvoiceDetail() {
                     <div className="list-row">
                       <span>
                         {week.week_start} – {week.week_end}
-                        {' — '}${formatMoney(week.price_per_gallon)}/gal
+                        {week.price_per_gallon !== null &&
+                          ` — $${formatMoney(week.price_per_gallon)}/gal`}
                       </span>
                       <span>
                         {week.total_miles} mi — ${week.total_gas_cost}
@@ -148,10 +158,12 @@ export function InvoiceDetail() {
                       {week.days.map((day) => (
                         <li key={day.date} className="list-row">
                           <span>
-                            {day.date} — {formatDayFraction(day.day_fraction)}
+                            {day.date} — {formatDayDescription(day)}
                           </span>
                           <span>
-                            {day.miles} mi — ${day.gas_cost}
+                            {day.kind === 'driven'
+                              ? `${day.miles} mi — $${day.gas_cost}`
+                              : '—'}
                           </span>
                         </li>
                       ))}
