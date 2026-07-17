@@ -75,7 +75,10 @@ export function InvoiceDetail() {
         <div className="stat-tile">
           <span className="stat-tile__label">Status</span>
           <span className="stat-tile__value">
-            <InvoiceStatusBadge status={invoice.status} />
+            <InvoiceStatusBadge
+              status={invoice.status}
+              isLate={invoice.is_late}
+            />
           </span>
         </div>
         <div className="stat-tile">
@@ -83,6 +86,10 @@ export function InvoiceDetail() {
           <span className="stat-tile__value">
             {formatInvoiceKind(invoice.kind)}
           </span>
+        </div>
+        <div className="stat-tile">
+          <span className="stat-tile__label">Due date</span>
+          <span className="stat-tile__value">{invoice.due_date}</span>
         </div>
         <div className="stat-tile">
           <span className="stat-tile__label">Total</span>
