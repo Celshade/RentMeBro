@@ -264,6 +264,10 @@ export function LeaseDashboard({
                   setLogDayTarget(null);
                   cancelBulkSelect();
                 }}
+                onDeleted={(logId) => {
+                  setLogs(logs.filter((l) => l.id !== logId));
+                  setLogDayTarget(null);
+                }}
                 onCancel={() => setLogDayTarget(null)}
               />
             )}
