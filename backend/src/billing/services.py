@@ -181,9 +181,10 @@ def compute_period_weekly_breakdown(
 
     Returns:
         A list of week dicts, ordered by week_start, each with
-        'week_start', 'week_end', 'total_miles', 'total_gas_cost', and
-        'days' (a list of per-day dicts with 'date', 'day_fraction',
-        'miles', 'gas_cost').
+        'week_start', 'week_end', 'total_miles', 'total_gas_cost',
+        'price_per_gallon' (the price in effect for the week's first
+        logged day), and 'days' (a list of per-day dicts with 'date',
+        'day_fraction', 'miles', 'gas_cost').
     """
     logs = DrivenDayLog.objects.filter(
         landlord=landlord, renter=renter, date__year=year, date__month=month
@@ -199,14 +200,18 @@ def compute_period_weekly_breakdown(
                 'week_end': week_start + timedelta(days=6),
                 'total_miles': Decimal('0.00'),
                 'total_gas_cost': Decimal('0.00'),
+                'price_per_gallon': None,
                 'days': [],
             },
         )
         profile = get_mileage_profile_for_date(landlord, renter, log.date)
+        gas_price = get_gas_price_for_date(landlord, renter, log.date)
         gas_cost = compute_gas_cost_for_log(log)
         miles = (log.day_fraction * profile.full_day_miles).quantize(
             Decimal('0.01')
         )
+        if week['price_per_gallon'] is None:
+            week['price_per_gallon'] = gas_price.price_per_gallon
         week['days'].append(
             {
                 'date': log.date,
