@@ -255,6 +255,7 @@ class Invoice(models.Model):
     )
     stripe_payment_intent_id = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    due_date = models.DateField()
 
     class Meta:
         unique_together = ('billing_period', 'kind')
@@ -267,6 +268,12 @@ class Invoice(models.Model):
         return sum(
             (item.amount for item in self.line_items.all()), start=Decimal(0)
         )
+
+    @property
+    def is_late(self) -> bool:
+        if self.status in (Invoice.Status.PAID, Invoice.Status.VOID):
+            return False
+        return timezone.now().date() > self.due_date
 
 
 class InvoiceLineItem(models.Model):
