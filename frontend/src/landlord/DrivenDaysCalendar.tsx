@@ -33,6 +33,9 @@ function toDateKey(date: Date): string {
  * @param props.onSetWeekPrice - Called with a calendar week's start
  *   and end dates (YYYY-MM-DD, Sunday through Saturday) when its
  *   per-week price button is clicked. Omit to hide that button.
+ * @param props.pricedWeekRanges - Effective date ranges of existing
+ *   gas price entries, used to color the per-week price button when
+ *   a week is already priced.
  */
 export function DrivenDaysCalendar({
   logs,
@@ -40,12 +43,14 @@ export function DrivenDaysCalendar({
   selectedDates,
   onToggleDate,
   onSetWeekPrice,
+  pricedWeekRanges,
 }: {
   logs: DrivenDayLog[];
   onDayClick?: (date: string, log: DrivenDayLog | null) => void;
   selectedDates?: Set<string>;
   onToggleDate?: (date: string) => void;
   onSetWeekPrice?: (weekStart: string, weekEnd: string) => void;
+  pricedWeekRanges?: { from: string; to: string | null }[];
 }) {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -186,17 +191,27 @@ export function DrivenDaysCalendar({
                   viewMonth,
                   1 - leadingBlanks + weekIndex * 7 + 6
                 );
+                const weekStartKey = toDateKey(weekStart);
+                const weekEndKey = toDateKey(weekEnd);
+                const isPriced = (pricedWeekRanges ?? []).some(
+                  (range) =>
+                    range.from <= weekEndKey &&
+                    (range.to === null || range.to >= weekStartKey)
+                );
                 return (
                   <button
                     type="button"
-                    className="driven-days-calendar__week-price-btn"
+                    className={
+                      'driven-days-calendar__week-price-btn' +
+                      (isPriced
+                        ? ' driven-days-calendar__week-price-btn--priced'
+                        : '')
+                    }
                     title={
-                      `Set gas price for ${toDateKey(weekStart)} through ` +
-                      toDateKey(weekEnd)
+                      (isPriced ? 'Gas price set — ' : 'Set gas price for ') +
+                      `${weekStartKey} through ${weekEndKey}`
                     }
-                    onClick={() =>
-                      onSetWeekPrice(toDateKey(weekStart), toDateKey(weekEnd))
-                    }
+                    onClick={() => onSetWeekPrice(weekStartKey, weekEndKey)}
                   >
                     $
                   </button>
