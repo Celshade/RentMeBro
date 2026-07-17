@@ -1,20 +1,7 @@
 import { Fragment, useState } from 'react';
+import { MONTH_NAMES } from '../api/format';
 import type { DrivenDayLog } from '../api/types';
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /** Formats a Date as a local (not UTC) YYYY-MM-DD key. */
