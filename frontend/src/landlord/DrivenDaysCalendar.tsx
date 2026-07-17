@@ -36,6 +36,13 @@ function toDateKey(date: Date): string {
  * @param props.pricedWeekRanges - Effective date ranges of existing
  *   gas price entries, used to color the per-week price button when
  *   a week is already priced.
+ * @param props.initialYear - Calendar year to open on. Defaults to the
+ *   current year.
+ * @param props.initialMonth - Calendar month to open on (0-11).
+ *   Defaults to the current month.
+ * @param props.lockedMonths - Months with a drafted invoice ("YYYY-MM"),
+ *   which become read-only and highlight any Mon-Fri day still missing
+ *   a log entry.
  */
 export function DrivenDaysCalendar({
   logs,
@@ -44,6 +51,9 @@ export function DrivenDaysCalendar({
   onToggleDate,
   onSetWeekPrice,
   pricedWeekRanges,
+  initialYear,
+  initialMonth,
+  lockedMonths,
 }: {
   logs: DrivenDayLog[];
   onDayClick?: (date: string, log: DrivenDayLog | null) => void;
@@ -51,10 +61,21 @@ export function DrivenDaysCalendar({
   onToggleDate?: (date: string) => void;
   onSetWeekPrice?: (weekStart: string, weekEnd: string) => void;
   pricedWeekRanges?: { from: string; to: string | null }[];
+  initialYear?: number;
+  initialMonth?: number;
+  lockedMonths?: Set<string>;
 }) {
   const today = new Date();
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [viewYear, setViewYear] = useState(initialYear ?? today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(
+    initialMonth ?? today.getMonth()
+  );
+
+  const viewMonthKey = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+  const isMonthLocked = lockedMonths?.has(viewMonthKey) ?? false;
+  const activeOnDayClick = isMonthLocked ? undefined : onDayClick;
+  const activeOnToggleDate = isMonthLocked ? undefined : onToggleDate;
+  const activeOnSetWeekPrice = isMonthLocked ? undefined : onSetWeekPrice;
 
   const logsByDate = new Map(logs.map((log) => [log.date, log]));
 
@@ -84,6 +105,7 @@ export function DrivenDaysCalendar({
         </button>
         <span>
           {MONTH_NAMES[viewMonth]} {viewYear}
+          {isMonthLocked && ' 🔒'}
         </span>
         <button type="button" onClick={() => changeMonth(1)}>
           ›
@@ -92,7 +114,9 @@ export function DrivenDaysCalendar({
       <div
         className={
           'driven-days-calendar__grid' +
-          (onSetWeekPrice ? ' driven-days-calendar__grid--with-price' : '')
+          (activeOnSetWeekPrice
+            ? ' driven-days-calendar__grid--with-price'
+            : '')
         }
       >
         {WEEKDAY_LABELS.map((label) => (
@@ -100,7 +124,9 @@ export function DrivenDaysCalendar({
             {label}
           </div>
         ))}
-        {onSetWeekPrice && <div className="driven-days-calendar__weekday" />}
+        {activeOnSetWeekPrice && (
+          <div className="driven-days-calendar__weekday" />
+        )}
         {weeks.map((week, weekIndex) => (
           <Fragment key={weekIndex}>
             {week.map((day, dayIndex) => {
@@ -116,12 +142,21 @@ export function DrivenDaysCalendar({
                   />
                 );
               }
-              const dateKey = toDateKey(new Date(viewYear, viewMonth, day));
+              const cellDate = new Date(viewYear, viewMonth, day);
+              const dateKey = toDateKey(cellDate);
               const log = logsByDate.get(dateKey) ?? null;
               const isFullDay = log !== null && Number(log.day_fraction) >= 1;
+              const weekday = cellDate.getDay();
+              const isMissingWeekday =
+                isMonthLocked &&
+                !log &&
+                weekday >= 1 &&
+                weekday <= 5;
               const title = log
                 ? `${log.day_fraction} day${log.note ? ` — ${log.note}` : ''}`
-                : `Log ${dateKey}`;
+                : isMissingWeekday
+                  ? `No log for ${dateKey}`
+                  : `Log ${dateKey}`;
               const isSelected = selectedDates?.has(dateKey) ?? false;
               const cellClass = [
                 'driven-days-calendar__cell',
@@ -130,6 +165,7 @@ export function DrivenDaysCalendar({
                     ? 'driven-days-calendar__cell--full'
                     : 'driven-days-calendar__cell--half'),
                 isSelected && 'driven-days-calendar__cell--selected',
+                isMissingWeekday && 'driven-days-calendar__cell--missing',
               ]
                 .filter(Boolean)
                 .join(' ');
@@ -144,21 +180,21 @@ export function DrivenDaysCalendar({
                   style={{ width: `${Number(log.day_fraction) * 100}%` }}
                 />
               );
-              if (onToggleDate) {
+              if (activeOnToggleDate) {
                 return (
                   <button
                     key={dateKey}
                     type="button"
                     className={cellClass}
                     title={title}
-                    onClick={() => onToggleDate(dateKey)}
+                    onClick={() => activeOnToggleDate(dateKey)}
                   >
                     {dayNumber}
                     {fractionBar}
                   </button>
                 );
               }
-              if (!onDayClick) {
+              if (!activeOnDayClick) {
                 return (
                   <div key={dateKey} className={cellClass} title={title}>
                     {dayNumber}
@@ -172,14 +208,14 @@ export function DrivenDaysCalendar({
                   type="button"
                   className={cellClass}
                   title={title}
-                  onClick={() => onDayClick(dateKey, log)}
+                  onClick={() => activeOnDayClick(dateKey, log)}
                 >
                   {dayNumber}
                   {fractionBar}
                 </button>
               );
             })}
-            {onSetWeekPrice &&
+            {activeOnSetWeekPrice &&
               (() => {
                 const weekStart = new Date(
                   viewYear,
@@ -211,7 +247,9 @@ export function DrivenDaysCalendar({
                       (isPriced ? 'Gas price set — ' : 'Set gas price for ') +
                       `${weekStartKey} through ${weekEndKey}`
                     }
-                    onClick={() => onSetWeekPrice(weekStartKey, weekEndKey)}
+                    onClick={() =>
+                      activeOnSetWeekPrice(weekStartKey, weekEndKey)
+                    }
                   >
                     $
                   </button>
