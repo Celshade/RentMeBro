@@ -163,6 +163,9 @@ class InvoiceWeekSerializer(serializers.Serializer):
     week_end = serializers.DateField()
     total_miles = serializers.DecimalField(max_digits=6, decimal_places=2)
     total_gas_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
+    price_per_gallon = serializers.DecimalField(
+        max_digits=6, decimal_places=3
+    )
     days = InvoiceWeekDaySerializer(many=True)
 
 
