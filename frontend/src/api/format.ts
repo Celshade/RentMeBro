@@ -1,5 +1,21 @@
 import type { User } from './types';
 
+/** Full month names, indexed 0 (January) through 11 (December). */
+export const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
 /**
  * Formats a user's full name if set, otherwise falls back to email.
  * @param user - The user to format.
