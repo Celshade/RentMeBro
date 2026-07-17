@@ -22,6 +22,7 @@ function weeksToLogs(weeks: InvoiceWeek[]): DrivenDayLog[] {
     landlord: 0,
     renter: 0,
     date: day.date,
+    kind: 'driven',
     day_fraction: day.day_fraction,
     note: '',
   }));
