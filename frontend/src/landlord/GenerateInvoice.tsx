@@ -36,6 +36,12 @@ export function GenerateInvoice({
 
   async function handleGenerate(event: FormEvent) {
     event.preventDefault();
+    const confirmed = window.confirm(
+      `Generate the ${MONTH_NAMES[Number(month) - 1]} ${year} invoice? ` +
+        'Make sure the mileage log for that month is accurate first — ' +
+        'this cannot be undone.'
+    );
+    if (!confirmed) return;
     setError(null);
     try {
       const invoice = await apiFetch<Invoice>('/api/invoices/', {
