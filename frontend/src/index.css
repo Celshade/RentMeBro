@@ -302,6 +302,36 @@ body {
   font-size: 14px;
 }
 
+.invoice-detail__week {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.invoice-detail__week:last-child {
+  border-bottom: none;
+}
+
+.invoice-detail__week .list-row {
+  border-bottom: none;
+  padding: 0 0 6px;
+  font-weight: 600;
+}
+
+.invoice-detail__week-days {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.invoice-detail__week-days .list-row {
+  font-weight: 400;
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: none;
+}
+
 form {
   display: flex;
   flex-direction: column;
@@ -484,6 +514,11 @@ button:disabled {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+.driven-days-calendar__cell--missing {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
 .driven-days-calendar__fraction-bar {
   height: 3px;
   min-width: 20%;
@@ -583,6 +618,11 @@ code {
   .status-badge--sent {
     color: #fbbf24;
     background: rgba(251, 191, 36, 0.15);
+  }
+
+  .driven-days-calendar__cell--missing {
+    background: rgba(248, 113, 113, 0.15);
+    border-color: rgba(248, 113, 113, 0.5);
   }
 
   .driven-days-calendar__week-price-btn--priced {
