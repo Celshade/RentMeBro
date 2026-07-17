@@ -415,6 +415,8 @@ button:disabled {
 }
 
 .driven-days-calendar__week-price-btn {
+  justify-self: start;
+  align-self: center;
   padding: 0 6px;
   border: 1px solid var(--border);
   border-radius: 4px;
