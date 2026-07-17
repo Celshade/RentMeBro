@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import { formatUserWithEmail } from '../api/format';
 import type {
@@ -41,6 +42,10 @@ export function LeaseDashboard({
   const [showGasSettings, setShowGasSettings] = useState(false);
   const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
   const [showEditRent, setShowEditRent] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(
+    null
+  );
+  const [savingInvoiceEdit, setSavingInvoiceEdit] = useState(false);
   const [logDayTarget, setLogDayTarget] = useState<{
     dates: string[];
     logs: (DrivenDayLog | null)[];
@@ -124,6 +129,37 @@ export function LeaseDashboard({
     bulkSelectMode,
     onBackHandlerChange,
   ]);
+
+  const lockedMonths = new Set(
+    invoices
+      .filter(
+        (invoice) =>
+          invoice.kind !== 'rent_only' && invoice.id !== editingInvoiceId
+      )
+      .map(
+        (invoice) =>
+          `${invoice.billing_period.year}-` +
+          `${String(invoice.billing_period.month).padStart(2, '0')}`
+      )
+  );
+
+  async function handleSaveInvoiceEdit(invoiceId: number) {
+    setSavingInvoiceEdit(true);
+    try {
+      const updated = await apiFetch<Invoice>(
+        `/api/invoices/${invoiceId}/recompute/`,
+        { method: 'POST' }
+      );
+      setInvoices(
+        invoices.map((invoice) =>
+          invoice.id === updated.id ? updated : invoice
+        )
+      );
+      setEditingInvoiceId(null);
+    } finally {
+      setSavingInvoiceEdit(false);
+    }
+  }
 
   return (
     <div className="lease-dashboard">
@@ -307,6 +343,7 @@ export function LeaseDashboard({
                 from: entry.effective_from,
                 to: entry.effective_to,
               }))}
+              lockedMonths={lockedMonths}
             />
           </section>
         )}
@@ -341,6 +378,9 @@ export function LeaseDashboard({
                   2,
                   '0'
                 );
+                const isLocked =
+                  invoice.status === 'paid' || invoice.status === 'void';
+                const isEditing = editingInvoiceId === invoice.id;
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
@@ -348,7 +388,39 @@ export function LeaseDashboard({
                       {' — '}
                       {invoice.kind} — ${invoice.total}
                     </span>
-                    <InvoiceStatusBadge status={invoice.status} />
+                    <span className="renter-dashboard__invoice-actions">
+                      <InvoiceStatusBadge status={invoice.status} />
+                      <Link to={`/invoices/${invoice.id}`}>Details</Link>
+                      {!isLocked && invoice.kind !== 'rent_only' && (
+                        isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={savingInvoiceEdit}
+                              onClick={() =>
+                                handleSaveInvoiceEdit(invoice.id)
+                              }
+                            >
+                              Save changes
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingInvoiceEdit}
+                              onClick={() => setEditingInvoiceId(null)}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditingInvoiceId(invoice.id)}
+                          >
+                            Edit
+                          </button>
+                        )
+                      )}
+                    </span>
                   </li>
                 );
               })}
