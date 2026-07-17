@@ -82,7 +82,7 @@ export function LandlordDashboard({
   return (
     <div>
       <div className="dashboard-toolbar">
-        <h1>Landlord dashboard</h1>
+        <h1>Your dashboard</h1>
         <div className="dashboard-toolbar__actions">
           {leases.length > 1 && (
             <button type="button" onClick={() => setSelectedLeaseId(null)}>
