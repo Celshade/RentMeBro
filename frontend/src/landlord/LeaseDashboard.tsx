@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { formatUserWithEmail } from '../api/format';
-import type { DrivenDayLog, Invoice, Lease, MileageProfile } from '../api/types';
+import type {
+  DrivenDayLog,
+  GasPriceEntry,
+  Invoice,
+  Lease,
+  MileageProfile,
+} from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
@@ -31,6 +37,7 @@ export function LeaseDashboard({
   const [mileageProfile, setMileageProfile] = useState<MileageProfile | null>(
     null
   );
+  const [priceEntries, setPriceEntries] = useState<GasPriceEntry[]>([]);
   const [showGasSettings, setShowGasSettings] = useState(false);
   const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
   const [showEditRent, setShowEditRent] = useState(false);
@@ -85,6 +92,12 @@ export function LeaseDashboard({
       setMileageProfile(
         profiles.find((profile) => profile.renter === lease.renter) ?? null
       )
+    );
+  }, [lease.renter, showGasSettings]);
+
+  useEffect(() => {
+    apiFetch<GasPriceEntry[]>('/api/gas-price-entries/').then((entries) =>
+      setPriceEntries(entries.filter((entry) => entry.renter === lease.renter))
     );
   }, [lease.renter, showGasSettings]);
 
@@ -290,6 +303,10 @@ export function LeaseDashboard({
                 setWeekPriceRange({ from, to });
                 setShowGasSettings(true);
               }}
+              pricedWeekRanges={priceEntries.map((entry) => ({
+                from: entry.effective_from,
+                to: entry.effective_to,
+              }))}
             />
           </section>
         )}
