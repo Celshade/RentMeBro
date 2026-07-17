@@ -16,6 +16,9 @@ import type { GasPriceEntry, MileageProfile } from '../api/types';
  * `presetRange` (e.g. from a calendar week's "$" button) prefills a
  * new entry for that range.
  * @param props.renterId - The renter to configure gas billing for.
+ * @param props.section - Which form(s) to show: 'mileage', 'price',
+ *   or 'both' (default). Use 'price' to show only gas price entries,
+ *   e.g. when jumping straight to pricing a specific week.
  * @param props.presetRange - A date range to prefill a new gas price
  *   entry with, switching the form to "add new" mode.
  * @param props.onCancel - Called if the landlord backs out without
@@ -23,10 +26,12 @@ import type { GasPriceEntry, MileageProfile } from '../api/types';
  */
 export function LeaseSettings({
   renterId,
+  section = 'both',
   presetRange,
   onCancel,
 }: {
   renterId: number;
+  section?: 'mileage' | 'price' | 'both';
   presetRange?: { from: string; to: string } | null;
   onCancel: () => void;
 }) {
@@ -146,114 +151,127 @@ export function LeaseSettings({
     }
   }
 
+  const showMileage = section === 'mileage' || section === 'both';
+  const showPrice = section === 'price' || section === 'both';
+
   return (
     <div>
-      <h3>Mileage profile</h3>
-      {profiles.length > 0 && (
-        <ul>
-          {profiles.map((profile) => (
-            <li key={profile.id}>
-              {profile.one_way_miles} mi one-way, {profile.mpg} MPG —
-              effective {profile.effective_from} ({profile.full_day_miles}{' '}
-              mi/day)
-            </li>
-          ))}
-        </ul>
+      {showMileage && (
+        <>
+          <h3>Mileage profile</h3>
+          {profiles.length > 0 && (
+            <ul>
+              {profiles.map((profile) => (
+                <li key={profile.id}>
+                  {profile.one_way_miles} mi one-way, {profile.mpg} MPG —
+                  effective {profile.effective_from} (
+                  {profile.full_day_miles} mi/day)
+                </li>
+              ))}
+            </ul>
+          )}
+          <form onSubmit={handleMileageSubmit}>
+            <label htmlFor="one_way_miles">One-way commute miles</label>
+            <input
+              id="one_way_miles"
+              type="number"
+              step="0.01"
+              required
+              value={oneWayMiles}
+              onChange={(e) => setOneWayMiles(e.target.value)}
+            />
+            <label htmlFor="mpg">Vehicle MPG</label>
+            <input
+              id="mpg"
+              type="number"
+              step="0.01"
+              required
+              value={mpg}
+              onChange={(e) => setMpg(e.target.value)}
+            />
+            <label htmlFor="mileage_effective_from">Effective from</label>
+            <input
+              id="mileage_effective_from"
+              type="date"
+              required
+              value={mileageEffectiveFrom}
+              onChange={(e) => setMileageEffectiveFrom(e.target.value)}
+            />
+            <button type="submit">
+              {profileId ? 'Update mileage profile' : 'Save mileage profile'}
+            </button>
+            <button type="button" onClick={onCancel}>
+              Cancel
+            </button>
+            {mileageStatus && <p>{mileageStatus}</p>}
+          </form>
+        </>
       )}
-      <form onSubmit={handleMileageSubmit}>
-        <label htmlFor="one_way_miles">One-way commute miles</label>
-        <input
-          id="one_way_miles"
-          type="number"
-          step="0.01"
-          required
-          value={oneWayMiles}
-          onChange={(e) => setOneWayMiles(e.target.value)}
-        />
-        <label htmlFor="mpg">Vehicle MPG</label>
-        <input
-          id="mpg"
-          type="number"
-          step="0.01"
-          required
-          value={mpg}
-          onChange={(e) => setMpg(e.target.value)}
-        />
-        <label htmlFor="mileage_effective_from">Effective from</label>
-        <input
-          id="mileage_effective_from"
-          type="date"
-          required
-          value={mileageEffectiveFrom}
-          onChange={(e) => setMileageEffectiveFrom(e.target.value)}
-        />
-        <button type="submit">
-          {profileId ? 'Update mileage profile' : 'Save mileage profile'}
-        </button>
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        {mileageStatus && <p>{mileageStatus}</p>}
-      </form>
 
-      <h3>Gas price</h3>
-      {priceEntries.length > 0 && (
-        <ul>
-          {priceEntries.map((entry) => (
-            <li key={entry.id}>
-              ${entry.price_per_gallon}/gal — {entry.effective_from}
-              {' to '}
-              {entry.effective_to ?? 'ongoing'}{' '}
-              {priceId !== entry.id && (
-                <button
-                  type="button"
-                  onClick={() => editPriceEntry(entry)}
-                >
-                  Edit
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+      {showPrice && (
+        <>
+          <h3>Gas price</h3>
+          {priceEntries.length > 0 && (
+            <ul>
+              {priceEntries.map((entry) => (
+                <li key={entry.id}>
+                  ${entry.price_per_gallon}/gal — {entry.effective_from}
+                  {' to '}
+                  {entry.effective_to ?? 'ongoing'}{' '}
+                  {priceId !== entry.id && (
+                    <button
+                      type="button"
+                      onClick={() => editPriceEntry(entry)}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <form onSubmit={handlePriceSubmit}>
+            <label htmlFor="price_per_gallon">Price per gallon</label>
+            <input
+              id="price_per_gallon"
+              type="number"
+              step="0.001"
+              required
+              value={pricePerGallon}
+              onChange={(e) => setPricePerGallon(e.target.value)}
+            />
+            <label htmlFor="price_effective_from">Effective from</label>
+            <input
+              id="price_effective_from"
+              type="date"
+              required
+              value={priceEffectiveFrom}
+              onChange={(e) => setPriceEffectiveFrom(e.target.value)}
+            />
+            <label htmlFor="price_effective_to">
+              Effective to (optional)
+            </label>
+            <input
+              id="price_effective_to"
+              type="date"
+              value={priceEffectiveTo}
+              onChange={(e) => setPriceEffectiveTo(e.target.value)}
+            />
+            <button type="submit">
+              {priceId ? 'Update gas price' : 'Save gas price'}
+            </button>
+            {priceId && (
+              <button type="button" onClick={() => startNewPriceEntry()}>
+                Add another week instead
+              </button>
+            )}
+            <button type="button" onClick={onCancel}>
+              Cancel
+            </button>
+            {priceStatus && <p>{priceStatus}</p>}
+          </form>
+        </>
       )}
-      <form onSubmit={handlePriceSubmit}>
-        <label htmlFor="price_per_gallon">Price per gallon</label>
-        <input
-          id="price_per_gallon"
-          type="number"
-          step="0.001"
-          required
-          value={pricePerGallon}
-          onChange={(e) => setPricePerGallon(e.target.value)}
-        />
-        <label htmlFor="price_effective_from">Effective from</label>
-        <input
-          id="price_effective_from"
-          type="date"
-          required
-          value={priceEffectiveFrom}
-          onChange={(e) => setPriceEffectiveFrom(e.target.value)}
-        />
-        <label htmlFor="price_effective_to">Effective to (optional)</label>
-        <input
-          id="price_effective_to"
-          type="date"
-          value={priceEffectiveTo}
-          onChange={(e) => setPriceEffectiveTo(e.target.value)}
-        />
-        <button type="submit">
-          {priceId ? 'Update gas price' : 'Save gas price'}
-        </button>
-        {priceId && (
-          <button type="button" onClick={() => startNewPriceEntry()}>
-            Add another week instead
-          </button>
-        )}
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        {priceStatus && <p>{priceStatus}</p>}
-      </form>
     </div>
   );
 }
