@@ -109,8 +109,8 @@ def get_gas_price_for_date(
     )
     if entry is None:
         raise BillingConfigError(
-            f'No GasPriceEntry in effect for landlord {landlord.id}, '
-            f'renter {renter.id} on {on_date}'
+            f'No gas price is set for the week of {on_date}. Add one '
+            'before generating this invoice.'
         )
     return entry
 
