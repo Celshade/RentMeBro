@@ -41,8 +41,7 @@ function toDateKey(date: Date): string {
  * @param props.initialMonth - Calendar month to open on (0-11).
  *   Defaults to the current month.
  * @param props.lockedMonths - Months with a drafted invoice ("YYYY-MM"),
- *   which become read-only and highlight any Mon-Fri day still missing
- *   a log entry.
+ *   which become read-only.
  */
 export function DrivenDaysCalendar({
   logs,
@@ -146,26 +145,26 @@ export function DrivenDaysCalendar({
               const dateKey = toDateKey(cellDate);
               const log = logsByDate.get(dateKey) ?? null;
               const isFullDay = log !== null && Number(log.day_fraction) >= 1;
-              const weekday = cellDate.getDay();
-              const isMissingWeekday =
-                isMonthLocked &&
-                !log &&
-                weekday >= 1 &&
-                weekday <= 5;
               const title = log
-                ? `${log.day_fraction} day${log.note ? ` — ${log.note}` : ''}`
-                : isMissingWeekday
-                  ? `No log for ${dateKey}`
-                  : `Log ${dateKey}`;
+                ? log.kind === 'day_off'
+                  ? `Day off${log.note ? ` — ${log.note}` : ''}`
+                  : log.kind === 'other_ride'
+                    ? `Other ride${log.note ? ` — ${log.note}` : ''}`
+                    : `${log.day_fraction} day${
+                        log.note ? ` — ${log.note}` : ''
+                      }`
+                : `Log ${dateKey}`;
               const isSelected = selectedDates?.has(dateKey) ?? false;
               const cellClass = [
                 'driven-days-calendar__cell',
-                log &&
+                log?.kind === 'day_off' && 'driven-days-calendar__cell--day-off',
+                log?.kind === 'other_ride' &&
+                  'driven-days-calendar__cell--other-ride',
+                log?.kind === 'driven' &&
                   (isFullDay
                     ? 'driven-days-calendar__cell--full'
                     : 'driven-days-calendar__cell--half'),
                 isSelected && 'driven-days-calendar__cell--selected',
-                isMissingWeekday && 'driven-days-calendar__cell--missing',
               ]
                 .filter(Boolean)
                 .join(' ');
@@ -174,7 +173,7 @@ export function DrivenDaysCalendar({
                   {day}
                 </span>
               );
-              const fractionBar = log && (
+              const fractionBar = log?.kind === 'driven' && (
                 <span
                   className="driven-days-calendar__fraction-bar"
                   style={{ width: `${Number(log.day_fraction) * 100}%` }}
