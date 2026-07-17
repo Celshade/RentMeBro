@@ -57,12 +57,22 @@ export interface Lease {
 }
 
 
+/** Whether a logged day was driven by the landlord, a day off, or a
+ * day someone else drove the renter (unpaid to the landlord, not a
+ * day off).
+ */
+export type DrivenDayLogKind = 'driven' | 'day_off' | 'other_ride';
+
+
 /**
  * @property id - Primary key.
  * @property landlord - User id of the landlord who logged this day.
  * @property renter - User id of the renter who was driven.
- * @property date - The date driven (ISO 8601).
+ * @property date - The date logged (ISO 8601).
+ * @property kind - Whether this day was driven, a day off, or covered
+ *   by someone else.
  * @property day_fraction - Fraction of a full day driven (e.g. "0.50").
+ *   Always "0.00" when kind isn't 'driven'.
  * @property note - Optional free-text note.
  */
 export interface DrivenDayLog {
@@ -70,6 +80,7 @@ export interface DrivenDayLog {
   landlord: number;
   renter: number;
   date: string;
+  kind: DrivenDayLogKind;
   day_fraction: string;
   note: string;
 }
