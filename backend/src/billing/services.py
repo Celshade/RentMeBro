@@ -182,19 +182,19 @@ def compute_period_weekly_breakdown(
         year: The billing period's year.
         month: The billing period's month (1-12).
 
+    Includes every logged day (driven, day off, other ride) so the
+    invoice detail calendar can render them all, but only driven days
+    count toward the week's totals.
+
     Returns:
         A list of week dicts, ordered by week_start, each with
         'week_start', 'week_end', 'total_miles', 'total_gas_cost',
         'price_per_gallon' (the price in effect for the week's first
-        logged day), and 'days' (a list of per-day dicts with 'date',
-        'day_fraction', 'miles', 'gas_cost').
+        driven day), and 'days' (a list of per-day dicts with 'date',
+        'kind', 'day_fraction', 'miles', 'gas_cost').
     """
     logs = DrivenDayLog.objects.filter(
-        landlord=landlord,
-        renter=renter,
-        date__year=year,
-        date__month=month,
-        kind=DrivenDayLog.Kind.DRIVEN,
+        landlord=landlord, renter=renter, date__year=year, date__month=month
     ).order_by('date')
 
     weeks: dict[date, dict] = {}
@@ -211,17 +211,24 @@ def compute_period_weekly_breakdown(
                 'days': [],
             },
         )
-        profile = get_mileage_profile_for_date(landlord, renter, log.date)
-        gas_price = get_gas_price_for_date(landlord, renter, log.date)
-        gas_cost = compute_gas_cost_for_log(log)
-        miles = (log.day_fraction * profile.full_day_miles).quantize(
-            Decimal('0.01')
-        )
-        if week['price_per_gallon'] is None:
-            week['price_per_gallon'] = gas_price.price_per_gallon
+        is_driven = log.kind == DrivenDayLog.Kind.DRIVEN
+        miles = Decimal('0.00')
+        gas_cost = Decimal('0.00')
+        if is_driven:
+            profile = get_mileage_profile_for_date(
+                landlord, renter, log.date
+            )
+            gas_price = get_gas_price_for_date(landlord, renter, log.date)
+            gas_cost = compute_gas_cost_for_log(log)
+            miles = (log.day_fraction * profile.full_day_miles).quantize(
+                Decimal('0.01')
+            )
+            if week['price_per_gallon'] is None:
+                week['price_per_gallon'] = gas_price.price_per_gallon
         week['days'].append(
             {
                 'date': log.date,
+                'kind': log.kind,
                 'day_fraction': log.day_fraction,
                 'miles': miles,
                 'gas_cost': gas_cost,
