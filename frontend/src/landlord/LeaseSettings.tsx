@@ -51,7 +51,11 @@ export function LeaseSettings({
 
   const loadPriceEntries = useCallback(() => {
     apiFetch<GasPriceEntry[]>('/api/gas-price-entries/').then((entries) => {
-      setPriceEntries(entries.filter((entry) => entry.renter === renterId));
+      setPriceEntries(
+        entries
+          .filter((entry) => entry.renter === renterId)
+          .sort((a, b) => a.effective_from.localeCompare(b.effective_from))
+      );
     });
   }, [renterId]);
 
