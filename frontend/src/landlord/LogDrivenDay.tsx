@@ -12,50 +12,61 @@ function normalizeFraction(dayFraction: string): string {
 
 
 /**
- * Landlord form to log a (partial) day a renter was driven, or edit
- * an existing entry.
+ * Landlord form to log a (partial) day, or several days at once, that
+ * a renter was driven, applying the same trip type/note to each
+ * date. Also used to edit a single existing entry.
  * @param props.renterId - The renter who was driven.
- * @param props.initialDate - Date to prefill (e.g. from a calendar
- *   day click), ignored if `editingLog` is set.
- * @param props.editingLog - The existing log to edit, or null/undefined
- *   to create a new one.
- * @param props.onSaved - Called with the created/updated log entry on
- *   success.
+ * @param props.dates - The date(s) (YYYY-MM-DD) to log. A single date
+ *   may be edited before saving; with more than one, the dates are
+ *   fixed (chosen via the calendar) and only shown as a summary.
+ * @param props.existingLogs - The existing log for each entry in
+ *   `dates` (same order), or null where none exists yet.
+ * @param props.onSaved - Called with the created/updated log entries
+ *   on success.
  * @param props.onCancel - Called if the landlord backs out without
  *   saving.
  */
 export function LogDrivenDay({
   renterId,
-  initialDate,
-  editingLog,
+  dates,
+  existingLogs,
   onSaved,
   onCancel,
 }: {
   renterId: number;
-  initialDate?: string;
-  editingLog?: DrivenDayLog | null;
-  onSaved: (log: DrivenDayLog) => void;
+  dates: string[];
+  existingLogs: (DrivenDayLog | null)[];
+  onSaved: (logs: DrivenDayLog[]) => void;
   onCancel: () => void;
 }) {
-  const [date, setDate] = useState(editingLog?.date ?? initialDate ?? '');
+  const isSingle = dates.length === 1;
+  const singleExistingLog = isSingle ? existingLogs[0] : null;
+  const [date, setDate] = useState(dates[0] ?? '');
   const [dayFraction, setDayFraction] = useState(
-    editingLog ? normalizeFraction(editingLog.day_fraction) : '1'
+    singleExistingLog ? normalizeFraction(singleExistingLog.day_fraction) : '1'
   );
-  const [note, setNote] = useState(editingLog?.note ?? '');
+  const [note, setNote] = useState(singleExistingLog?.note ?? '');
   const [status, setStatus] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setStatus(null);
     try {
-      const path = editingLog
-        ? `/api/driven-days/${editingLog.id}/`
-        : '/api/driven-days/';
-      const log = await apiFetch<DrivenDayLog>(path, {
-        method: editingLog ? 'PATCH' : 'POST',
-        body: { renter: renterId, date, day_fraction: dayFraction, note },
-      });
-      onSaved(log);
+      const targets = isSingle
+        ? [{ date, log: singleExistingLog }]
+        : dates.map((d, i) => ({ date: d, log: existingLogs[i] }));
+      const logs = await Promise.all(
+        targets.map(({ date, log }) => {
+          const path = log
+            ? `/api/driven-days/${log.id}/`
+            : '/api/driven-days/';
+          return apiFetch<DrivenDayLog>(path, {
+            method: log ? 'PATCH' : 'POST',
+            body: { renter: renterId, date, day_fraction: dayFraction, note },
+          });
+        })
+      );
+      onSaved(logs);
     } catch (err) {
       setStatus((err as Error).message);
     }
@@ -63,14 +74,20 @@ export function LogDrivenDay({
 
   return (
     <form onSubmit={handleSubmit}>
-      <label htmlFor="driven_date">Date</label>
-      <input
-        id="driven_date"
-        type="date"
-        required
-        value={date}
-        onChange={(e) => setDate(e.target.value)}
-      />
+      {isSingle ? (
+        <>
+          <label htmlFor="driven_date">Date</label>
+          <input
+            id="driven_date"
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </>
+      ) : (
+        <p>Logging {dates.length} days: {dates.join(', ')}</p>
+      )}
       <label htmlFor="day_fraction">Trip</label>
       <select
         id="day_fraction"
@@ -88,7 +105,13 @@ export function LogDrivenDay({
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
-      <button type="submit">{editingLog ? 'Update day' : 'Log day'}</button>
+      <button type="submit">
+        {isSingle
+          ? singleExistingLog
+            ? 'Update day'
+            : 'Log day'
+          : `Log ${dates.length} days`}
+      </button>
       <button type="button" onClick={onCancel}>
         Cancel
       </button>
