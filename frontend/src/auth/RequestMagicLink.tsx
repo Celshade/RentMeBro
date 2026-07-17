@@ -8,11 +8,17 @@ export function RequestMagicLink() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('renter');
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    await requestMagicLink(email, role);
-    setSent(true);
+    setError(null);
+    try {
+      await requestMagicLink(email, role);
+      setSent(true);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
 
   if (sent) {
@@ -63,8 +69,9 @@ export function RequestMagicLink() {
           />
         </label>
         <button type="submit" disabled={loading}>
-          Send sign-in link
+          {loading ? 'Sending…' : 'Send sign-in link'}
         </button>
+        {error && <p role="alert">{error}</p>}
       </form>
     </div>
   );
