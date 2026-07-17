@@ -1,7 +1,15 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
 import { MONTH_NAMES } from '../api/format';
 import type { Invoice, InvoiceKind, PeriodPreview } from '../api/types';
+
+/** The 5th of the month after the given billing period, as YYYY-MM-DD. */
+function defaultDueDate(year: string, month: string): string {
+  const y = Number(year);
+  const m = Number(month);
+  const [dueYear, dueMonth] = m === 12 ? [y + 1, 1] : [y, m + 1];
+  return `${dueYear}-${String(dueMonth).padStart(2, '0')}-05`;
+}
 
 /**
  * Landlord form to preview a period's charges and generate an invoice.
@@ -19,8 +27,13 @@ export function GenerateInvoice({
   const [year, setYear] = useState(String(now.getFullYear()));
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [kind, setKind] = useState<InvoiceKind>('combined');
+  const [dueDate, setDueDate] = useState(defaultDueDate(year, month));
   const [preview, setPreview] = useState<PeriodPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDueDate(defaultDueDate(year, month));
+  }, [year, month]);
 
   async function handlePreview() {
     setError(null);
@@ -51,6 +64,7 @@ export function GenerateInvoice({
           year: Number(year),
           month: Number(month),
           kind,
+          due_date: dueDate,
         },
       });
       onGenerated(invoice);
@@ -91,6 +105,13 @@ export function GenerateInvoice({
         <option value="rent_only">Rent only</option>
         <option value="gas_only">Gas only</option>
       </select>
+      <label htmlFor="due_date">Due date</label>
+      <input
+        id="due_date"
+        type="date"
+        value={dueDate}
+        onChange={(e) => setDueDate(e.target.value)}
+      />
 
       <button type="button" onClick={handlePreview}>
         Preview
