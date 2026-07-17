@@ -9,6 +9,7 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
+import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
@@ -345,6 +346,7 @@ export function LeaseDashboard({
               }))}
               lockedMonths={lockedMonths}
             />
+            <DrivenDaysCalendarKey />
           </section>
         )}
 
