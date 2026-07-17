@@ -217,6 +217,12 @@ export function LeaseSettings({
 
   const showMileage = section === 'mileage' || section === 'both';
   const showPrice = section === 'price' || section === 'both';
+  const presetMonth = presetRange?.from.slice(0, 7);
+  const visiblePriceEntries = presetMonth
+    ? priceEntries.filter((entry) =>
+        entry.effective_from.startsWith(presetMonth)
+      )
+    : priceEntries;
 
   return (
     <div>
@@ -275,9 +281,9 @@ export function LeaseSettings({
       {showPrice && (
         <>
           <h3>Gas price</h3>
-          {priceEntries.length > 0 && (
+          {visiblePriceEntries.length > 0 && (
             <ul>
-              {priceEntries.map((entry) => (
+              {visiblePriceEntries.map((entry) => (
                 <li key={entry.id}>
                   ${entry.price_per_gallon}/gal — {entry.effective_from}
                   {' to '}
