@@ -151,6 +151,21 @@ class InvoiceSerializer(serializers.ModelSerializer):
         read_only_fields = ['status', 'stripe_payment_intent_id', 'created_at']
 
 
+class InvoiceWeekDaySerializer(serializers.Serializer):
+    date = serializers.DateField()
+    day_fraction = serializers.DecimalField(max_digits=3, decimal_places=2)
+    miles = serializers.DecimalField(max_digits=6, decimal_places=2)
+    gas_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+class InvoiceWeekSerializer(serializers.Serializer):
+    week_start = serializers.DateField()
+    week_end = serializers.DateField()
+    total_miles = serializers.DecimalField(max_digits=6, decimal_places=2)
+    total_gas_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
+    days = InvoiceWeekDaySerializer(many=True)
+
+
 class InvoiceCreateSerializer(serializers.Serializer):
     renter = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(role=User.Role.RENTER)
