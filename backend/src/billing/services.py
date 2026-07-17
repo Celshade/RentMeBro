@@ -1,6 +1,6 @@
 """Billing calculations: gas cost from mileage, invoice generation."""
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -108,9 +108,11 @@ def get_gas_price_for_date(
         .first()
     )
     if entry is None:
+        week_start = on_date - timedelta(days=(on_date.weekday() + 1) % 7)
+        week_end = week_start + timedelta(days=6)
         raise BillingConfigError(
-            f'No gas price is set for the week of {on_date}. Add one '
-            'before generating this invoice.'
+            f'No gas price is set for the week of {week_start} to '
+            f'{week_end}. Add one before generating this invoice.'
         )
     return entry
 
