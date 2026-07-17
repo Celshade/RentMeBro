@@ -190,10 +190,15 @@ export function LeaseDashboard({
       {showGasSettings && (
         <section className="card">
           <div className="card__header">
-            <h2>Gas billing settings</h2>
+            <h2>
+              {weekPriceRange
+                ? 'Gas price for this week'
+                : 'Gas billing settings'}
+            </h2>
           </div>
           <LeaseSettings
             renterId={lease.renter}
+            section={weekPriceRange ? 'price' : 'both'}
             presetRange={weekPriceRange}
             onCancel={closeGasSettings}
           />
