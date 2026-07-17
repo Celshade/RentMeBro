@@ -114,10 +114,13 @@ export function RenterDashboard() {
                   <li key={invoice.id} className="list-row">
                     <span>
                       {invoice.billing_period.year}-{month} — {invoice.kind} —
-                      ${invoice.total}
+                      ${invoice.total} — due {invoice.due_date}
                     </span>
                     <span className="renter-dashboard__invoice-actions">
-                      <InvoiceStatusBadge status={invoice.status} />
+                      <InvoiceStatusBadge
+                        status={invoice.status}
+                        isLate={invoice.is_late}
+                      />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
                       {invoice.status !== 'paid' && (
                         <button
