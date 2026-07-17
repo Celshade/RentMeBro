@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
-import type { DrivenDayLog } from '../api/types';
+import type { DrivenDayLog, DrivenDayLogKind } from '../api/types';
 
 /**
  * Snaps a stored day_fraction to the nearest of the two choices the
@@ -46,6 +46,9 @@ export function LogDrivenDay({
   const isSingle = dates.length === 1;
   const singleExistingLog = isSingle ? existingLogs[0] : null;
   const [date, setDate] = useState(dates[0] ?? '');
+  const [kind, setKind] = useState<DrivenDayLogKind>(
+    singleExistingLog?.kind ?? 'driven'
+  );
   const [dayFraction, setDayFraction] = useState(
     singleExistingLog ? normalizeFraction(singleExistingLog.day_fraction) : '1'
   );
@@ -66,7 +69,13 @@ export function LogDrivenDay({
             : '/api/driven-days/';
           return apiFetch<DrivenDayLog>(path, {
             method: log ? 'PATCH' : 'POST',
-            body: { renter: renterId, date, day_fraction: dayFraction, note },
+            body: {
+              renter: renterId,
+              date,
+              kind,
+              day_fraction: kind === 'driven' ? dayFraction : '0',
+              note,
+            },
           });
         })
       );
@@ -109,16 +118,33 @@ export function LogDrivenDay({
       ) : (
         <p>Logging {dates.length} days: {dates.join(', ')}</p>
       )}
-      <label htmlFor="day_fraction">Trip</label>
+      <label htmlFor="kind">Type</label>
       <select
-        id="day_fraction"
+        id="kind"
         required
-        value={dayFraction}
-        onChange={(e) => setDayFraction(e.target.value)}
+        value={kind}
+        onChange={(e) => setKind(e.target.value as DrivenDayLogKind)}
       >
-        <option value="1">Full day (drop-off + pick-up)</option>
-        <option value="0.5">Half day (drop-off or pick-up only)</option>
+        <option value="driven">Driven</option>
+        <option value="day_off">Day off (no work)</option>
+        <option value="other_ride">
+          Other ride (someone else drove — unpaid to you)
+        </option>
       </select>
+      {kind === 'driven' && (
+        <>
+          <label htmlFor="day_fraction">Trip</label>
+          <select
+            id="day_fraction"
+            required
+            value={dayFraction}
+            onChange={(e) => setDayFraction(e.target.value)}
+          >
+            <option value="1">Full day (drop-off + pick-up)</option>
+            <option value="0.5">Half day (drop-off or pick-up only)</option>
+          </select>
+        </>
+      )}
       <label htmlFor="driven_note">Note (optional)</label>
       <input
         id="driven_note"
