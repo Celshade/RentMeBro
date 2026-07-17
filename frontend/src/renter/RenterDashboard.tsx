@@ -25,18 +25,26 @@ export function RenterDashboard() {
     null
   );
   const [payingInvoiceId, setPayingInvoiceId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<Lease[]>('/api/leases/').then(
-      (leases) => setLease(leases[0] ?? null)
-    );
-    apiFetch<DrivenDayLog[]>('/api/driven-days/').then(setLogs);
-    apiFetch<Invoice[]>('/api/invoices/').then(setInvoices);
-    apiFetch<MileageProfile[]>('/api/mileage-profiles/').then(
-      (profiles) => setMileageProfile(profiles[0] ?? null)
-    );
+    Promise.all([
+      apiFetch<Lease[]>('/api/leases/').then(
+        (leases) => setLease(leases[0] ?? null)
+      ),
+      apiFetch<DrivenDayLog[]>('/api/driven-days/').then(setLogs),
+      apiFetch<Invoice[]>('/api/invoices/').then(setInvoices),
+      apiFetch<MileageProfile[]>('/api/mileage-profiles/').then(
+        (profiles) => setMileageProfile(profiles[0] ?? null)
+      ),
+    ])
+      .catch(() => setError('Could not load your rental. Try refreshing.'))
+      .finally(() => setLoading(false));
   }, []);
 
+  if (loading) return <p className="empty-state">Loading your rental…</p>;
+  if (error) return <p className="empty-state">{error}</p>;
   if (!lease) return <p className="empty-state">No active lease found.</p>;
 
   return (
