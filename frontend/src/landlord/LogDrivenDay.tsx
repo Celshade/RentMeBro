@@ -2,12 +2,32 @@ import { useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
 import type { DrivenDayLog, DrivenDayLogKind } from '../api/types';
 
-/**
- * Snaps a stored day_fraction to the nearest of the two choices the
- * form offers (full/half), for logs created before this restriction.
+/** The four choices the "Trip" dropdown offers, each mapping to a
+ * kind + day_fraction pair.
  */
-function normalizeFraction(dayFraction: string): string {
-  return Number(dayFraction) >= 0.75 ? '1' : '0.5';
+type TripOption = 'full' | 'half' | 'day_off' | 'other_ride';
+
+/** Picks the trip option matching an existing log, for editing. */
+function tripOptionForLog(log: DrivenDayLog): TripOption {
+  if (log.kind === 'day_off') return 'day_off';
+  if (log.kind === 'other_ride') return 'other_ride';
+  return Number(log.day_fraction) >= 0.75 ? 'full' : 'half';
+}
+
+/** Maps a trip option to the kind/day_fraction pair it saves as. */
+function tripOptionToFields(
+  option: TripOption
+): { kind: DrivenDayLogKind; day_fraction: string } {
+  switch (option) {
+    case 'full':
+      return { kind: 'driven', day_fraction: '1' };
+    case 'half':
+      return { kind: 'driven', day_fraction: '0.5' };
+    case 'day_off':
+      return { kind: 'day_off', day_fraction: '0' };
+    case 'other_ride':
+      return { kind: 'other_ride', day_fraction: '0' };
+  }
 }
 
 
@@ -46,11 +66,8 @@ export function LogDrivenDay({
   const isSingle = dates.length === 1;
   const singleExistingLog = isSingle ? existingLogs[0] : null;
   const [date, setDate] = useState(dates[0] ?? '');
-  const [kind, setKind] = useState<DrivenDayLogKind>(
-    singleExistingLog?.kind ?? 'driven'
-  );
-  const [dayFraction, setDayFraction] = useState(
-    singleExistingLog ? normalizeFraction(singleExistingLog.day_fraction) : '1'
+  const [tripOption, setTripOption] = useState<TripOption>(
+    singleExistingLog ? tripOptionForLog(singleExistingLog) : 'full'
   );
   const [note, setNote] = useState(singleExistingLog?.note ?? '');
   const [status, setStatus] = useState<string | null>(null);
@@ -59,6 +76,7 @@ export function LogDrivenDay({
     event.preventDefault();
     setStatus(null);
     try {
+      const { kind, day_fraction } = tripOptionToFields(tripOption);
       const targets = isSingle
         ? [{ date, log: singleExistingLog }]
         : dates.map((d, i) => ({ date: d, log: existingLogs[i] }));
@@ -69,13 +87,7 @@ export function LogDrivenDay({
             : '/api/driven-days/';
           return apiFetch<DrivenDayLog>(path, {
             method: log ? 'PATCH' : 'POST',
-            body: {
-              renter: renterId,
-              date,
-              kind,
-              day_fraction: kind === 'driven' ? dayFraction : '0',
-              note,
-            },
+            body: { renter: renterId, date, kind, day_fraction, note },
           });
         })
       );
@@ -118,33 +130,20 @@ export function LogDrivenDay({
       ) : (
         <p>Logging {dates.length} days: {dates.join(', ')}</p>
       )}
-      <label htmlFor="kind">Type</label>
+      <label htmlFor="trip_option">Trip</label>
       <select
-        id="kind"
+        id="trip_option"
         required
-        value={kind}
-        onChange={(e) => setKind(e.target.value as DrivenDayLogKind)}
+        value={tripOption}
+        onChange={(e) => setTripOption(e.target.value as TripOption)}
       >
-        <option value="driven">Driven</option>
+        <option value="full">Full day (drop-off + pick-up)</option>
+        <option value="half">Half day (drop-off or pick-up only)</option>
         <option value="day_off">Day off (no work)</option>
         <option value="other_ride">
           Other ride (someone else drove — unpaid to you)
         </option>
       </select>
-      {kind === 'driven' && (
-        <>
-          <label htmlFor="day_fraction">Trip</label>
-          <select
-            id="day_fraction"
-            required
-            value={dayFraction}
-            onChange={(e) => setDayFraction(e.target.value)}
-          >
-            <option value="1">Full day (drop-off + pick-up)</option>
-            <option value="0.5">Half day (drop-off or pick-up only)</option>
-          </select>
-        </>
-      )}
       <label htmlFor="driven_note">Note (optional)</label>
       <input
         id="driven_note"
