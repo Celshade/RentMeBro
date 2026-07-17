@@ -164,6 +164,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
 class InvoiceWeekDaySerializer(serializers.Serializer):
     date = serializers.DateField()
+    kind = serializers.ChoiceField(choices=DrivenDayLog.Kind.choices)
     day_fraction = serializers.DecimalField(max_digits=3, decimal_places=2)
     miles = serializers.DecimalField(max_digits=6, decimal_places=2)
     gas_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
@@ -175,7 +176,7 @@ class InvoiceWeekSerializer(serializers.Serializer):
     total_miles = serializers.DecimalField(max_digits=6, decimal_places=2)
     total_gas_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
     price_per_gallon = serializers.DecimalField(
-        max_digits=6, decimal_places=3
+        max_digits=6, decimal_places=3, allow_null=True
     )
     days = InvoiceWeekDaySerializer(many=True)
 
