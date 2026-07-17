@@ -111,6 +111,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
                 year=serializer.validated_data['year'],
                 month=serializer.validated_data['month'],
                 kind=serializer.validated_data['kind'],
+                due_date=serializer.validated_data.get('due_date'),
             )
         except services.InvoiceAlreadyExistsError as exc:
             return Response(
