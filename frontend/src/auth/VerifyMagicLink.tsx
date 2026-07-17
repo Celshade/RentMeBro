@@ -21,7 +21,17 @@ export function VerifyMagicLink() {
   }, [searchParams, verifyMagicLink, navigate]);
 
   if (error) {
-    return <p>Sign-in link is invalid or expired: {error}</p>;
+    return (
+      <div className="auth-page">
+        <p className="card auth-card">
+          Sign-in link is invalid or expired: {error}
+        </p>
+      </div>
+    );
   }
-  return <p>Signing you in...</p>;
+  return (
+    <div className="auth-page">
+      <p className="card auth-card">Signing you in...</p>
+    </div>
+  );
 }

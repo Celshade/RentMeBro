@@ -7,6 +7,9 @@
   --accent: #aa3bff;
   --accent-bg: rgba(170, 59, 255, 0.1);
   --accent-border: rgba(170, 59, 255, 0.5);
+  --half-day: #b45309;
+  --half-day-bg: rgba(180, 83, 9, 0.12);
+  --half-day-border: rgba(180, 83, 9, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -15,7 +18,7 @@
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
+  font: 18px/1.45 var(--sans);
   letter-spacing: 0.18px;
   color-scheme: light dark;
   color: var(--text);
@@ -40,6 +43,9 @@
     --accent: #c084fc;
     --accent-bg: rgba(192, 132, 252, 0.15);
     --accent-border: rgba(192, 132, 252, 0.5);
+    --half-day: #fbbf24;
+    --half-day-bg: rgba(251, 191, 36, 0.15);
+    --half-day-border: rgba(251, 191, 36, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -64,6 +70,498 @@
 
 body {
   margin: 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header__identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.app-header__name {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.app-header__role {
+  color: var(--text);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 24px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-page {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  text-align: left;
+}
+
+.auth-card button[type='submit'] {
+  width: 100%;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: 28px;
+  text-align: center;
+}
+
+.auth-role {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.auth-role legend {
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.auth-role label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dashboard-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.stat-tile {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--code-bg);
+}
+
+.stat-tile__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stat-tile__label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text);
+}
+
+.stat-tile__value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.stat-tile__value--muted {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.stat-tile__meta {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.stat-tile__edit {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.card__header h2 {
+  margin: 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.renter-dashboard__invoice-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-row:last-child {
+  border-bottom: none;
+}
+
+.empty-state {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.invoice-detail__week {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.invoice-detail__week:last-child {
+  border-bottom: none;
+}
+
+.invoice-detail__week .list-row {
+  border-bottom: none;
+  padding: 0 0 6px;
+  font-weight: 600;
+}
+
+.invoice-detail__week-days {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.invoice-detail__week-days .list-row {
+  font-weight: 400;
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: none;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 420px;
+}
+
+form label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+form label:has(input[type='radio']),
+form label:has(input[type='checkbox']) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 0;
+  font-weight: 400;
+}
+
+form input:not([type='radio']):not([type='checkbox']),
+form select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+}
+
+form fieldset {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+form legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+button {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text-h);
+  background: var(--bg);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+button:hover {
+  border-color: var(--accent-border);
+}
+
+button[type='submit'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+button[type='submit']:hover {
+  opacity: 0.9;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.driven-days-calendar {
+  max-width: 360px;
+}
+
+.driven-days-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.driven-days-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.driven-days-calendar__grid--with-price {
+  grid-template-columns: repeat(7, 1fr) auto;
+}
+
+.driven-days-calendar__week-price-btn {
+  justify-self: start;
+  align-self: center;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.driven-days-calendar__week-price-btn--priced {
+  color: #15803d;
+  border-color: #15803d;
+  background: rgba(21, 128, 61, 0.12);
+}
+
+.driven-days-calendar__weekday {
+  font-size: 12px;
+  color: var(--text);
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.driven-days-calendar__cell {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text-h);
+  background: transparent;
+}
+
+.driven-days-calendar__cell--blank {
+  border: none;
+}
+
+.driven-days-calendar__cell--full {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  font-weight: 600;
+}
+
+.driven-days-calendar__cell--full:hover {
+  border-color: var(--accent);
+}
+
+.driven-days-calendar__cell--half {
+  background: var(--half-day-bg);
+  border-color: var(--half-day-border);
+  font-weight: 600;
+}
+
+.driven-days-calendar__cell--half:hover {
+  border-color: var(--half-day);
+}
+
+.driven-days-calendar__cell--selected {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.driven-days-calendar__cell--day-off {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
+.driven-days-calendar__cell--other-ride {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.4);
+}
+
+.driven-days-calendar__fraction-bar {
+  height: 3px;
+  min-width: 20%;
+  max-width: 70%;
+  border-radius: 2px;
+}
+
+.driven-days-calendar__cell--full .driven-days-calendar__fraction-bar {
+  background: var(--accent);
+}
+
+.driven-days-calendar__cell--half .driven-days-calendar__fraction-bar {
+  background: var(--half-day);
+}
+
+.calendar-key {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.calendar-key__entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.calendar-key__swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
 }
 
 h1,
@@ -141,6 +639,11 @@ code {
   text-decoration: line-through;
 }
 
+.status-badge--late {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.12);
+}
+
 @media (prefers-color-scheme: dark) {
   .status-badge--paid {
     color: #4ade80;
@@ -150,5 +653,26 @@ code {
   .status-badge--sent {
     color: #fbbf24;
     background: rgba(251, 191, 36, 0.15);
+  }
+
+  .status-badge--late {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.15);
+  }
+
+  .driven-days-calendar__cell--day-off {
+    background: rgba(248, 113, 113, 0.15);
+    border-color: rgba(248, 113, 113, 0.5);
+  }
+
+  .driven-days-calendar__cell--other-ride {
+    background: rgba(96, 165, 250, 0.15);
+    border-color: rgba(96, 165, 250, 0.5);
+  }
+
+  .driven-days-calendar__week-price-btn--priced {
+    color: #4ade80;
+    border-color: #4ade80;
+    background: rgba(74, 222, 128, 0.15);
   }
 }

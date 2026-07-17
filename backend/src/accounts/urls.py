@@ -1,4 +1,5 @@
 from django.urls import path
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from accounts.views import MagicLinkRequestView, MagicLinkVerifyView
 
@@ -12,5 +13,10 @@ urlpatterns = [
         'magic-link/verify/',
         MagicLinkVerifyView.as_view(),
         name='magic-link-verify',
+    ),
+    path(
+        'token/refresh/',
+        TokenRefreshView.as_view(),
+        name='token-refresh',
     ),
 ]

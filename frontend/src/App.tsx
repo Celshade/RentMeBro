@@ -1,23 +1,67 @@
+import { type ReactNode, useCallback, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { formatUserName } from './api/format';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { RequestMagicLink } from './auth/RequestMagicLink';
 import { VerifyMagicLink } from './auth/VerifyMagicLink';
+import { InvoiceDetail } from './invoices/InvoiceDetail';
 import { RenterDashboard } from './renter/RenterDashboard';
 import { LandlordDashboard } from './landlord/LandlordDashboard';
 
-function Home() {
+/**
+ * Shared signed-in shell: header with identity/back/logout controls,
+ * wrapping whatever page is active. Redirects to /login if signed out.
+ * @param props.children - Render prop for the active page, given the
+ *   setter for the header's "back to dashboard" handler.
+ */
+function AppShell({
+  children,
+}: {
+  children: (
+    setBackHandler: (handler: (() => void) | null) => void
+  ) => ReactNode;
+}) {
   const { user, logout } = useAuth();
+  const [backHandler, setBackHandler] = useState<(() => void) | null>(null);
+  const registerBackHandler = useCallback(
+    (handler: (() => void) | null) => setBackHandler(() => handler),
+    []
+  );
 
   if (!user) return <Navigate to="/login" replace />;
 
   return (
     <div>
-      <header>
-        <span>{user.email}</span>
-        <button onClick={logout}>Log out</button>
+      <header className="app-header">
+        <div className="app-header__identity">
+          <span className="app-header__name">{formatUserName(user)}</span>
+          <span className="app-header__role">{user.role}</span>
+        </div>
+        <div className="app-header__actions">
+          {backHandler && (
+            <button onClick={backHandler}>Back to dashboard</button>
+          )}
+          <button onClick={logout}>Log out</button>
+        </div>
       </header>
-      {user.role === 'renter' ? <RenterDashboard /> : <LandlordDashboard />}
+      <main className="app-main">{children(registerBackHandler)}</main>
     </div>
+  );
+}
+
+function Home({
+  onBackHandlerChange,
+}: {
+  onBackHandlerChange: (handler: (() => void) | null) => void;
+}) {
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  return user.role === 'renter' ? (
+    <RenterDashboard />
+  ) : (
+    <LandlordDashboard onBackHandlerChange={onBackHandlerChange} />
   );
 }
 
@@ -25,7 +69,22 @@ function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route
+          path="/"
+          element={
+            <AppShell>
+              {(setBackHandler) => (
+                <Home onBackHandlerChange={setBackHandler} />
+              )}
+            </AppShell>
+          }
+        />
+        <Route
+          path="/invoices/:invoiceId"
+          element={
+            <AppShell>{() => <InvoiceDetail />}</AppShell>
+          }
+        />
         <Route path="/login" element={<RequestMagicLink />} />
         <Route path="/auth/verify" element={<VerifyMagicLink />} />
       </Routes>

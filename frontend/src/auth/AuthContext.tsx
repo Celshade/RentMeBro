@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { apiFetch, tokenStorage } from '../api/client';
+import { AUTH_LOGOUT_EVENT, apiFetch, tokenStorage } from '../api/client';
 import type { Role, User } from '../api/types';
 
 
@@ -60,6 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(USER_STORAGE_KEY);
     }
   }, [user]);
+
+  useEffect(() => {
+    function handleAuthLogout() {
+      setUser(null);
+    }
+    window.addEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
+    return () =>
+      window.removeEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
+  }, []);
 
 
   /**
