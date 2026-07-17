@@ -18,6 +18,16 @@ export function formatInvoiceKind(kind: InvoiceKind): string {
 }
 
 
+/**
+ * Formats a decimal-string dollar amount to exactly 2 decimal places.
+ * @param amount - A decimal string (e.g. "4.200" or "4.2").
+ * @returns The amount rounded to 2 decimal places (e.g. "4.20").
+ */
+export function formatMoney(amount: string): string {
+  return Number(amount).toFixed(2);
+}
+
+
 /** Full month names, indexed 0 (January) through 11 (December). */
 export const MONTH_NAMES = [
   'January',
