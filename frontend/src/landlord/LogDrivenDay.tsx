@@ -23,6 +23,8 @@ function normalizeFraction(dayFraction: string): string {
  *   `dates` (same order), or null where none exists yet.
  * @param props.onSaved - Called with the created/updated log entries
  *   on success.
+ * @param props.onDeleted - Called with the deleted log's id after a
+ *   single existing entry is removed.
  * @param props.onCancel - Called if the landlord backs out without
  *   saving.
  */
@@ -31,12 +33,14 @@ export function LogDrivenDay({
   dates,
   existingLogs,
   onSaved,
+  onDeleted,
   onCancel,
 }: {
   renterId: number;
   dates: string[];
   existingLogs: (DrivenDayLog | null)[];
   onSaved: (logs: DrivenDayLog[]) => void;
+  onDeleted: (logId: number) => void;
   onCancel: () => void;
 }) {
   const isSingle = dates.length === 1;
@@ -67,6 +71,23 @@ export function LogDrivenDay({
         })
       );
       onSaved(logs);
+    } catch (err) {
+      setStatus((err as Error).message);
+    }
+  }
+
+  async function handleDelete() {
+    if (!singleExistingLog) return;
+    const confirmed = window.confirm(
+      `Delete the logged day for ${singleExistingLog.date}?`
+    );
+    if (!confirmed) return;
+    setStatus(null);
+    try {
+      await apiFetch(`/api/driven-days/${singleExistingLog.id}/`, {
+        method: 'DELETE',
+      });
+      onDeleted(singleExistingLog.id);
     } catch (err) {
       setStatus((err as Error).message);
     }
@@ -115,6 +136,11 @@ export function LogDrivenDay({
       <button type="button" onClick={onCancel}>
         Cancel
       </button>
+      {singleExistingLog && (
+        <button type="button" onClick={handleDelete}>
+          Delete day
+        </button>
+      )}
       {status && <p>{status}</p>}
     </form>
   );
