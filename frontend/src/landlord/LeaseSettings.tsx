@@ -98,8 +98,22 @@ export function LeaseSettings({
   }, [loadPriceEntries]);
 
   useEffect(() => {
-    if (presetRange) startNewPriceEntry(presetRange.from, presetRange.to);
-  }, [presetRange]);
+    if (!presetRange) return;
+    const existing = priceEntries.find(
+      (entry) =>
+        entry.effective_from <= presetRange.to &&
+        (entry.effective_to === null || entry.effective_to >= presetRange.from)
+    );
+    if (existing) {
+      setPriceId(existing.id);
+      setPricePerGallon(existing.price_per_gallon);
+    } else {
+      setPriceId(null);
+      setPricePerGallon('');
+    }
+    setPriceEffectiveFrom(presetRange.from);
+    setPriceEffectiveTo(presetRange.to);
+  }, [presetRange, priceEntries]);
 
   async function handleMileageSubmit(event: FormEvent) {
     event.preventDefault();
