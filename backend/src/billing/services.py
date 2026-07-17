@@ -26,6 +26,10 @@ class InvoiceAlreadyExistsError(Exception):
     """Raised when an invoice of this kind already exists for the period."""
 
 
+class InvoiceLockedError(Exception):
+    """Raised when trying to edit an invoice that's already paid/void."""
+
+
 def get_active_lease(landlord: User, renter: User) -> Lease:
     """Finds the active lease between a landlord and renter.
 
@@ -161,6 +165,62 @@ def compute_period_gas_total(
     )
 
 
+def compute_period_weekly_breakdown(
+    landlord: User, renter: User, year: int, month: int
+) -> list[dict]:
+    """Groups a period's driven-day logs into Sunday-Saturday weeks.
+
+    Uses the same week convention as `get_gas_price_for_date`'s error
+    message and the driven-days calendar UI (weeks start on Sunday).
+
+    Args:
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
+        year: The billing period's year.
+        month: The billing period's month (1-12).
+
+    Returns:
+        A list of week dicts, ordered by week_start, each with
+        'week_start', 'week_end', 'total_miles', 'total_gas_cost', and
+        'days' (a list of per-day dicts with 'date', 'day_fraction',
+        'miles', 'gas_cost').
+    """
+    logs = DrivenDayLog.objects.filter(
+        landlord=landlord, renter=renter, date__year=year, date__month=month
+    ).order_by('date')
+
+    weeks: dict[date, dict] = {}
+    for log in logs:
+        week_start = log.date - timedelta(days=(log.date.weekday() + 1) % 7)
+        week = weeks.setdefault(
+            week_start,
+            {
+                'week_start': week_start,
+                'week_end': week_start + timedelta(days=6),
+                'total_miles': Decimal('0.00'),
+                'total_gas_cost': Decimal('0.00'),
+                'days': [],
+            },
+        )
+        profile = get_mileage_profile_for_date(landlord, renter, log.date)
+        gas_cost = compute_gas_cost_for_log(log)
+        miles = (log.day_fraction * profile.full_day_miles).quantize(
+            Decimal('0.01')
+        )
+        week['days'].append(
+            {
+                'date': log.date,
+                'day_fraction': log.day_fraction,
+                'miles': miles,
+                'gas_cost': gas_cost,
+            }
+        )
+        week['total_miles'] += miles
+        week['total_gas_cost'] += gas_cost
+
+    return [weeks[key] for key in sorted(weeks)]
+
+
 def compute_period_preview(
     landlord: User, renter: User, year: int, month: int
 ) -> dict[str, Decimal]:
@@ -234,4 +294,41 @@ def generate_invoice(
             kind=InvoiceLineItem.Kind.GAS,
         )
 
+    return invoice
+
+
+@transaction.atomic
+def recompute_invoice_gas(invoice: Invoice) -> Invoice:
+    """Re-derives a draft/sent invoice's gas line item from current logs.
+
+    Lets a landlord correct mileage logs for an already-generated
+    invoice's billing month and pull the correction into the invoice
+    total, up until the renter pays it.
+
+    Args:
+        invoice: The invoice to recompute. Must not yet be paid or void.
+
+    Returns:
+        The updated invoice.
+
+    Raises:
+        InvoiceLockedError: If the invoice is already paid or void.
+    """
+    if invoice.status in (Invoice.Status.PAID, Invoice.Status.VOID):
+        raise InvoiceLockedError(
+            f'Invoice {invoice.id} is {invoice.status} and can no longer '
+            'be edited.'
+        )
+
+    gas_line_item = invoice.line_items.filter(
+        kind=InvoiceLineItem.Kind.GAS
+    ).first()
+    if gas_line_item is None:
+        return invoice
+
+    period = invoice.billing_period
+    gas_line_item.amount = compute_period_gas_total(
+        period.landlord, period.renter, period.year, period.month
+    )
+    gas_line_item.save(update_fields=['amount'])
     return invoice
