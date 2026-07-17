@@ -247,9 +247,28 @@ def compute_period_preview(
     }
 
 
+def default_invoice_due_date(year: int, month: int) -> date:
+    """The 5th of the month after a billing period, e.g. June -> July 5.
+
+    Args:
+        year: The billing period's year.
+        month: The billing period's month (1-12).
+
+    Returns:
+        The default due date for an invoice covering that period.
+    """
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return date(next_year, next_month, 5)
+
+
 @transaction.atomic
 def generate_invoice(
-    landlord: User, renter: User, year: int, month: int, kind: str
+    landlord: User,
+    renter: User,
+    year: int,
+    month: int,
+    kind: str,
+    due_date: date | None = None,
 ) -> Invoice:
     """Creates (or reuses) the BillingPeriod and builds an Invoice.
 
@@ -259,6 +278,8 @@ def generate_invoice(
         year: The billing period's year.
         month: The billing period's month (1-12).
         kind: One of Invoice.Kind (combined / rent_only / gas_only).
+        due_date: When the invoice is due. Defaults to the 5th of the
+            month after the billing period.
 
     Returns:
         The created Invoice, with its line items already attached.
@@ -267,13 +288,16 @@ def generate_invoice(
         InvoiceAlreadyExistsError: If an invoice of this kind already
             exists for the pair's billing period.
     """
+    if due_date is None:
+        due_date = default_invoice_due_date(year, month)
+
     billing_period, _ = BillingPeriod.objects.get_or_create(
         landlord=landlord, renter=renter, year=year, month=month
     )
     try:
         with transaction.atomic():
             invoice = Invoice.objects.create(
-                billing_period=billing_period, kind=kind
+                billing_period=billing_period, kind=kind, due_date=due_date
             )
     except IntegrityError as exc:
         raise InvoiceAlreadyExistsError(
