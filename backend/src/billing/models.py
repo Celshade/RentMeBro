@@ -178,7 +178,15 @@ class GasPriceEntry(models.Model):
 
 
 class DrivenDayLog(models.Model):
-    """A landlord-logged day (or partial day) a renter was driven."""
+    """A landlord-logged day (or partial day) a renter was driven, or a
+    day explicitly logged as not driven by the landlord (a day off, or
+    a day someone else drove the renter).
+    """
+
+    class Kind(models.TextChoices):
+        DRIVEN = 'driven', 'Driven'
+        DAY_OFF = 'day_off', 'Day off'
+        OTHER_RIDE = 'other_ride', 'Other ride'
 
     landlord = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -191,6 +199,9 @@ class DrivenDayLog(models.Model):
         related_name='driven_day_logs_as_renter',
     )
     date = models.DateField()
+    kind = models.CharField(
+        max_length=16, choices=Kind.choices, default=Kind.DRIVEN
+    )
     day_fraction = models.DecimalField(
         max_digits=3, decimal_places=2, default=1
     )
@@ -203,7 +214,8 @@ class DrivenDayLog(models.Model):
     def __str__(self) -> str:
         return (
             f'DrivenDayLog(landlord={self.landlord_id}, '
-            f'renter={self.renter_id}, {self.date}, {self.day_fraction})'
+            f'renter={self.renter_id}, {self.date}, {self.kind}, '
+            f'{self.day_fraction})'
         )
 
 
