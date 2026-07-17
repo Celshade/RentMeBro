@@ -222,7 +222,7 @@ export function LeaseDashboard({
         {mileageProfile && (
           <section className="card">
             <div className="card__header">
-              <h2>Renter's logged days</h2>
+              <h2>Mileage log</h2>
               {!logDayTarget && !bulkSelectMode && (
                 <span className="dashboard-toolbar__actions">
                   <button
