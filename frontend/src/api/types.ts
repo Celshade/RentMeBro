@@ -153,6 +153,10 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void';
  * @property billing_period - The billing period this invoice covers.
  * @property kind - Whether the invoice covers rent, gas, or both.
  * @property status - Current payment status.
+ * @property due_date - Date the invoice is due (ISO 8601). Defaults to
+ *   the 5th of the month after the billing period.
+ * @property is_late - Whether the invoice is unpaid and past its due
+ *   date.
  * @property stripe_payment_intent_id - Associated Stripe PaymentIntent id.
  * @property created_at - Creation timestamp (ISO 8601).
  * @property line_items - The rent/gas charges making up this invoice.
@@ -163,6 +167,8 @@ export interface Invoice {
   billing_period: BillingPeriod;
   kind: InvoiceKind;
   status: InvoiceStatus;
+  due_date: string;
+  is_late: boolean;
   stripe_payment_intent_id: string;
   created_at: string;
   line_items: InvoiceLineItem[];
