@@ -35,9 +35,37 @@ export function LeaseDashboard({
   const [showGenerateInvoice, setShowGenerateInvoice] = useState(false);
   const [showEditRent, setShowEditRent] = useState(false);
   const [logDayTarget, setLogDayTarget] = useState<{
-    date: string;
-    log: DrivenDayLog | null;
+    dates: string[];
+    logs: (DrivenDayLog | null)[];
   } | null>(null);
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+  const [weekPriceRange, setWeekPriceRange] = useState<{
+    from: string;
+    to: string;
+  } | null>(null);
+
+  function toggleSelectedDate(date: string) {
+    setSelectedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) {
+        next.delete(date);
+      } else {
+        next.add(date);
+      }
+      return next;
+    });
+  }
+
+  function cancelBulkSelect() {
+    setBulkSelectMode(false);
+    setSelectedDates(new Set());
+  }
+
+  function closeGasSettings() {
+    setShowGasSettings(false);
+    setWeekPriceRange(null);
+  }
 
   useEffect(() => {
     apiFetch<DrivenDayLog[]>('/api/driven-days/').then((allLogs) =>
@@ -66,9 +94,11 @@ export function LeaseDashboard({
     } else if (showGenerateInvoice) {
       onBackHandlerChange(() => setShowGenerateInvoice(false));
     } else if (showGasSettings) {
-      onBackHandlerChange(() => setShowGasSettings(false));
+      onBackHandlerChange(() => closeGasSettings());
     } else if (logDayTarget) {
       onBackHandlerChange(() => setLogDayTarget(null));
+    } else if (bulkSelectMode) {
+      onBackHandlerChange(() => cancelBulkSelect());
     } else {
       onBackHandlerChange(null);
     }
@@ -78,6 +108,7 @@ export function LeaseDashboard({
     showGenerateInvoice,
     showGasSettings,
     logDayTarget,
+    bulkSelectMode,
     onBackHandlerChange,
   ]);
 
@@ -116,7 +147,10 @@ export function LeaseDashboard({
               <button
                 type="button"
                 className="stat-tile__edit"
-                onClick={() => setShowGasSettings(true)}
+                onClick={() => {
+                  setWeekPriceRange(null);
+                  setShowGasSettings(true);
+                }}
               >
                 {mileageProfile ? 'Edit' : 'Set up'}
               </button>
@@ -158,7 +192,11 @@ export function LeaseDashboard({
           <div className="card__header">
             <h2>Gas billing settings</h2>
           </div>
-          <LeaseSettings renterId={lease.renter} />
+          <LeaseSettings
+            renterId={lease.renter}
+            presetRange={weekPriceRange}
+            onCancel={closeGasSettings}
+          />
         </section>
       )}
 
@@ -167,35 +205,82 @@ export function LeaseDashboard({
           <section className="card">
             <div className="card__header">
               <h2>Renter's logged days</h2>
-              {!logDayTarget && (
-                <button
-                  type="button"
-                  onClick={() => setLogDayTarget({ date: '', log: null })}
-                >
-                  Log a day
-                </button>
+              {!logDayTarget && !bulkSelectMode && (
+                <span className="dashboard-toolbar__actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLogDayTarget({ dates: [''], logs: [null] })
+                    }
+                  >
+                    Log a day
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBulkSelectMode(true)}
+                  >
+                    Log multiple days
+                  </button>
+                </span>
+              )}
+              {bulkSelectMode && !logDayTarget && (
+                <span className="dashboard-toolbar__actions">
+                  <button
+                    type="button"
+                    disabled={selectedDates.size === 0}
+                    onClick={() => {
+                      const dates = [...selectedDates].sort();
+                      setLogDayTarget({
+                        dates,
+                        logs: dates.map(
+                          (d) => logs.find((l) => l.date === d) ?? null
+                        ),
+                      });
+                    }}
+                  >
+                    Log {selectedDates.size} selected day
+                    {selectedDates.size === 1 ? '' : 's'}
+                  </button>
+                  <button type="button" onClick={cancelBulkSelect}>
+                    Cancel
+                  </button>
+                </span>
               )}
             </div>
             {logDayTarget && (
               <LogDrivenDay
-                key={logDayTarget.log?.id ?? logDayTarget.date ?? 'new'}
+                key={logDayTarget.dates.join(',')}
                 renterId={lease.renter}
-                initialDate={logDayTarget.date}
-                editingLog={logDayTarget.log}
-                onSaved={(log) => {
+                dates={logDayTarget.dates}
+                existingLogs={logDayTarget.logs}
+                onSaved={(savedLogs) => {
+                  const savedIds = new Set(savedLogs.map((l) => l.id));
                   setLogs(
-                    [...logs.filter((l) => l.id !== log.id), log].sort(
-                      (a, b) => a.date.localeCompare(b.date)
-                    )
+                    [
+                      ...logs.filter((l) => !savedIds.has(l.id)),
+                      ...savedLogs,
+                    ].sort((a, b) => a.date.localeCompare(b.date))
                   );
                   setLogDayTarget(null);
+                  cancelBulkSelect();
                 }}
                 onCancel={() => setLogDayTarget(null)}
               />
             )}
             <DrivenDaysCalendar
               logs={logs}
-              onDayClick={(date, log) => setLogDayTarget({ date, log })}
+              onDayClick={
+                bulkSelectMode
+                  ? undefined
+                  : (date, log) =>
+                      setLogDayTarget({ dates: [date], logs: [log] })
+              }
+              selectedDates={bulkSelectMode ? selectedDates : undefined}
+              onToggleDate={bulkSelectMode ? toggleSelectedDate : undefined}
+              onSetWeekPrice={(from, to) => {
+                setWeekPriceRange({ from, to });
+                setShowGasSettings(true);
+              }}
             />
           </section>
         )}
