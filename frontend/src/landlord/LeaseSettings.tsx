@@ -143,12 +143,37 @@ export function LeaseSettings({
   async function handlePriceSubmit(event: FormEvent) {
     event.preventDefault();
     setPriceStatus(null);
+
+    if (!priceEffectiveTo) {
+      setPriceStatus('Effective to is required — prices are set per week.');
+      return;
+    }
+    const daySpan =
+      (new Date(priceEffectiveTo).getTime() -
+        new Date(priceEffectiveFrom).getTime()) /
+      86400000;
+    if (daySpan !== 6) {
+      setPriceStatus('Gas prices must cover exactly one week (7 days).');
+      return;
+    }
+    const overlapsAnother = priceEntries.some(
+      (entry) =>
+        entry.id !== priceId &&
+        entry.effective_from <= priceEffectiveTo &&
+        (entry.effective_to === null ||
+          entry.effective_to >= priceEffectiveFrom)
+    );
+    if (overlapsAnother) {
+      setPriceStatus('That week overlaps an existing gas price entry.');
+      return;
+    }
+
     try {
       const body = {
         renter: renterId,
         price_per_gallon: pricePerGallon,
         effective_from: priceEffectiveFrom,
-        effective_to: priceEffectiveTo || null,
+        effective_to: priceEffectiveTo,
       };
       const path = priceId
         ? `/api/gas-price-entries/${priceId}/`
@@ -262,12 +287,11 @@ export function LeaseSettings({
               value={priceEffectiveFrom}
               onChange={(e) => setPriceEffectiveFrom(e.target.value)}
             />
-            <label htmlFor="price_effective_to">
-              Effective to (optional)
-            </label>
+            <label htmlFor="price_effective_to">Effective to</label>
             <input
               id="price_effective_to"
               type="date"
+              required
               value={priceEffectiveTo}
               onChange={(e) => setPriceEffectiveTo(e.target.value)}
             />
