@@ -126,7 +126,8 @@ def compute_gas_cost_for_log(log: DrivenDayLog) -> Decimal:
 
     Cost = day_fraction * full_day_miles / mpg * price_per_gallon,
     using the MileageProfile and GasPriceEntry in effect on the log's
-    date.
+    date. Days off and days someone else drove the renter aren't
+    billed to the landlord, so they cost nothing.
 
     Args:
         log: The driven-day entry to price.
@@ -134,6 +135,8 @@ def compute_gas_cost_for_log(log: DrivenDayLog) -> Decimal:
     Returns:
         The gas cost for that day, rounded to the nearest cent.
     """
+    if log.kind != DrivenDayLog.Kind.DRIVEN:
+        return Decimal('0.00')
     profile = get_mileage_profile_for_date(log.landlord, log.renter, log.date)
     gas_price = get_gas_price_for_date(log.landlord, log.renter, log.date)
     miles = log.day_fraction * profile.full_day_miles
@@ -187,7 +190,11 @@ def compute_period_weekly_breakdown(
         'day_fraction', 'miles', 'gas_cost').
     """
     logs = DrivenDayLog.objects.filter(
-        landlord=landlord, renter=renter, date__year=year, date__month=month
+        landlord=landlord,
+        renter=renter,
+        date__year=year,
+        date__month=month,
+        kind=DrivenDayLog.Kind.DRIVEN,
     ).order_by('date')
 
     weeks: dict[date, dict] = {}
