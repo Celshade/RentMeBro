@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
-import { formatInvoiceKind } from '../api/format';
+import { formatInvoiceKind, formatMoney } from '../api/format';
 import type { DrivenDayLog, Invoice, InvoiceWeek } from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
@@ -130,7 +130,7 @@ export function InvoiceDetail() {
                     <div className="list-row">
                       <span>
                         {week.week_start} – {week.week_end}
-                        {' — '}${week.price_per_gallon}/gal
+                        {' — '}${formatMoney(week.price_per_gallon)}/gal
                       </span>
                       <span>
                         {week.total_miles} mi — ${week.total_gas_cost}
