@@ -178,3 +178,34 @@ export interface PeriodPreview {
   rent: string;
   gas: string;
 }
+
+
+/**
+ * @property date - The driven date (ISO 8601).
+ * @property day_fraction - Fraction of a full day driven, as a decimal
+ *   string.
+ * @property miles - Miles driven that day, as a decimal string.
+ * @property gas_cost - Gas cost for that day, as a decimal string.
+ */
+export interface InvoiceWeekDay {
+  date: string;
+  day_fraction: string;
+  miles: string;
+  gas_cost: string;
+}
+
+
+/**
+ * @property week_start - First day (Sunday) of this billed week (ISO 8601).
+ * @property week_end - Last day (Saturday) of this billed week (ISO 8601).
+ * @property total_miles - Miles driven that week, as a decimal string.
+ * @property total_gas_cost - Gas cost for that week, as a decimal string.
+ * @property days - Per-day detail for the week.
+ */
+export interface InvoiceWeek {
+  week_start: string;
+  week_end: string;
+  total_miles: string;
+  total_gas_cost: string;
+  days: InvoiceWeekDay[];
+}
