@@ -203,6 +203,10 @@ export function LeaseSettings({
         method: priceId ? 'PATCH' : 'POST',
         body,
       });
+      if (presetRange) {
+        onCancel();
+        return;
+      }
       setPriceStatus('Saved.');
       loadPriceEntries();
       startNewPriceEntry();
@@ -325,11 +329,6 @@ export function LeaseSettings({
             <button type="submit">
               {priceId ? 'Update gas price' : 'Save gas price'}
             </button>
-            {priceId && (
-              <button type="button" onClick={() => startNewPriceEntry()}>
-                Add another week instead
-              </button>
-            )}
             <button type="button" onClick={onCancel}>
               Cancel
             </button>
