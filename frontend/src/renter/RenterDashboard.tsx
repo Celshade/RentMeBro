@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import { formatUserWithEmail } from '../api/format';
 import type {
@@ -117,6 +118,7 @@ export function RenterDashboard() {
                     </span>
                     <span className="renter-dashboard__invoice-actions">
                       <InvoiceStatusBadge status={invoice.status} />
+                      <Link to={`/invoices/${invoice.id}`}>Details</Link>
                       {invoice.status !== 'paid' && (
                         <button
                           type="button"
