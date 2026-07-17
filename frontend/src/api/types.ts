@@ -200,6 +200,8 @@ export interface InvoiceWeekDay {
  * @property week_end - Last day (Saturday) of this billed week (ISO 8601).
  * @property total_miles - Miles driven that week, as a decimal string.
  * @property total_gas_cost - Gas cost for that week, as a decimal string.
+ * @property price_per_gallon - Gas price in effect that week, as a
+ *   decimal string.
  * @property days - Per-day detail for the week.
  */
 export interface InvoiceWeek {
@@ -207,5 +209,6 @@ export interface InvoiceWeek {
   week_end: string;
   total_miles: string;
   total_gas_cost: string;
+  price_per_gallon: string;
   days: InvoiceWeekDay[];
 }
