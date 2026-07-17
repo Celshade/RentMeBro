@@ -8,6 +8,7 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
+import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
 import { PayInvoice } from './PayInvoice';
@@ -94,6 +95,7 @@ export function RenterDashboard() {
               <h2>Mileage log</h2>
             </div>
             <DrivenDaysCalendar logs={logs} />
+            <DrivenDaysCalendarKey />
           </section>
         )}
 
