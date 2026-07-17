@@ -141,12 +141,14 @@ class InvoiceSerializer(serializers.ModelSerializer):
     total = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
     )
+    is_late = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Invoice
         fields = [
-            'id', 'billing_period', 'kind', 'status',
+            'id', 'billing_period', 'kind', 'status', 'due_date',
             'stripe_payment_intent_id', 'created_at', 'line_items', 'total',
+            'is_late',
         ]
         read_only_fields = ['status', 'stripe_payment_intent_id', 'created_at']
 
@@ -176,6 +178,7 @@ class InvoiceCreateSerializer(serializers.Serializer):
     year = serializers.IntegerField()
     month = serializers.IntegerField(min_value=1, max_value=12)
     kind = serializers.ChoiceField(choices=Invoice.Kind.choices)
+    due_date = serializers.DateField(required=False)
 
     def validate_renter(self, renter: User) -> User:
         return _validate_is_own_renter(renter, self.context['request'].user)
