@@ -426,6 +426,12 @@ button:disabled {
   cursor: pointer;
 }
 
+.driven-days-calendar__week-price-btn--priced {
+  color: #15803d;
+  border-color: #15803d;
+  background: rgba(21, 128, 61, 0.12);
+}
+
 .driven-days-calendar__weekday {
   font-size: 12px;
   color: var(--text);
@@ -577,5 +583,11 @@ code {
   .status-badge--sent {
     color: #fbbf24;
     background: rgba(251, 191, 36, 0.15);
+  }
+
+  .driven-days-calendar__week-price-btn--priced {
+    color: #4ade80;
+    border-color: #4ade80;
+    background: rgba(74, 222, 128, 0.15);
   }
 }
