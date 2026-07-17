@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 from rest_framework import serializers
@@ -74,10 +75,18 @@ class DrivenDayLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DrivenDayLog
-        fields = ['id', 'landlord', 'renter', 'date', 'day_fraction', 'note']
+        fields = [
+            'id', 'landlord', 'renter', 'date', 'kind', 'day_fraction', 'note',
+        ]
 
     def validate_renter(self, renter: User) -> User:
         return _validate_is_own_renter(renter, self.context['request'].user)
+
+    def validate(self, attrs: dict) -> dict:
+        kind = attrs.get('kind', getattr(self.instance, 'kind', None))
+        if kind is not None and kind != DrivenDayLog.Kind.DRIVEN:
+            attrs['day_fraction'] = Decimal('0')
+        return attrs
 
     def create(self, validated_data: dict) -> DrivenDayLog:
         validated_data['landlord'] = self.context['request'].user
