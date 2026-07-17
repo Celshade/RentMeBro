@@ -386,10 +386,14 @@ export function LeaseDashboard({
                     <span>
                       {invoice.billing_period.year}-{month}
                       {' — '}
-                      {invoice.kind} — ${invoice.total}
+                      {invoice.kind} — ${invoice.total} — due{' '}
+                      {invoice.due_date}
                     </span>
                     <span className="renter-dashboard__invoice-actions">
-                      <InvoiceStatusBadge status={invoice.status} />
+                      <InvoiceStatusBadge
+                        status={invoice.status}
+                        isLate={invoice.is_late}
+                      />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
                       {!isLocked && invoice.kind !== 'rent_only' && (
                         isEditing ? (
