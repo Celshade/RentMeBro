@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+} from 'react';
 import { apiFetch } from '../api/client';
 import type { GasPriceEntry, MileageProfile } from '../api/types';
 
@@ -6,10 +11,25 @@ import type { GasPriceEntry, MileageProfile } from '../api/types';
  * Landlord form to set (or edit) the mileage profile and gas price
  * for a renter. Gas billing is optional and tied to the renter
  * directly rather than a specific lease, so it persists across
- * lease renewals/changes.
+ * lease renewals/changes. Gas price fluctuates over time, so
+ * multiple date-ranged entries (e.g. one per week) can coexist; a
+ * `presetRange` (e.g. from a calendar week's "$" button) prefills a
+ * new entry for that range.
  * @param props.renterId - The renter to configure gas billing for.
+ * @param props.presetRange - A date range to prefill a new gas price
+ *   entry with, switching the form to "add new" mode.
+ * @param props.onCancel - Called if the landlord backs out without
+ *   saving.
  */
-export function LeaseSettings({ renterId }: { renterId: number }) {
+export function LeaseSettings({
+  renterId,
+  presetRange,
+  onCancel,
+}: {
+  renterId: number;
+  presetRange?: { from: string; to: string } | null;
+  onCancel: () => void;
+}) {
   const [profiles, setProfiles] = useState<MileageProfile[]>([]);
   const [profileId, setProfileId] = useState<number | null>(null);
   const [oneWayMiles, setOneWayMiles] = useState('');
@@ -17,11 +37,35 @@ export function LeaseSettings({ renterId }: { renterId: number }) {
   const [mileageEffectiveFrom, setMileageEffectiveFrom] = useState('');
   const [mileageStatus, setMileageStatus] = useState<string | null>(null);
 
+  const [priceEntries, setPriceEntries] = useState<GasPriceEntry[]>([]);
   const [priceId, setPriceId] = useState<number | null>(null);
   const [pricePerGallon, setPricePerGallon] = useState('');
   const [priceEffectiveFrom, setPriceEffectiveFrom] = useState('');
   const [priceEffectiveTo, setPriceEffectiveTo] = useState('');
   const [priceStatus, setPriceStatus] = useState<string | null>(null);
+
+  const loadPriceEntries = useCallback(() => {
+    apiFetch<GasPriceEntry[]>('/api/gas-price-entries/').then((entries) => {
+      setPriceEntries(entries.filter((entry) => entry.renter === renterId));
+    });
+  }, [renterId]);
+
+  /** Loads a gas price entry into the form for editing. */
+  function editPriceEntry(entry: GasPriceEntry) {
+    setPriceId(entry.id);
+    setPricePerGallon(entry.price_per_gallon);
+    setPriceEffectiveFrom(entry.effective_from);
+    setPriceEffectiveTo(entry.effective_to ?? '');
+    setPriceStatus(null);
+  }
+
+  /** Clears the form to add a new gas price entry. */
+  function startNewPriceEntry(from = '', to = '') {
+    setPriceId(null);
+    setPricePerGallon('');
+    setPriceEffectiveFrom(from);
+    setPriceEffectiveTo(to);
+  }
 
   const loadProfiles = useCallback(() => {
     apiFetch<MileageProfile[]>('/api/mileage-profiles/').then(
@@ -45,15 +89,12 @@ export function LeaseSettings({ renterId }: { renterId: number }) {
   }, [loadProfiles]);
 
   useEffect(() => {
-    apiFetch<GasPriceEntry[]>('/api/gas-price-entries/').then((entries) => {
-      const current = entries.find((entry) => entry.renter === renterId);
-      if (!current) return;
-      setPriceId(current.id);
-      setPricePerGallon(current.price_per_gallon);
-      setPriceEffectiveFrom(current.effective_from);
-      setPriceEffectiveTo(current.effective_to ?? '');
-    });
-  }, [renterId]);
+    loadPriceEntries();
+  }, [loadPriceEntries]);
+
+  useEffect(() => {
+    if (presetRange) startNewPriceEntry(presetRange.from, presetRange.to);
+  }, [presetRange]);
 
   async function handleMileageSubmit(event: FormEvent) {
     event.preventDefault();
@@ -93,12 +134,13 @@ export function LeaseSettings({ renterId }: { renterId: number }) {
       const path = priceId
         ? `/api/gas-price-entries/${priceId}/`
         : '/api/gas-price-entries/';
-      const entry = await apiFetch<GasPriceEntry>(path, {
+      await apiFetch<GasPriceEntry>(path, {
         method: priceId ? 'PATCH' : 'POST',
         body,
       });
-      setPriceId(entry.id);
       setPriceStatus('Saved.');
+      loadPriceEntries();
+      startNewPriceEntry();
     } catch (err) {
       setPriceStatus((err as Error).message);
     }
@@ -148,10 +190,32 @@ export function LeaseSettings({ renterId }: { renterId: number }) {
         <button type="submit">
           {profileId ? 'Update mileage profile' : 'Save mileage profile'}
         </button>
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
         {mileageStatus && <p>{mileageStatus}</p>}
       </form>
 
       <h3>Gas price</h3>
+      {priceEntries.length > 0 && (
+        <ul>
+          {priceEntries.map((entry) => (
+            <li key={entry.id}>
+              ${entry.price_per_gallon}/gal — {entry.effective_from}
+              {' to '}
+              {entry.effective_to ?? 'ongoing'}{' '}
+              {priceId !== entry.id && (
+                <button
+                  type="button"
+                  onClick={() => editPriceEntry(entry)}
+                >
+                  Edit
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       <form onSubmit={handlePriceSubmit}>
         <label htmlFor="price_per_gallon">Price per gallon</label>
         <input
@@ -179,6 +243,14 @@ export function LeaseSettings({ renterId }: { renterId: number }) {
         />
         <button type="submit">
           {priceId ? 'Update gas price' : 'Save gas price'}
+        </button>
+        {priceId && (
+          <button type="button" onClick={() => startNewPriceEntry()}>
+            Add another week instead
+          </button>
+        )}
+        <button type="button" onClick={onCancel}>
+          Cancel
         </button>
         {priceStatus && <p>{priceStatus}</p>}
       </form>
