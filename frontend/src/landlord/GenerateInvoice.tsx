@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
+import { MONTH_NAMES } from '../api/format';
 import type { Invoice, InvoiceKind, PeriodPreview } from '../api/types';
 
 /**
@@ -63,14 +64,17 @@ export function GenerateInvoice({
         onChange={(e) => setYear(e.target.value)}
       />
       <label htmlFor="month">Month</label>
-      <input
+      <select
         id="month"
-        type="number"
-        min="1"
-        max="12"
         value={month}
         onChange={(e) => setMonth(e.target.value)}
-      />
+      >
+        {MONTH_NAMES.map((name, index) => (
+          <option key={name} value={index + 1}>
+            {name}
+          </option>
+        ))}
+      </select>
       <label htmlFor="kind">Invoice type</label>
       <select
         id="kind"
