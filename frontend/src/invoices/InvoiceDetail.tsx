@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
+import { formatInvoiceKind } from '../api/format';
 import type { DrivenDayLog, Invoice, InvoiceWeek } from '../api/types';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
@@ -79,7 +80,9 @@ export function InvoiceDetail() {
         </div>
         <div className="stat-tile">
           <span className="stat-tile__label">Kind</span>
-          <span className="stat-tile__value">{invoice.kind}</span>
+          <span className="stat-tile__value">
+            {formatInvoiceKind(invoice.kind)}
+          </span>
         </div>
         <div className="stat-tile">
           <span className="stat-tile__label">Total</span>
