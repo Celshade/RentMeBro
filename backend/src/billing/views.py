@@ -1,6 +1,7 @@
 from django.db.models import Q, QuerySet
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -21,6 +22,7 @@ from billing.serializers import (
     GasPriceEntrySerializer,
     InvoiceCreateSerializer,
     InvoiceSerializer,
+    InvoiceWeekSerializer,
     LeaseRentRevisionSerializer,
     LeaseSerializer,
     MileageProfileSerializer,
@@ -126,6 +128,32 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'create':
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
+
+    @action(detail=True, methods=['get'])
+    def weeks(self, request, pk=None) -> Response:
+        """Returns the invoice's driven days grouped into billed weeks."""
+        invoice = self.get_object()
+        period = invoice.billing_period
+        weeks = services.compute_period_weekly_breakdown(
+            period.landlord, period.renter, period.year, period.month
+        )
+        return Response(InvoiceWeekSerializer(weeks, many=True).data)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, IsLandlord],
+    )
+    def recompute(self, request, pk=None) -> Response:
+        """Re-derives a not-yet-paid invoice's gas total from current logs."""
+        invoice = self.get_object()
+        try:
+            invoice = services.recompute_invoice_gas(invoice)
+        except services.InvoiceLockedError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+            )
+        return Response(InvoiceSerializer(invoice).data)
 
 
 class LeaseRentRevisionView(APIView):
