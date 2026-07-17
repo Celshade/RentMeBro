@@ -198,14 +198,17 @@ export interface PeriodPreview {
 
 
 /**
- * @property date - The driven date (ISO 8601).
+ * @property date - The logged date (ISO 8601).
+ * @property kind - Whether that day was driven, a day off, or covered
+ *   by someone else.
  * @property day_fraction - Fraction of a full day driven, as a decimal
- *   string.
+ *   string. "0.00" when kind isn't 'driven'.
  * @property miles - Miles driven that day, as a decimal string.
  * @property gas_cost - Gas cost for that day, as a decimal string.
  */
 export interface InvoiceWeekDay {
   date: string;
+  kind: DrivenDayLogKind;
   day_fraction: string;
   miles: string;
   gas_cost: string;
@@ -218,7 +221,7 @@ export interface InvoiceWeekDay {
  * @property total_miles - Miles driven that week, as a decimal string.
  * @property total_gas_cost - Gas cost for that week, as a decimal string.
  * @property price_per_gallon - Gas price in effect that week, as a
- *   decimal string.
+ *   decimal string, or null if no day that week was actually driven.
  * @property days - Per-day detail for the week.
  */
 export interface InvoiceWeek {
@@ -226,6 +229,6 @@ export interface InvoiceWeek {
   week_end: string;
   total_miles: string;
   total_gas_cost: string;
-  price_per_gallon: string;
+  price_per_gallon: string | null;
   days: InvoiceWeekDay[];
 }
