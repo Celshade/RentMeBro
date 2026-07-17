@@ -130,6 +130,7 @@ export function InvoiceDetail() {
                     <div className="list-row">
                       <span>
                         {week.week_start} – {week.week_end}
+                        {' — '}${week.price_per_gallon}/gal
                       </span>
                       <span>
                         {week.total_miles} mi — ${week.total_gas_cost}
