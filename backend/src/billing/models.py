@@ -56,6 +56,16 @@ class Lease(models.Model):
         )
         return revision.new_monthly_rent if revision else self.monthly_rent
 
+    @property
+    def pending_rent_revision(self) -> 'LeaseRentRevision | None':
+        """The nearest scheduled revision not yet in effect, if any."""
+        today = timezone.now().date()
+        return (
+            self.rent_revisions.filter(effective_date__gt=today)
+            .order_by('effective_date')
+            .first()
+        )
+
     def __str__(self) -> str:
         return f'Lease({self.landlord} -> {self.renter})'
 
