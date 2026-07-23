@@ -28,19 +28,30 @@ class LeaseSerializer(serializers.ModelSerializer):
     current_monthly_rent = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
     )
+    pending_rent_revision = serializers.SerializerMethodField()
 
     class Meta:
         model = Lease
         fields = [
             'id', 'landlord', 'landlord_detail', 'renter', 'renter_detail',
-            'monthly_rent', 'current_monthly_rent', 'start_date', 'active',
-            'lease_type', 'document', 'term_months', 'terms_text',
+            'monthly_rent', 'current_monthly_rent', 'pending_rent_revision',
+            'start_date', 'active', 'lease_type', 'document', 'term_months',
+            'terms_text',
         ]
 
     def get_terms_text(self, obj: Lease) -> str | None:
         if obj.lease_type == Lease.LeaseType.DEFAULT:
             return obj.default_terms_text
         return None
+
+    def get_pending_rent_revision(self, obj: Lease) -> dict | None:
+        revision = obj.pending_rent_revision
+        if revision is None:
+            return None
+        return {
+            'new_monthly_rent': str(revision.new_monthly_rent),
+            'effective_date': revision.effective_date.isoformat(),
+        }
 
     def validate(self, attrs: dict) -> dict:
         lease_type = attrs.get('lease_type', Lease.LeaseType.DEFAULT)
