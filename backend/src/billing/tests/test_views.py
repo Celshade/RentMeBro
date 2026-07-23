@@ -11,6 +11,7 @@ from billing.tests.factories import (
     DrivenDayLogFactory,
     InvoiceFactory,
     LeaseFactory,
+    LeaseRentRevisionFactory,
 )
 
 pytestmark = pytest.mark.django_db
@@ -28,6 +29,33 @@ class TestLeaseViewSet:
         assert response.status_code == 200
         ids = [item['id'] for item in response.data]
         assert ids == [own_lease.id]
+
+    def test_serializes_pending_rent_revision(
+        self, landlord_client, landlord
+    ):
+        lease = LeaseFactory(landlord=landlord)
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1200.00'),
+            effective_date=date.today() + timedelta(days=30),
+        )
+
+        response = landlord_client.get(reverse('lease-list'))
+
+        pending = response.data[0]['pending_rent_revision']
+        assert pending['new_monthly_rent'] == '1200.00'
+        assert pending['effective_date'] == (
+            date.today() + timedelta(days=30)
+        ).isoformat()
+
+    def test_serializes_null_pending_rent_revision_when_none_scheduled(
+        self, landlord_client, landlord
+    ):
+        LeaseFactory(landlord=landlord)
+
+        response = landlord_client.get(reverse('lease-list'))
+
+        assert response.data[0]['pending_rent_revision'] is None
 
     def test_create_requires_landlord(self, renter_client, renter):
         response = renter_client.post(
