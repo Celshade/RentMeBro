@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib import admin
 
 from billing.models import (
@@ -14,7 +16,21 @@ from billing.models import (
 
 @admin.register(Lease)
 class LeaseAdmin(admin.ModelAdmin):
-    list_display = ('id', 'landlord', 'renter', 'monthly_rent', 'active')
+    list_display = (
+        'id', 'landlord', 'renter', 'monthly_rent', 'current_rent',
+        'pending_revision', 'active',
+    )
+
+    @admin.display(description='Current rent')
+    def current_rent(self, obj: Lease) -> Decimal:
+        return obj.current_monthly_rent
+
+    @admin.display(description='Pending revision')
+    def pending_revision(self, obj: Lease) -> str:
+        revision = obj.pending_rent_revision
+        if revision is None:
+            return '—'
+        return f'${revision.new_monthly_rent} eff. {revision.effective_date}'
 
 
 @admin.register(LeaseRentRevision)
