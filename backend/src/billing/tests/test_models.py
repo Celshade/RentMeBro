@@ -68,6 +68,39 @@ class TestLease:
         )
         assert lease.current_monthly_rent == Decimal('1200.00')
 
+    def test_pending_rent_revision_is_none_with_no_revisions(self):
+        lease = LeaseFactory()
+        assert lease.pending_rent_revision is None
+
+    def test_pending_rent_revision_ignores_past_effective_revision(self):
+        lease = LeaseFactory()
+        LeaseRentRevisionFactory(
+            lease=lease,
+            effective_date=timezone.now().date() - timedelta(days=1),
+        )
+        assert lease.pending_rent_revision is None
+
+    def test_pending_rent_revision_returns_future_revision(self):
+        lease = LeaseFactory()
+        revision = LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1200.00'),
+            effective_date=timezone.now().date() + timedelta(days=30),
+        )
+        assert lease.pending_rent_revision == revision
+
+    def test_pending_rent_revision_returns_soonest_of_multiple_future(self):
+        lease = LeaseFactory()
+        sooner = LeaseRentRevisionFactory(
+            lease=lease,
+            effective_date=timezone.now().date() + timedelta(days=30),
+        )
+        LeaseRentRevisionFactory(
+            lease=lease,
+            effective_date=timezone.now().date() + timedelta(days=60),
+        )
+        assert lease.pending_rent_revision == sooner
+
 
 class TestLeaseRentRevision:
     def test_creating_sends_exactly_one_email_to_renter(self):
