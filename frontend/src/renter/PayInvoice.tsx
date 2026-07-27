@@ -1,4 +1,4 @@
-import { loadStripe } from '@stripe/stripe-js';
+import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import {
   Elements,
   PaymentElement,
@@ -8,14 +8,40 @@ import {
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 
-const stripePromise = loadStripe(
-  import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string
-);
+const PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string;
+
+/**
+ * `stripePromise` must be initialized with `stripeAccount` matching the
+ * landlord's connected account (the PaymentIntent lives there, not on
+ * the platform account), so it can't be a module-level constant — a
+ * fresh instance is loaded per invoice once we know that account id.
+ */
+const stripePromiseCache = new Map<string, Promise<Stripe | null>>();
 
 
-/** @property client_secret - Stripe PaymentIntent client secret. */
+/**
+ * Loads (or reuses) a Stripe.js instance scoped to a connected account.
+ * @param stripeAccountId - The landlord's connected Stripe account id.
+ */
+function loadStripeForAccount(stripeAccountId: string) {
+  const cached = stripePromiseCache.get(stripeAccountId);
+  if (cached) return cached;
+  const promise = loadStripe(PUBLISHABLE_KEY, {
+    stripeAccount: stripeAccountId,
+  });
+  stripePromiseCache.set(stripeAccountId, promise);
+  return promise;
+}
+
+
+/**
+ * @property client_secret - Stripe PaymentIntent client secret.
+ * @property stripe_account_id - The landlord's connected Stripe account
+ *   the PaymentIntent was created on.
+ */
 interface PayIntentResponse {
   client_secret: string;
+  stripe_account_id: string;
 }
 
 
@@ -73,18 +99,21 @@ export function PayInvoice({
   invoiceId: number;
   onPaid: () => void;
 }) {
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [payIntent, setPayIntent] = useState<PayIntentResponse | null>(null);
 
   useEffect(() => {
     apiFetch<PayIntentResponse>(`/api/invoices/${invoiceId}/pay/`, {
       method: 'POST',
-    }).then((data) => setClientSecret(data.client_secret));
+    }).then(setPayIntent);
   }, [invoiceId]);
 
-  if (!clientSecret) return <p>Preparing payment...</p>;
+  if (!payIntent) return <p>Preparing payment...</p>;
 
   return (
-    <Elements stripe={stripePromise} options={{ clientSecret }}>
+    <Elements
+      stripe={loadStripeForAccount(payIntent.stripe_account_id)}
+      options={{ clientSecret: payIntent.client_secret }}
+    >
       <PaymentForm onDone={onPaid} />
     </Elements>
   );
