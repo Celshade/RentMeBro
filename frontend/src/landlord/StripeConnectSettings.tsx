@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
-
-
-/**
- * @property connected - Whether the landlord has a Stripe connected account.
- * @property charges_enabled - Whether that account can accept payments yet.
- */
-interface ConnectStatus {
-  connected: boolean;
-  charges_enabled: boolean;
-}
+import type { ConnectStatus } from '../api/types';
 
 
 /**
