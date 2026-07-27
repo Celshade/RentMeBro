@@ -9,9 +9,11 @@ from billing.models import Invoice
 from billing.tests.factories import (
     BillingPeriodFactory,
     DrivenDayLogFactory,
+    GasPriceEntryFactory,
     InvoiceFactory,
     LeaseFactory,
     LeaseRentRevisionFactory,
+    MileageProfileFactory,
 )
 
 pytestmark = pytest.mark.django_db
@@ -90,6 +92,56 @@ class TestLeaseViewSet:
         assert response.status_code == 201
         assert response.data['landlord'] == landlord.id
 
+    def test_default_lease_without_term_months_rejected(
+        self, landlord_client, renter
+    ):
+        response = landlord_client.post(
+            reverse('lease-list'),
+            {
+                'renter': renter.id,
+                'monthly_rent': '1000.00',
+                'start_date': '2024-01-01',
+                'lease_type': 'default',
+            },
+        )
+        assert response.status_code == 400
+
+    def test_custom_lease_without_document_rejected(
+        self, landlord_client, renter
+    ):
+        response = landlord_client.post(
+            reverse('lease-list'),
+            {
+                'renter': renter.id,
+                'monthly_rent': '1000.00',
+                'start_date': '2024-01-01',
+                'lease_type': 'custom',
+            },
+        )
+        assert response.status_code == 400
+
+    def test_custom_lease_with_document_has_no_terms_text(
+        self, landlord_client, renter
+    ):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        document = SimpleUploadedFile(
+            'lease.pdf', b'%PDF-1.4', content_type='application/pdf'
+        )
+        response = landlord_client.post(
+            reverse('lease-list'),
+            {
+                'renter': renter.id,
+                'monthly_rent': '1000.00',
+                'start_date': '2024-01-01',
+                'lease_type': 'custom',
+                'document': document,
+            },
+            format='multipart',
+        )
+        assert response.status_code == 201
+        assert response.data['terms_text'] is None
+
 
 # --- DrivenDayLogViewSet ------------------------------------------------
 
@@ -145,6 +197,22 @@ class TestDrivenDayLogViewSet:
         assert response.status_code == 201
         assert response.data['landlord'] == landlord.id
 
+    def test_non_driven_kind_forces_zero_day_fraction(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        response = landlord_client.post(
+            reverse('driven-day-list'),
+            {
+                'renter': renter.id,
+                'date': '2024-06-05',
+                'kind': 'day_off',
+                'day_fraction': '1.00',
+            },
+        )
+        assert response.status_code == 201
+        assert response.data['day_fraction'] == '0.00'
+
 
 # --- MileageProfileViewSet / GasPriceEntryViewSet -----------------------
 
@@ -173,6 +241,34 @@ class TestMileageProfileViewSet:
         )
         assert response.status_code == 400
 
+    def test_landlord_create_succeeds_with_existing_lease(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        response = landlord_client.post(
+            reverse('mileage-profile-list'),
+            {
+                'renter': renter.id,
+                'one_way_miles': '10.00',
+                'mpg': '25.00',
+                'effective_from': '2024-01-01',
+            },
+        )
+        assert response.status_code == 201
+        assert response.data['landlord'] == landlord.id
+
+    def test_list_scoped_to_own_profiles_and_readable_by_renter(
+        self, renter_client, landlord, renter
+    ):
+        own_profile = MileageProfileFactory(landlord=landlord, renter=renter)
+        MileageProfileFactory()  # someone else's profile
+
+        response = renter_client.get(reverse('mileage-profile-list'))
+
+        assert response.status_code == 200
+        ids = [item['id'] for item in response.data]
+        assert ids == [own_profile.id]
+
 
 class TestGasPriceEntryViewSet:
     def test_renter_write_forbidden(self, renter_client, renter):
@@ -185,6 +281,33 @@ class TestGasPriceEntryViewSet:
             },
         )
         assert response.status_code == 403
+
+    def test_landlord_create_succeeds_with_existing_lease(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        response = landlord_client.post(
+            reverse('gas-price-entry-list'),
+            {
+                'renter': renter.id,
+                'price_per_gallon': '3.50',
+                'effective_from': '2024-01-01',
+            },
+        )
+        assert response.status_code == 201
+        assert response.data['landlord'] == landlord.id
+
+    def test_list_scoped_to_own_entries_and_readable_by_renter(
+        self, renter_client, landlord, renter
+    ):
+        own_entry = GasPriceEntryFactory(landlord=landlord, renter=renter)
+        GasPriceEntryFactory()  # someone else's entry
+
+        response = renter_client.get(reverse('gas-price-entry-list'))
+
+        assert response.status_code == 200
+        ids = [item['id'] for item in response.data]
+        assert ids == [own_entry.id]
 
 
 # --- InvoiceViewSet ----------------------------------------------------
@@ -232,6 +355,20 @@ class TestInvoiceViewSetCreate:
             {'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'rent_only'},
         )
         assert response.status_code == 403
+
+    def test_create_rent_only_without_active_lease_returns_400(
+        self, landlord_client, landlord, renter
+    ):
+        """An inactive lease passes serializer validation but fails
+        generate_invoice's active-lease lookup, surfacing a
+        BillingConfigError as a 400.
+        """
+        LeaseFactory(landlord=landlord, renter=renter, active=False)
+        response = landlord_client.post(
+            reverse('invoice-list'),
+            {'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'rent_only'},
+        )
+        assert response.status_code == 400
 
 
 class TestInvoiceViewSetWeeks:
@@ -281,6 +418,21 @@ class TestInvoiceViewSetRecompute:
             reverse('invoice-recompute', args=[invoice.id])
         )
         assert response.status_code == 409
+
+    def test_unlocked_invoice_recomputes_and_returns_200(
+        self, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            kind=Invoice.Kind.GAS_ONLY,
+            status=Invoice.Status.DRAFT,
+        )
+        response = landlord_client.post(
+            reverse('invoice-recompute', args=[invoice.id])
+        )
+        assert response.status_code == 200
+        assert response.data['id'] == invoice.id
 
 
 # --- LeaseRentRevisionView ----------------------------------------------
@@ -394,3 +546,16 @@ class TestBillingPeriodPreviewView:
         )
         response = landlord_client.get(url)
         assert response.status_code == 200
+
+    def test_400_for_inactive_lease(self, landlord_client, landlord, renter):
+        """get_object_or_404 doesn't filter on `active`, so this lease is
+        found, but compute_period_preview's get_active_lease excludes
+        it, surfacing a BillingConfigError as a 400.
+        """
+        LeaseFactory(landlord=landlord, renter=renter, active=False)
+        url = reverse(
+            'billing-period-preview',
+            kwargs={'renter_id': renter.id, 'year': 2024, 'month': 6},
+        )
+        response = landlord_client.get(url)
+        assert response.status_code == 400
