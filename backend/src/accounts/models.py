@@ -19,6 +19,8 @@ class User(AbstractUser):
         RENTER = 'renter', 'Renter'
 
     role = models.CharField(max_length=16, choices=Role.choices)
+    stripe_account_id = models.CharField(max_length=255, blank=True)
+    stripe_charges_enabled = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
