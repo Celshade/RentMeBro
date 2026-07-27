@@ -59,17 +59,39 @@ def create_payment_intent_for_invoice(
     return intent
 
 
-def handle_payment_intent_succeeded(payment_intent: dict) -> None:
+def handle_payment_intent_succeeded(
+    payment_intent: dict, connected_account_id: str | None = None
+) -> None:
     """Marks the invoice referenced by a succeeded PaymentIntent as paid.
+
+    Standard Connect accounts are landlord-owned, so a landlord has
+    real API access to their own account and could otherwise submit a
+    PaymentIntent with a forged metadata.invoice_id pointing at an
+    invoice that isn't theirs. Requiring the event's connected account
+    to match the invoice's actual landlord closes that off.
 
     Args:
         payment_intent: The Stripe PaymentIntent event payload; its
             metadata.invoice_id links it back to our Invoice.
+        connected_account_id: The connected account the event fired
+            on (event['account']), or None for a platform-account
+            event.
     """
     invoice_id = payment_intent.get('metadata', {}).get('invoice_id')
     if not invoice_id:
         return
-    Invoice.objects.filter(id=invoice_id).update(status=Invoice.Status.PAID)
+    invoice = (
+        Invoice.objects.filter(id=invoice_id)
+        .select_related('billing_period__landlord')
+        .first()
+    )
+    if invoice is None:
+        return
+    landlord = invoice.billing_period.landlord
+    if connected_account_id != landlord.stripe_account_id:
+        return
+    invoice.status = Invoice.Status.PAID
+    invoice.save(update_fields=['status'])
 
 
 def start_connect_onboarding(landlord: User) -> str:
