@@ -100,13 +100,19 @@ export function PayInvoice({
   onPaid: () => void;
 }) {
   const [payIntent, setPayIntent] = useState<PayIntentResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setPayIntent(null);
+    setError(null);
     apiFetch<PayIntentResponse>(`/api/invoices/${invoiceId}/pay/`, {
       method: 'POST',
-    }).then(setPayIntent);
+    })
+      .then(setPayIntent)
+      .catch((err: Error) => setError(err.message));
   }, [invoiceId]);
 
+  if (error) return <p role="alert">{error}</p>;
   if (!payIntent) return <p>Preparing payment...</p>;
 
   return (
