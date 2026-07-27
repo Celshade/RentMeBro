@@ -92,7 +92,10 @@ class StripeWebhookView(APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
         if event['type'] == 'payment_intent.succeeded':
-            handle_payment_intent_succeeded(event['data']['object'])
+            handle_payment_intent_succeeded(
+                event['data']['object'],
+                connected_account_id=event.get('account'),
+            )
 
         return Response(status=status.HTTP_200_OK)
 
@@ -121,7 +124,10 @@ class ConnectWebhookView(APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
         if event['type'] == 'payment_intent.succeeded':
-            handle_payment_intent_succeeded(event['data']['object'])
+            handle_payment_intent_succeeded(
+                event['data']['object'],
+                connected_account_id=event.get('account'),
+            )
         elif event['type'] == 'account.updated':
             handle_account_updated(event['data']['object'])
 
