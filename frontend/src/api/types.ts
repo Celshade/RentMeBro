@@ -31,6 +31,8 @@ export type LeaseType = 'custom' | 'default';
  * @property monthly_rent - Base monthly rent, as a decimal string.
  * @property current_monthly_rent - Rent in effect today, applying any
  *   due rent revision, as a decimal string.
+ * @property pending_rent_revision - The nearest scheduled rent change
+ *   not yet in effect, or null if none is queued.
  * @property start_date - Lease start date (ISO 8601).
  * @property active - Whether the lease is currently active.
  * @property lease_type - Custom uploaded document or the default lease.
@@ -48,6 +50,10 @@ export interface Lease {
   renter_detail: User;
   monthly_rent: string;
   current_monthly_rent: string;
+  pending_rent_revision: {
+    new_monthly_rent: string;
+    effective_date: string;
+  } | null;
   start_date: string;
   active: boolean;
   lease_type: LeaseType;

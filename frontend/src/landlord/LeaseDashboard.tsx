@@ -181,6 +181,17 @@ export function LeaseDashboard({
           <span className="stat-tile__value">
             ${lease.current_monthly_rent}
           </span>
+          {lease.current_monthly_rent !== lease.monthly_rent && (
+            <span className="stat-tile__meta">
+              Revised from ${lease.monthly_rent}
+            </span>
+          )}
+          {lease.pending_rent_revision && (
+            <span className="stat-tile__meta">
+              Pending: ${lease.pending_rent_revision.new_monthly_rent}{' '}
+              effective {lease.pending_rent_revision.effective_date}
+            </span>
+          )}
         </div>
 
         <div className="stat-tile">

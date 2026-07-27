@@ -20,7 +20,7 @@ class InvoicePaymentIntentView(APIView):
 
     def post(self, request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
-            Invoice, id=invoice_id, lease__renter=request.user
+            Invoice, id=invoice_id, billing_period__renter=request.user
         )
         if invoice.status == Invoice.Status.PAID:
             return Response(
