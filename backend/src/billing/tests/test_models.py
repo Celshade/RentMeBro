@@ -8,7 +8,9 @@ from django.utils import timezone
 
 from billing.models import Invoice
 from billing.tests.factories import (
+    BillingPeriodFactory,
     DrivenDayLogFactory,
+    GasPriceEntryFactory,
     InvoiceFactory,
     InvoiceLineItemFactory,
     LeaseFactory,
@@ -101,6 +103,10 @@ class TestLease:
         )
         assert lease.pending_rent_revision == sooner
 
+    def test_str_includes_landlord_and_renter(self):
+        lease = LeaseFactory()
+        assert str(lease) == f'Lease({lease.landlord} -> {lease.renter})'
+
 
 class TestLeaseRentRevision:
     def test_creating_sends_exactly_one_email_to_renter(self):
@@ -121,11 +127,49 @@ class TestLeaseRentRevision:
 
         assert len(mail.outbox) == 0
 
+    def test_str_includes_lease_amount_and_date(self):
+        revision = LeaseRentRevisionFactory(
+            new_monthly_rent=Decimal('1200.00'),
+            effective_date=date(2024, 6, 1),
+        )
+        assert str(revision) == (
+            f'LeaseRentRevision(lease={revision.lease_id}, '
+            f'$1200.00, 2024-06-01)'
+        )
+
 
 class TestMileageProfile:
     def test_full_day_miles_is_four_times_one_way(self):
         profile = MileageProfileFactory(one_way_miles=Decimal('10.00'))
         assert profile.full_day_miles == Decimal('40.00')
+
+    def test_str_includes_landlord_renter_and_date(self):
+        profile = MileageProfileFactory(effective_from=date(2024, 1, 1))
+        assert str(profile) == (
+            f'MileageProfile(landlord={profile.landlord_id}, '
+            f'renter={profile.renter_id}, from=2024-01-01)'
+        )
+
+
+class TestGasPriceEntry:
+    def test_str_includes_landlord_renter_price_and_date(self):
+        entry = GasPriceEntryFactory(
+            price_per_gallon=Decimal('3.50'),
+            effective_from=date(2024, 1, 1),
+        )
+        assert str(entry) == (
+            f'GasPriceEntry(landlord={entry.landlord_id}, '
+            f'renter={entry.renter_id}, $3.50, from=2024-01-01)'
+        )
+
+
+class TestBillingPeriod:
+    def test_str_includes_landlord_renter_and_period(self):
+        period = BillingPeriodFactory(year=2024, month=6)
+        assert str(period) == (
+            f'BillingPeriod(landlord={period.landlord_id}, '
+            f'renter={period.renter_id}, 2024-06)'
+        )
 
 
 class TestInvoice:
@@ -171,6 +215,20 @@ class TestInvoice:
         )
         assert invoice.is_late is False
 
+    def test_str_includes_billing_period_and_kind(self):
+        invoice = InvoiceFactory(kind=Invoice.Kind.RENT_ONLY)
+        assert str(invoice) == (
+            f'Invoice({invoice.billing_period}, rent_only)'
+        )
+
+
+class TestInvoiceLineItem:
+    def test_str_includes_kind_and_amount(self):
+        line_item = InvoiceLineItemFactory(
+            kind='rent', amount=Decimal('1000.00')
+        )
+        assert str(line_item) == 'InvoiceLineItem(rent, $1000.00)'
+
 
 class TestDrivenDayLog:
     def test_unique_together_landlord_renter_date(self):
@@ -179,3 +237,14 @@ class TestDrivenDayLog:
             DrivenDayLogFactory(
                 landlord=log.landlord, renter=log.renter, date=log.date
             )
+
+    def test_str_includes_landlord_renter_date_kind_and_fraction(self):
+        log = DrivenDayLogFactory(
+            date=date(2024, 6, 5),
+            kind='driven',
+            day_fraction=Decimal('1.00'),
+        )
+        assert str(log) == (
+            f'DrivenDayLog(landlord={log.landlord_id}, '
+            f'renter={log.renter_id}, 2024-06-05, driven, 1.00)'
+        )
