@@ -23,6 +23,16 @@ export type LeaseType = 'custom' | 'default';
 
 
 /**
+ * @property connected - Whether the landlord has a Stripe connected account.
+ * @property charges_enabled - Whether that account can accept payments yet.
+ */
+export interface ConnectStatus {
+  connected: boolean;
+  charges_enabled: boolean;
+}
+
+
+/**
  * @property id - Primary key.
  * @property landlord - User id of the landlord on this lease.
  * @property landlord_detail - Full landlord record (name/email/role).
