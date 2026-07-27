@@ -5,6 +5,7 @@ import pytest
 from django.urls import reverse
 
 from billing.models import Invoice
+from payments.services import LandlordNotOnboardedError
 
 pytestmark = pytest.mark.django_db
 
@@ -58,6 +59,63 @@ class TestInvoicePaymentIntentView:
         )
 
         assert response.status_code == 400
+
+    def test_landlord_not_onboarded_returns_400(
+        self, api_client, mocker, renter, invoice
+    ):
+        mocker.patch(
+            'payments.views.create_payment_intent_for_invoice',
+            side_effect=LandlordNotOnboardedError("not onboarded"),
+        )
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse('invoice-pay', args=[invoice.id])
+        )
+
+        assert response.status_code == 400
+
+
+class TestConnectOnboardingView:
+    def test_requires_landlord(self, api_client, renter):
+        api_client.force_authenticate(user=renter)
+        response = api_client.post(reverse('connect-onboard'))
+        assert response.status_code == 403
+
+    def test_landlord_gets_onboarding_url(
+        self, api_client, mocker, landlord
+    ):
+        mocker.patch(
+            'payments.views.start_connect_onboarding',
+            return_value='https://connect.stripe.com/setup/x',
+        )
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(reverse('connect-onboard'))
+
+        assert response.status_code == 200
+        assert (
+            response.data['onboarding_url']
+            == 'https://connect.stripe.com/setup/x'
+        )
+
+
+class TestConnectStatusView:
+    def test_requires_landlord(self, api_client, renter):
+        api_client.force_authenticate(user=renter)
+        response = api_client.get(reverse('connect-status'))
+        assert response.status_code == 403
+
+    def test_reports_connection_status(self, api_client, landlord):
+        landlord.stripe_account_id = 'acct_1'
+        landlord.stripe_charges_enabled = True
+        landlord.save()
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.get(reverse('connect-status'))
+
+        assert response.status_code == 200
+        assert response.data == {'connected': True, 'charges_enabled': True}
 
 
 class TestStripeWebhookView:
@@ -150,3 +208,70 @@ class TestStripeWebhookView:
             HTTP_STRIPE_SIGNATURE='fake-sig',
         )
         assert response.status_code == 200
+
+
+class TestConnectWebhookView:
+    def test_valid_signature_succeeded_event_marks_invoice_paid(
+        self, api_client, mocker, invoice
+    ):
+        fake_event = {
+            'type': 'payment_intent.succeeded',
+            'data': {'object': {'metadata': {'invoice_id': str(invoice.id)}}},
+        }
+        mocker.patch(
+            'payments.views.stripe.Webhook.construct_event',
+            return_value=fake_event,
+        )
+
+        response = api_client.post(
+            reverse('stripe-connect-webhook'),
+            data=b'{}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='fake-sig',
+        )
+
+        assert response.status_code == 200
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
+
+    def test_account_updated_event_syncs_charges_enabled(
+        self, api_client, mocker, landlord
+    ):
+        landlord.stripe_account_id = 'acct_1'
+        landlord.save()
+        fake_event = {
+            'type': 'account.updated',
+            'data': {'object': {'id': 'acct_1', 'charges_enabled': True}},
+        }
+        mocker.patch(
+            'payments.views.stripe.Webhook.construct_event',
+            return_value=fake_event,
+        )
+
+        response = api_client.post(
+            reverse('stripe-connect-webhook'),
+            data=b'{}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='fake-sig',
+        )
+
+        assert response.status_code == 200
+        landlord.refresh_from_db()
+        assert landlord.stripe_charges_enabled is True
+
+    def test_invalid_signature_returns_400(self, api_client, mocker):
+        import stripe
+
+        mocker.patch(
+            'payments.views.stripe.Webhook.construct_event',
+            side_effect=stripe.SignatureVerificationError('bad sig', 'hdr'),
+        )
+
+        response = api_client.post(
+            reverse('stripe-connect-webhook'),
+            data=b'{}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='bad-sig',
+        )
+
+        assert response.status_code == 400
