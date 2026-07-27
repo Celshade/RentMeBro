@@ -120,10 +120,13 @@ class TestConnectStatusView:
 
 class TestStripeWebhookView:
     def test_valid_signature_succeeded_event_marks_invoice_paid(
-        self, api_client, mocker, invoice
+        self, api_client, mocker, landlord, invoice
     ):
+        landlord.stripe_account_id = 'acct_1'
+        landlord.save()
         fake_event = {
             'type': 'payment_intent.succeeded',
+            'account': 'acct_1',
             'data': {'object': {'metadata': {'invoice_id': str(invoice.id)}}},
         }
         mocker.patch(
@@ -212,10 +215,13 @@ class TestStripeWebhookView:
 
 class TestConnectWebhookView:
     def test_valid_signature_succeeded_event_marks_invoice_paid(
-        self, api_client, mocker, invoice
+        self, api_client, mocker, landlord, invoice
     ):
+        landlord.stripe_account_id = 'acct_1'
+        landlord.save()
         fake_event = {
             'type': 'payment_intent.succeeded',
+            'account': 'acct_1',
             'data': {'object': {'metadata': {'invoice_id': str(invoice.id)}}},
         }
         mocker.patch(
@@ -233,6 +239,32 @@ class TestConnectWebhookView:
         assert response.status_code == 200
         invoice.refresh_from_db()
         assert invoice.status == Invoice.Status.PAID
+
+    def test_succeeded_event_from_wrong_account_is_noop(
+        self, api_client, mocker, landlord, invoice
+    ):
+        landlord.stripe_account_id = 'acct_1'
+        landlord.save()
+        fake_event = {
+            'type': 'payment_intent.succeeded',
+            'account': 'acct_someone_else',
+            'data': {'object': {'metadata': {'invoice_id': str(invoice.id)}}},
+        }
+        mocker.patch(
+            'payments.views.stripe.Webhook.construct_event',
+            return_value=fake_event,
+        )
+
+        response = api_client.post(
+            reverse('stripe-connect-webhook'),
+            data=b'{}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='fake-sig',
+        )
+
+        assert response.status_code == 200
+        invoice.refresh_from_db()
+        assert invoice.status != Invoice.Status.PAID
 
     def test_account_updated_event_syncs_charges_enabled(
         self, api_client, mocker, landlord
