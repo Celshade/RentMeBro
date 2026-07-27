@@ -4,6 +4,7 @@ import { formatUserName } from '../api/format';
 import type { Lease } from '../api/types';
 import { CreateLease } from './CreateLease';
 import { LeaseDashboard } from './LeaseDashboard';
+import { StripeConnectSettings } from './StripeConnectSettings';
 
 /**
  * Landlord's home screen: with a single active renter, goes straight
@@ -21,6 +22,7 @@ export function LandlordDashboard({
   const [leases, setLeases] = useState<Lease[] | null>(null);
   const [selectedLeaseId, setSelectedLeaseId] = useState<number | null>(null);
   const [addingLease, setAddingLease] = useState(false);
+  const [showPaymentSettings, setShowPaymentSettings] = useState(false);
 
   useEffect(() => {
     apiFetch<Lease[]>('/api/leases/').then((fetched) => {
@@ -30,6 +32,14 @@ export function LandlordDashboard({
   }, []);
 
   if (leases === null) return null;
+
+  if (showPaymentSettings) {
+    return (
+      <StripeConnectSettings
+        onClose={() => setShowPaymentSettings(false)}
+      />
+    );
+  }
 
   function handleLeaseCreated(lease: Lease) {
     setLeases([...(leases ?? []), lease]);
@@ -58,6 +68,9 @@ export function LandlordDashboard({
         <div className="dashboard-toolbar">
           <h1>Your renters</h1>
           <div className="dashboard-toolbar__actions">
+            <button type="button" onClick={() => setShowPaymentSettings(true)}>
+              Payments
+            </button>
             <button type="button" onClick={() => setAddingLease(true)}>
               Add another renter
             </button>
@@ -89,6 +102,9 @@ export function LandlordDashboard({
               ← All renters
             </button>
           )}
+          <button type="button" onClick={() => setShowPaymentSettings(true)}>
+            Payments
+          </button>
           <button type="button" onClick={() => setAddingLease(true)}>
             Add another renter
           </button>
