@@ -88,34 +88,58 @@ class TestCreatePaymentIntentForInvoice:
 
 
 class TestHandlePaymentIntentSucceeded:
-    def test_marks_matching_invoice_paid(self):
-        invoice = InvoiceFactory(status=Invoice.Status.SENT)
+    def test_marks_matching_invoice_paid_when_account_matches(self):
+        invoice = _onboarded_invoice(status=Invoice.Status.SENT)
 
         handle_payment_intent_succeeded(
-            {'metadata': {'invoice_id': str(invoice.id)}}
+            {'metadata': {'invoice_id': str(invoice.id)}},
+            connected_account_id='acct_landlord',
         )
 
         invoice.refresh_from_db()
         assert invoice.status == Invoice.Status.PAID
 
-    def test_missing_metadata_is_noop(self):
-        invoice = InvoiceFactory(status=Invoice.Status.SENT)
+    def test_mismatched_connected_account_is_noop(self):
+        """A landlord can't mark another landlord's invoice paid by
+        forging metadata on a PaymentIntent created on their own
+        (Standard, self-owned) connected account.
+        """
+        invoice = _onboarded_invoice(status=Invoice.Status.SENT)
 
-        handle_payment_intent_succeeded({})
+        handle_payment_intent_succeeded(
+            {'metadata': {'invoice_id': str(invoice.id)}},
+            connected_account_id='acct_someone_else',
+        )
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.SENT
+
+    def test_missing_metadata_is_noop(self):
+        invoice = _onboarded_invoice(status=Invoice.Status.SENT)
+
+        handle_payment_intent_succeeded(
+            {}, connected_account_id='acct_landlord'
+        )
 
         invoice.refresh_from_db()
         assert invoice.status == Invoice.Status.SENT
 
     def test_empty_invoice_id_is_noop(self):
-        invoice = InvoiceFactory(status=Invoice.Status.SENT)
+        invoice = _onboarded_invoice(status=Invoice.Status.SENT)
 
-        handle_payment_intent_succeeded({'metadata': {'invoice_id': ''}})
+        handle_payment_intent_succeeded(
+            {'metadata': {'invoice_id': ''}},
+            connected_account_id='acct_landlord',
+        )
 
         invoice.refresh_from_db()
         assert invoice.status == Invoice.Status.SENT
 
     def test_nonexistent_invoice_id_is_noop_no_error(self):
-        handle_payment_intent_succeeded({'metadata': {'invoice_id': '999999'}})
+        handle_payment_intent_succeeded(
+            {'metadata': {'invoice_id': '999999'}},
+            connected_account_id='acct_landlord',
+        )
         # No exception raised; nothing to assert against.
 
 
