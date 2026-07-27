@@ -24,6 +24,13 @@ def create_payment_intent_for_invoice(
     so funds settle straight to the landlord rather than passing
     through the platform's own balance.
 
+    A stable idempotency_key (keyed on the invoice, not per-call) is
+    passed to PaymentIntent.create so a retried request (e.g. the
+    renter's browser re-firing the pay request before the first
+    response lands) can't create a second PaymentIntent for the same
+    invoice in the gap between the create() call succeeding and
+    invoice.stripe_payment_intent_id being saved.
+
     Args:
         invoice: The invoice to create a PaymentIntent for.
 
@@ -53,6 +60,7 @@ def create_payment_intent_for_invoice(
         payment_method_types=['cashapp'],
         metadata={'invoice_id': str(invoice.id)},
         stripe_account=landlord.stripe_account_id,
+        idempotency_key=f'invoice-{invoice.id}-intent',
     )
     invoice.stripe_payment_intent_id = intent.id
     invoice.save(update_fields=['stripe_payment_intent_id'])
@@ -69,6 +77,12 @@ def handle_payment_intent_succeeded(
     PaymentIntent with a forged metadata.invoice_id pointing at an
     invoice that isn't theirs. Requiring the event's connected account
     to match the invoice's actual landlord closes that off.
+
+    Stripe webhooks are at-least-once delivery, so this can run twice
+    for the same event. That's harmless today only because setting
+    status to PAID a second time is a no-op; if this handler grows a
+    non-idempotent side effect (an email, a counter increment, etc.),
+    add dedup keyed on the Stripe event id before doing so.
 
     Args:
         payment_intent: The Stripe PaymentIntent event payload; its
