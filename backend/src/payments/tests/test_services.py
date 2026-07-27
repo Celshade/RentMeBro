@@ -51,6 +51,7 @@ class TestCreatePaymentIntentForInvoice:
             payment_method_types=['cashapp'],
             metadata={'invoice_id': str(invoice.id)},
             stripe_account='acct_landlord',
+            idempotency_key=f'invoice-{invoice.id}-intent',
         )
         mock_retrieve.assert_not_called()
         invoice.refresh_from_db()
