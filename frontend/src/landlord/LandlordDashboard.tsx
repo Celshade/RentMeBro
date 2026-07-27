@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { formatUserName } from '../api/format';
-import type { Lease } from '../api/types';
+import type { ConnectStatus, Lease } from '../api/types';
 import { CreateLease } from './CreateLease';
 import { LeaseDashboard } from './LeaseDashboard';
 import { StripeConnectSettings } from './StripeConnectSettings';
+
+
+/**
+ * Short label summarizing the landlord's Stripe Connect status, for a
+ * badge next to the "Payments" button.
+ * @param status - The fetched connect status, or null while loading.
+ */
+function paymentsStatusLabel(status: ConnectStatus | null): string | null {
+  if (status === null) return null;
+  if (status.charges_enabled) return 'Connected';
+  if (status.connected) return 'Setup pending';
+  return 'Set up payments';
+}
+
 
 /**
  * Landlord's home screen: with a single active renter, goes straight
@@ -23,6 +37,9 @@ export function LandlordDashboard({
   const [selectedLeaseId, setSelectedLeaseId] = useState<number | null>(null);
   const [addingLease, setAddingLease] = useState(false);
   const [showPaymentSettings, setShowPaymentSettings] = useState(false);
+  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(
+    null
+  );
 
   useEffect(() => {
     apiFetch<Lease[]>('/api/leases/').then((fetched) => {
@@ -30,6 +47,12 @@ export function LandlordDashboard({
       if (fetched.length === 1) setSelectedLeaseId(fetched[0].id);
     });
   }, []);
+
+  useEffect(() => {
+    apiFetch<ConnectStatus>('/api/payments/connect/status/').then(
+      setConnectStatus
+    );
+  }, [showPaymentSettings]);
 
   if (leases === null) return null;
 
@@ -40,6 +63,8 @@ export function LandlordDashboard({
       />
     );
   }
+
+  const paymentsLabel = paymentsStatusLabel(connectStatus);
 
   function handleLeaseCreated(lease: Lease) {
     setLeases([...(leases ?? []), lease]);
@@ -70,6 +95,17 @@ export function LandlordDashboard({
           <div className="dashboard-toolbar__actions">
             <button type="button" onClick={() => setShowPaymentSettings(true)}>
               Payments
+              {paymentsLabel && (
+                <span
+                  className={
+                    connectStatus?.charges_enabled
+                      ? 'badge badge--connected'
+                      : 'badge'
+                  }
+                >
+                  {paymentsLabel}
+                </span>
+              )}
             </button>
             <button type="button" onClick={() => setAddingLease(true)}>
               Add another renter
@@ -104,6 +140,17 @@ export function LandlordDashboard({
           )}
           <button type="button" onClick={() => setShowPaymentSettings(true)}>
             Payments
+            {paymentsLabel && (
+              <span
+                className={
+                  connectStatus?.charges_enabled
+                    ? 'badge badge--connected'
+                    : 'badge'
+                }
+              >
+                {paymentsLabel}
+              </span>
+            )}
           </button>
           <button type="button" onClick={() => setAddingLease(true)}>
             Add another renter
