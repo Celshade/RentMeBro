@@ -17,6 +17,16 @@ class LandlordNotOnboardedError(Exception):
     """The invoice's landlord hasn't finished Stripe Connect setup."""
 
 
+class InvoiceAlreadyPaidError(Exception):
+    """The invoice's PaymentIntent already succeeded on Stripe."""
+
+
+# PaymentIntent statuses that can't back a new Elements confirmation;
+# Stripe rejects Elements.create() with a client_secret pointing at
+# one of these ("terminal state" error).
+_TERMINAL_INTENT_STATUSES = frozenset({'succeeded', 'canceled'})
+
+
 def create_payment_intent_for_invoice(
     invoice: Invoice,
 ) -> stripe.PaymentIntent:
@@ -35,15 +45,30 @@ def create_payment_intent_for_invoice(
     invoice in the gap between the create() call succeeding and
     invoice.stripe_payment_intent_id being saved.
 
+    A previously-created intent can end up in a terminal state without
+    invoice.status reflecting it yet: 'canceled' (the renter abandoned
+    or failed a prior attempt) or 'succeeded' (the webhook marking the
+    invoice paid hasn't landed yet). Reusing a canceled intent would
+    permanently strand the renter, since retrieve() alone never mints
+    a new one, so a fresh intent is created instead, keyed off the
+    stale intent's id so concurrent requests still collapse onto the
+    same replacement instead of racing to create two. A succeeded
+    intent instead means the invoice just hasn't been reconciled yet,
+    so that's done inline rather than making the renter wait on the
+    webhook.
+
     Args:
         invoice: The invoice to create a PaymentIntent for.
 
     Returns:
-        The Stripe PaymentIntent (existing, if one was already created).
+        The Stripe PaymentIntent (existing, if one was already created
+        and still usable).
 
     Raises:
         LandlordNotOnboardedError: The landlord hasn't completed
             Stripe Connect onboarding yet.
+        InvoiceAlreadyPaidError: The invoice's prior PaymentIntent
+            already succeeded; the invoice has now been reconciled.
     """
     landlord = invoice.billing_period.landlord
     if not landlord.stripe_charges_enabled:
@@ -51,10 +76,25 @@ def create_payment_intent_for_invoice(
             "Landlord hasn't finished payment setup yet."
         )
 
+    idempotency_key = f'invoice-{invoice.id}-intent'
     if invoice.stripe_payment_intent_id:
-        return stripe.PaymentIntent.retrieve(
+        intent = stripe.PaymentIntent.retrieve(
             invoice.stripe_payment_intent_id,
             stripe_account=landlord.stripe_account_id,
+        )
+        if intent.status not in _TERMINAL_INTENT_STATUSES:
+            return intent
+        if intent.status == 'succeeded':
+            handle_payment_intent_succeeded(
+                intent.to_dict(),
+                connected_account_id=landlord.stripe_account_id,
+            )
+            raise InvoiceAlreadyPaidError(
+                'This invoice was already paid.'
+            )
+        idempotency_key = (
+            f'invoice-{invoice.id}-intent-retry-'
+            f'{invoice.stripe_payment_intent_id}'
         )
 
     amount_cents = int(invoice.total * 100)
@@ -64,7 +104,7 @@ def create_payment_intent_for_invoice(
         payment_method_types=['cashapp'],
         metadata={'invoice_id': str(invoice.id)},
         stripe_account=landlord.stripe_account_id,
-        idempotency_key=f'invoice-{invoice.id}-intent',
+        idempotency_key=idempotency_key,
     )
     invoice.stripe_payment_intent_id = intent.id
     invoice.save(update_fields=['stripe_payment_intent_id'])
