@@ -11,6 +11,7 @@ from billing.tests.factories import (
     InvoiceLineItemFactory,
 )
 from payments.services import (
+    InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
     create_payment_intent_for_invoice,
     handle_account_updated,
@@ -75,6 +76,62 @@ class TestCreatePaymentIntentForInvoice:
             'pi_existing', stripe_account='acct_landlord'
         )
         mock_create.assert_not_called()
+
+    def test_creates_fresh_intent_when_existing_is_canceled(self, mocker):
+        invoice = _onboarded_invoice(stripe_payment_intent_id='pi_stale')
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal('50.00'))
+        stale_intent = MagicMock(id='pi_stale', status='canceled')
+        fresh_intent = MagicMock(id='pi_fresh123', client_secret='secret')
+        mocker.patch(
+            'payments.services.stripe.PaymentIntent.retrieve',
+            return_value=stale_intent,
+        )
+        mock_create = mocker.patch(
+            'payments.services.stripe.PaymentIntent.create',
+            return_value=fresh_intent,
+        )
+
+        result = create_payment_intent_for_invoice(invoice)
+
+        assert result is fresh_intent
+        mock_create.assert_called_once_with(
+            amount=5000,
+            currency='usd',
+            payment_method_types=['cashapp'],
+            metadata={'invoice_id': str(invoice.id)},
+            stripe_account='acct_landlord',
+            idempotency_key=(
+                f'invoice-{invoice.id}-intent-retry-pi_stale'
+            ),
+        )
+        invoice.refresh_from_db()
+        assert invoice.stripe_payment_intent_id == 'pi_fresh123'
+
+    def test_raises_and_reconciles_when_existing_already_succeeded(
+        self, mocker
+    ):
+        invoice = _onboarded_invoice(
+            stripe_payment_intent_id='pi_done',
+            status=Invoice.Status.SENT,
+        )
+        succeeded_intent = MagicMock(id='pi_done', status='succeeded')
+        succeeded_intent.to_dict.return_value = {
+            'metadata': {'invoice_id': str(invoice.id)}
+        }
+        mocker.patch(
+            'payments.services.stripe.PaymentIntent.retrieve',
+            return_value=succeeded_intent,
+        )
+        mock_create = mocker.patch(
+            'payments.services.stripe.PaymentIntent.create'
+        )
+
+        with pytest.raises(InvoiceAlreadyPaidError):
+            create_payment_intent_for_invoice(invoice)
+
+        mock_create.assert_not_called()
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
 
     def test_raises_if_landlord_not_onboarded(self, mocker):
         invoice = InvoiceFactory()  # default LandlordFactory: not onboarded
