@@ -13,6 +13,7 @@ from payments.services import (
     create_payment_intent_for_invoice,
     handle_account_updated,
     handle_payment_intent_succeeded,
+    refresh_connect_status,
     start_connect_onboarding,
 )
 
@@ -59,11 +60,20 @@ class ConnectOnboardingView(APIView):
 
 
 class ConnectStatusView(APIView):
-    """Reports the landlord's Stripe Connect onboarding status."""
+    """Reports the landlord's Stripe Connect onboarding status.
+
+    Normally reads the DB-cached status kept in sync by the
+    account.updated Connect webhook. Pass `?refresh=true` to pull the
+    latest status directly from Stripe first, for callers that can't
+    wait on webhook delivery (e.g. the onboarding return page).
+    """
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
     def get(self, request) -> Response:
+        if request.query_params.get('refresh') == 'true':
+            refresh_connect_status(request.user)
+            request.user.refresh_from_db(fields=['stripe_charges_enabled'])
         return Response(
             {
                 'connected': bool(request.user.stripe_account_id),
