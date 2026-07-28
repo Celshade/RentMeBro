@@ -40,6 +40,7 @@ export function LandlordDashboard({
   const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(
     null
   );
+  const [refreshingConnect, setRefreshingConnect] = useState(false);
 
   useEffect(() => {
     apiFetch<Lease[]>('/api/leases/').then((fetched) => {
@@ -53,6 +54,18 @@ export function LandlordDashboard({
       setConnectStatus
     );
   }, [showPaymentSettings]);
+
+  async function handleRefreshConnect() {
+    setRefreshingConnect(true);
+    try {
+      const fresh = await apiFetch<ConnectStatus>(
+        '/api/payments/connect/status/?refresh=true'
+      );
+      setConnectStatus(fresh);
+    } finally {
+      setRefreshingConnect(false);
+    }
+  }
 
   if (leases === null) return null;
 
@@ -107,6 +120,15 @@ export function LandlordDashboard({
                 </span>
               )}
             </button>
+            {connectStatus?.connected && !connectStatus.charges_enabled && (
+              <button
+                type="button"
+                onClick={handleRefreshConnect}
+                disabled={refreshingConnect}
+              >
+                {refreshingConnect ? 'Refreshing...' : 'Refresh status'}
+              </button>
+            )}
             <button type="button" onClick={() => setAddingLease(true)}>
               Add another renter
             </button>
@@ -152,6 +174,15 @@ export function LandlordDashboard({
               </span>
             )}
           </button>
+          {connectStatus?.connected && !connectStatus.charges_enabled && (
+            <button
+              type="button"
+              onClick={handleRefreshConnect}
+              disabled={refreshingConnect}
+            >
+              {refreshingConnect ? 'Refreshing...' : 'Refresh status'}
+            </button>
+          )}
           <button type="button" onClick={() => setAddingLease(true)}>
             Add another renter
           </button>
