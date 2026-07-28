@@ -60,17 +60,27 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
     if (!stripe || !elements) return;
 
     setSubmitting(true);
-    const result = await stripe.confirmPayment({
-      elements,
-      confirmParams: { return_url: window.location.href },
-      redirect: 'if_required',
-    });
+    setError(null);
+    try {
+      const submitResult = await elements.submit();
+      if (submitResult.error) {
+        setError(submitResult.error.message ?? 'Payment failed.');
+        return;
+      }
 
-    if (result.error) {
-      setError(result.error.message ?? 'Payment failed.');
+      const result = await stripe.confirmPayment({
+        elements,
+        confirmParams: { return_url: window.location.href },
+        redirect: 'if_required',
+      });
+
+      if (result.error) {
+        setError(result.error.message ?? 'Payment failed.');
+      } else {
+        onDone();
+      }
+    } finally {
       setSubmitting(false);
-    } else {
-      onDone();
     }
   }
 
