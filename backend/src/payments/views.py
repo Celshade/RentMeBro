@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from billing.models import Invoice
 from billing.permissions import IsLandlord
 from payments.services import (
+    InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
     create_payment_intent_for_invoice,
     handle_account_updated,
@@ -36,6 +37,10 @@ class InvoicePaymentIntentView(APIView):
         try:
             intent = create_payment_intent_for_invoice(invoice)
         except LandlordNotOnboardedError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
+            )
+        except InvoiceAlreadyPaidError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
