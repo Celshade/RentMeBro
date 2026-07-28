@@ -5,7 +5,10 @@ import pytest
 from django.urls import reverse
 
 from billing.models import Invoice
-from payments.services import LandlordNotOnboardedError
+from payments.services import (
+    InvoiceAlreadyPaidError,
+    LandlordNotOnboardedError,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -66,6 +69,21 @@ class TestInvoicePaymentIntentView:
         mocker.patch(
             'payments.views.create_payment_intent_for_invoice',
             side_effect=LandlordNotOnboardedError("not onboarded"),
+        )
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse('invoice-pay', args=[invoice.id])
+        )
+
+        assert response.status_code == 400
+
+    def test_already_succeeded_intent_returns_400(
+        self, api_client, mocker, renter, invoice
+    ):
+        mocker.patch(
+            'payments.views.create_payment_intent_for_invoice',
+            side_effect=InvoiceAlreadyPaidError("already paid"),
         )
         api_client.force_authenticate(user=renter)
 
