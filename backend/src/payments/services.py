@@ -1,5 +1,7 @@
 """Stripe PaymentIntent creation and webhook event handling."""
 
+import logging
+
 import stripe
 from django.conf import settings
 
@@ -7,6 +9,8 @@ from accounts.models import User
 from billing.models import Invoice
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+logger = logging.getLogger(__name__)
 
 
 class LandlordNotOnboardedError(Exception):
@@ -132,6 +136,25 @@ def start_connect_onboarding(landlord: User) -> str:
     return account_link.url
 
 
+def refresh_connect_status(landlord: User) -> None:
+    """Pulls the landlord's connected account status directly from
+    Stripe and syncs it, instead of relying solely on the account.updated
+    webhook.
+
+    Used when the landlord lands back on our return URL from Stripe
+    Connect onboarding, since webhook delivery can lag behind (or, in
+    local dev without `stripe listen` running, never arrive at all).
+
+    Args:
+        landlord: The landlord to refresh. No-op if they haven't
+            started onboarding yet.
+    """
+    if not landlord.stripe_account_id:
+        return
+    account = stripe.Account.retrieve(landlord.stripe_account_id)
+    handle_account_updated(account)
+
+
 def handle_account_updated(account: dict) -> None:
     """Syncs a connected account's charges_enabled flag to its landlord.
 
@@ -139,6 +162,12 @@ def handle_account_updated(account: dict) -> None:
         account: The Stripe Account event payload for a connected
             account (event['data']['object']).
     """
-    User.objects.filter(stripe_account_id=account.get('id')).update(
-        stripe_charges_enabled=bool(account.get('charges_enabled'))
-    )
+    try:
+        User.objects.filter(stripe_account_id=account['id']).update(
+            stripe_charges_enabled=bool(account['charges_enabled'])
+        )
+    except KeyError:
+        logger.warning(
+            "account.updated payload missing 'id' or 'charges_enabled': %r",
+            account,
+        )
