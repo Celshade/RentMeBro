@@ -117,6 +117,41 @@ class TestConnectStatusView:
         assert response.status_code == 200
         assert response.data == {'connected': True, 'charges_enabled': True}
 
+    def test_refresh_pulls_live_status_from_stripe(
+        self, api_client, mocker, landlord
+    ):
+        landlord.stripe_account_id = 'acct_1'
+        landlord.stripe_charges_enabled = False
+        landlord.save()
+        mocker.patch(
+            'payments.services.stripe.Account.retrieve',
+            return_value={'id': 'acct_1', 'charges_enabled': True},
+        )
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.get(
+            reverse('connect-status'), {'refresh': 'true'}
+        )
+
+        assert response.status_code == 200
+        assert response.data == {'connected': True, 'charges_enabled': True}
+        landlord.refresh_from_db()
+        assert landlord.stripe_charges_enabled is True
+
+    def test_refresh_is_a_noop_before_onboarding_started(
+        self, api_client, mocker, landlord
+    ):
+        retrieve = mocker.patch('payments.services.stripe.Account.retrieve')
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.get(
+            reverse('connect-status'), {'refresh': 'true'}
+        )
+
+        assert response.status_code == 200
+        assert response.data == {'connected': False, 'charges_enabled': False}
+        retrieve.assert_not_called()
+
 
 class TestStripeWebhookView:
     def test_valid_signature_succeeded_event_marks_invoice_paid(
