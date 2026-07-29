@@ -3,8 +3,8 @@ import type { InvoiceKind, User } from './types';
 
 const INVOICE_KIND_LABELS: Record<InvoiceKind, string> = {
   combined: 'Rent + Gas',
-  rent_only: 'Rent',
-  gas_only: 'Gas',
+  rent_only: 'Rent-Only',
+  gas_only: 'Gas-Only',
 };
 
 
@@ -43,6 +43,16 @@ export const MONTH_NAMES = [
   'November',
   'December',
 ];
+
+/**
+ * Formats a billing period's month and year for display.
+ * @param month - The 1-indexed month (1 for January, 12 for December).
+ * @param year - The 4-digit year.
+ * @returns A human-readable label (e.g. "June 2026").
+ */
+export function formatBillingPeriod(month: number, year: number): string {
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
 
 /**
  * Formats a user's full name if set, otherwise falls back to email.
