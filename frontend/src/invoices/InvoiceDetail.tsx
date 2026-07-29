@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
-import { formatInvoiceKind, formatMoney } from '../api/format';
+import {
+  formatBillingPeriod,
+  formatInvoiceKind,
+  formatMoney,
+} from '../api/format';
 import type {
   DrivenDayLog,
   Invoice,
@@ -68,14 +72,17 @@ export function InvoiceDetail() {
   if (error) return <p className="empty-state">{error}</p>;
   if (!invoice) return <p className="empty-state">Invoice not found.</p>;
 
-  const month = String(invoice.billing_period.month).padStart(2, '0');
   const hasGasBreakdown = invoice.kind !== 'rent_only';
 
   return (
     <div className="invoice-detail">
       <div className="dashboard-toolbar">
         <h1>
-          Invoice for {invoice.billing_period.year}-{month}
+          Invoice for{' '}
+          {formatBillingPeriod(
+            invoice.billing_period.month,
+            invoice.billing_period.year
+          )}
         </h1>
         <Link to="/">← Back to dashboard</Link>
       </div>
