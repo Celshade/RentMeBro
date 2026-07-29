@@ -43,7 +43,7 @@ export function StripeConnectSettings({ onClose }: { onClose: () => void }) {
   return (
     <div className="card">
       <div className="dashboard-toolbar">
-        <h1>Payments</h1>
+        <h1>Stripe Payments</h1>
         <div className="dashboard-toolbar__actions">
           <button type="button" onClick={onClose}>
             ← Back
