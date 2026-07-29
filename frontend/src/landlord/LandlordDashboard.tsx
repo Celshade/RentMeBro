@@ -9,7 +9,7 @@ import { StripeConnectSettings } from './StripeConnectSettings';
 
 /**
  * Short label summarizing the landlord's Stripe Connect status, for a
- * badge next to the "Payments" button.
+ * badge next to the "Stripe Payments" button.
  * @param status - The fetched connect status, or null while loading.
  */
 function paymentsStatusLabel(status: ConnectStatus | null): string | null {
@@ -107,7 +107,7 @@ export function LandlordDashboard({
           <h1>Your renters</h1>
           <div className="dashboard-toolbar__actions">
             <button type="button" onClick={() => setShowPaymentSettings(true)}>
-              Payments
+              Stripe Payments
               {paymentsLabel && (
                 <span
                   className={
@@ -161,7 +161,7 @@ export function LandlordDashboard({
             </button>
           )}
           <button type="button" onClick={() => setShowPaymentSettings(true)}>
-            Payments
+            Stripe Payments
             {paymentsLabel && (
               <span
                 className={
