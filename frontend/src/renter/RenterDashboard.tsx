@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
-import { formatUserWithEmail } from '../api/format';
+import {
+  formatBillingPeriod,
+  formatInvoiceKind,
+  formatUserWithEmail,
+} from '../api/format';
 import type {
   DrivenDayLog,
   Invoice,
@@ -119,15 +123,17 @@ export function RenterDashboard() {
           ) : (
             <ul className="list">
               {invoices.map((invoice) => {
-                const month = String(invoice.billing_period.month).padStart(
-                  2,
-                  '0'
-                );
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
-                      {invoice.billing_period.year}-{month} — {invoice.kind} —
-                      ${invoice.total} — due {invoice.due_date}
+                      <strong>
+                        {formatBillingPeriod(
+                          invoice.billing_period.month,
+                          invoice.billing_period.year
+                        )}
+                        : {formatInvoiceKind(invoice.kind)}
+                      </strong>{' '}
+                      — ${invoice.total} — due {invoice.due_date}
                     </span>
                     <span className="renter-dashboard__invoice-actions">
                       <InvoiceStatusBadge
