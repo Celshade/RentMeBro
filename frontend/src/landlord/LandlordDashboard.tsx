@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { formatUserName } from '../api/format';
-import type { ConnectStatus, Lease } from '../api/types';
+import type { BtcSettings, ConnectStatus, Lease } from '../api/types';
 import { BtcPaymentSettings } from './BtcPaymentSettings';
 import { CreateLease } from './CreateLease';
 import { LeaseDashboard } from './LeaseDashboard';
@@ -18,6 +18,17 @@ function paymentsStatusLabel(status: ConnectStatus | null): string | null {
   if (status.charges_enabled) return 'Connected';
   if (status.connected) return 'Setup pending';
   return 'Set up payments';
+}
+
+
+/**
+ * Short label summarizing the landlord's BTC payments status, for a
+ * badge next to the "BTC Payments" button.
+ * @param settings - The fetched BTC settings, or null while loading.
+ */
+function btcStatusLabel(settings: BtcSettings | null): string | null {
+  if (settings === null) return null;
+  return settings.enabled ? 'Enabled' : 'Set up payments';
 }
 
 
@@ -42,6 +53,7 @@ export function LandlordDashboard({
   const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(
     null
   );
+  const [btcSettings, setBtcSettings] = useState<BtcSettings | null>(null);
   const [refreshingConnect, setRefreshingConnect] = useState(false);
 
   useEffect(() => {
@@ -56,6 +68,10 @@ export function LandlordDashboard({
       setConnectStatus
     );
   }, [showPaymentSettings]);
+
+  useEffect(() => {
+    apiFetch<BtcSettings>('/api/payments/btc/settings/').then(setBtcSettings);
+  }, [showBtcSettings]);
 
   async function handleRefreshConnect() {
     setRefreshingConnect(true);
@@ -84,6 +100,7 @@ export function LandlordDashboard({
   }
 
   const paymentsLabel = paymentsStatusLabel(connectStatus);
+  const btcLabel = btcStatusLabel(btcSettings);
 
   function handleLeaseCreated(lease: Lease) {
     setLeases([...(leases ?? []), lease]);
@@ -137,6 +154,17 @@ export function LandlordDashboard({
             )}
             <button type="button" onClick={() => setShowBtcSettings(true)}>
               BTC Payments
+              {btcLabel && (
+                <span
+                  className={
+                    btcSettings?.enabled
+                      ? 'badge badge--connected'
+                      : 'badge'
+                  }
+                >
+                  {btcLabel}
+                </span>
+              )}
             </button>
             <button type="button" onClick={() => setAddingLease(true)}>
               Add another renter
@@ -194,6 +222,15 @@ export function LandlordDashboard({
           )}
           <button type="button" onClick={() => setShowBtcSettings(true)}>
             BTC Payments
+            {btcLabel && (
+              <span
+                className={
+                  btcSettings?.enabled ? 'badge badge--connected' : 'badge'
+                }
+              >
+                {btcLabel}
+              </span>
+            )}
           </button>
           <button type="button" onClick={() => setAddingLease(true)}>
             Add another renter
