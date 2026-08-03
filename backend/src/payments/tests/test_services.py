@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import requests
+from django.core.cache import cache
 from django.utils import timezone
 
 from accounts.tests.factories import LandlordFactory
@@ -15,6 +16,7 @@ from billing.tests.factories import (
     InvoiceLineItemFactory,
 )
 from payments.services import (
+    BTC_PRICE_CACHE_KEY,
     BtcNotEnabledError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
@@ -22,6 +24,7 @@ from payments.services import (
     check_btc_payment,
     create_payment_intent_for_invoice,
     enable_btc_payments,
+    get_btc_usd_price,
     handle_account_updated,
     handle_payment_intent_succeeded,
     initiate_btc_watch,
@@ -493,3 +496,39 @@ class TestCheckBtcPayment:
         result = check_btc_payment(invoice)
 
         assert result.status == Invoice.Status.SENT
+
+
+class TestGetBtcUsdPrice:
+    @pytest.fixture(autouse=True)
+    def _clear_price_cache(self):
+        cache.delete(BTC_PRICE_CACHE_KEY)
+        yield
+        cache.delete(BTC_PRICE_CACHE_KEY)
+
+    def test_fetches_and_caches_price(self, mocker):
+        response = MagicMock()
+        response.json.return_value = {"USD": 65000}
+        get = mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+
+        assert get_btc_usd_price() == 65000
+        assert get_btc_usd_price() == 65000
+        get.assert_called_once()
+
+    def test_returns_none_on_request_exception(self, mocker):
+        mocker.patch(
+            "payments.services.requests.get",
+            side_effect=requests.RequestException("boom"),
+        )
+
+        assert get_btc_usd_price() is None
+
+    def test_returns_none_when_usd_missing(self, mocker):
+        response = MagicMock()
+        response.json.return_value = {}
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+
+        assert get_btc_usd_price() is None

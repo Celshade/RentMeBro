@@ -395,6 +395,32 @@ class TestBtcSettingsView:
         assert landlord.btc_payments_enabled is True
 
 
+class TestBtcPriceView:
+    def test_requires_authentication(self, api_client):
+        response = api_client.get(reverse("btc-price"))
+        assert response.status_code == 401
+
+    def test_requires_landlord(self, api_client, renter):
+        api_client.force_authenticate(user=renter)
+        response = api_client.get(reverse("btc-price"))
+        assert response.status_code == 403
+
+    def test_returns_price(self, api_client, landlord, mocker):
+        mocker.patch(
+            "payments.views.get_btc_usd_price", return_value=65000
+        )
+        api_client.force_authenticate(user=landlord)
+        response = api_client.get(reverse("btc-price"))
+        assert response.status_code == 200
+        assert response.data["usd"] == 65000
+
+    def test_unavailable_price_returns_503(self, api_client, landlord, mocker):
+        mocker.patch("payments.views.get_btc_usd_price", return_value=None)
+        api_client.force_authenticate(user=landlord)
+        response = api_client.get(reverse("btc-price"))
+        assert response.status_code == 503
+
+
 class TestInvoiceBtcAttachView:
     def test_requires_landlord(self, api_client, renter, invoice):
         api_client.force_authenticate(user=renter)
