@@ -16,9 +16,9 @@
   --btc-orange: #f7931a;
   --btc-orange-bg: rgba(247, 147, 26, 0.1);
   --btc-orange-border: rgba(247, 147, 26, 0.5);
-  --other-ride: #475569;
-  --other-ride-bg: rgba(71, 85, 105, 0.1);
-  --other-ride-border: rgba(71, 85, 105, 0.5);
+  --other-ride: #334155;
+  --other-ride-bg: rgba(51, 65, 85, 0.18);
+  --other-ride-border: rgba(51, 65, 85, 0.65);
   --day-off: #dc2626;
   --day-off-bg: rgba(220, 38, 38, 0.1);
   --day-off-border: rgba(220, 38, 38, 0.4);
@@ -64,9 +64,9 @@
     --btc-orange: #ffa733;
     --btc-orange-bg: rgba(255, 167, 51, 0.15);
     --btc-orange-border: rgba(255, 167, 51, 0.5);
-    --other-ride: #94a3b8;
-    --other-ride-bg: rgba(148, 163, 184, 0.15);
-    --other-ride-border: rgba(148, 163, 184, 0.5);
+    --other-ride: #cbd5e1;
+    --other-ride-bg: rgba(203, 213, 225, 0.25);
+    --other-ride-border: rgba(203, 213, 225, 0.7);
     --day-off: #f87171;
     --day-off-bg: rgba(248, 113, 113, 0.15);
     --day-off-border: rgba(248, 113, 113, 0.5);
