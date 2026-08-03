@@ -32,6 +32,32 @@ export interface ConnectStatus {
 }
 
 
+/** @property enabled - Whether the landlord has enabled BTC payments. */
+export interface BtcSettings {
+  enabled: boolean;
+}
+
+
+/**
+ * @property btc_address - The landlord's BTC address to display to the
+ *   renter, or an empty string if BTC payment isn't attached.
+ * @property btc_amount_sats - The fixed amount, in satoshis, the renter
+ *   must send, or null if BTC payment isn't attached.
+ * @property btc_watch_expires_at - When the current 15-minute "have we
+ *   seen any tx yet" window closes (ISO 8601), or null if no watch is
+ *   in progress.
+ * @property status - The invoice's current status (mirrors
+ *   InvoiceStatus, kept separate since some BTC endpoints don't return
+ *   a full Invoice).
+ */
+export interface BtcInvoiceStatus {
+  btc_address: string;
+  btc_amount_sats: number | null;
+  btc_watch_expires_at: string | null;
+  status: InvoiceStatus;
+}
+
+
 /**
  * @property id - Primary key.
  * @property landlord - User id of the landlord on this lease.
@@ -172,7 +198,7 @@ export interface BillingPeriod {
 
 
 export type InvoiceKind = 'combined' | 'rent_only' | 'gas_only';
-export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void';
+export type InvoiceStatus = 'draft' | 'sent' | 'pending' | 'paid' | 'void';
 
 
 /**
@@ -188,6 +214,10 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void';
  * @property created_at - Creation timestamp (ISO 8601).
  * @property line_items - The rent/gas charges making up this invoice.
  * @property total - Sum of all line item amounts, as a decimal string.
+ * @property btc_address - The landlord's BTC address, or an empty
+ *   string if BTC payment isn't attached.
+ * @property btc_amount_sats - The fixed BTC amount, in satoshis, or
+ *   null if BTC payment isn't attached.
  */
 export interface Invoice {
   id: number;
@@ -200,6 +230,8 @@ export interface Invoice {
   created_at: string;
   line_items: InvoiceLineItem[];
   total: string;
+  btc_address: string;
+  btc_amount_sats: number | null;
 }
 
 
