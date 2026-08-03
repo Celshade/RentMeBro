@@ -121,7 +121,7 @@ STRIPE_CONNECT_WEBHOOK_SECRET = env(
 )
 
 MEMPOOL_API_BASE_URL = env(
-    'MEMPOOL_API_BASE_URL', default='https://mempool.space/api'
+    "MEMPOOL_API_BASE_URL", default="https://mempool.space/api"
 )
 
 ROOT_URLCONF = 'config.urls'

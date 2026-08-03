@@ -232,7 +232,7 @@ def enable_btc_payments(landlord: User) -> None:
     landlord.btc_payments_enabled = True
     landlord.btc_terms_accepted_at = timezone.now()
     landlord.save(
-        update_fields=['btc_payments_enabled', 'btc_terms_accepted_at']
+        update_fields=["btc_payments_enabled", "btc_terms_accepted_at"]
     )
 
 
@@ -261,8 +261,8 @@ def attach_btc_payment(
         Invoice.Status.VOID,
     ):
         raise InvoiceLockedError(
-            f'Invoice {invoice.id} is {invoice.status} and can no longer '
-            'be edited.'
+            f"Invoice {invoice.id} is {invoice.status} and can no longer "
+            "be edited."
         )
     landlord = invoice.billing_period.landlord
     if not landlord.btc_payments_enabled:
@@ -272,7 +272,7 @@ def attach_btc_payment(
 
     invoice.btc_address = address
     invoice.btc_amount_sats = amount_sats
-    invoice.save(update_fields=['btc_address', 'btc_amount_sats'])
+    invoice.save(update_fields=["btc_address", "btc_amount_sats"])
     return invoice
 
 
@@ -295,7 +295,7 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
         return invoice
 
     invoice.btc_watch_expires_at = timezone.now() + BTC_WATCH_WINDOW
-    invoice.save(update_fields=['btc_watch_expires_at'])
+    invoice.save(update_fields=["btc_watch_expires_at"])
     return invoice
 
 
@@ -305,9 +305,9 @@ def _find_matching_output(
     """Finds the first tx paying `address` at least `amount_sats`."""
     for tx in txs:
         paid_sats = sum(
-            vout['value']
-            for vout in tx.get('vout', [])
-            if vout.get('scriptpubkey_address') == address
+            vout["value"]
+            for vout in tx.get("vout", [])
+            if vout.get("scriptpubkey_address") == address
         )
         if paid_sats >= amount_sats:
             return tx
@@ -342,17 +342,17 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
     try:
         if invoice.btc_txid:
             response = requests.get(
-                f'{base_url}/tx/{invoice.btc_txid}/status', timeout=5
+                f"{base_url}/tx/{invoice.btc_txid}/status", timeout=5
             )
             response.raise_for_status()
-            confirmed = response.json().get('confirmed', False)
+            confirmed = response.json().get("confirmed", False)
             if confirmed:
                 invoice.status = Invoice.Status.PAID
-                invoice.save(update_fields=['status'])
+                invoice.save(update_fields=["status"])
             return invoice
 
         response = requests.get(
-            f'{base_url}/address/{invoice.btc_address}/txs', timeout=5
+            f"{base_url}/address/{invoice.btc_address}/txs", timeout=5
         )
         response.raise_for_status()
         match = _find_matching_output(
@@ -360,18 +360,18 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
         )
     except requests.RequestException:
         logger.warning(
-            'mempool.space request failed for invoice %s', invoice.id
+            "mempool.space request failed for invoice %s", invoice.id
         )
         return invoice
 
     if match is None:
         return invoice
 
-    invoice.btc_txid = match['txid']
+    invoice.btc_txid = match["txid"]
     invoice.status = (
         Invoice.Status.PAID
-        if match.get('status', {}).get('confirmed')
+        if match.get("status", {}).get("confirmed")
         else Invoice.Status.PENDING
     )
-    invoice.save(update_fields=['status', 'btc_txid'])
+    invoice.save(update_fields=["status", "btc_txid"])
     return invoice

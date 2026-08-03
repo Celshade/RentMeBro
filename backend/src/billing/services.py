@@ -384,16 +384,16 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
     gas_line_item.amount = new_amount
     gas_line_item.save(update_fields=['amount'])
 
-    invoice.btc_address = ''
+    invoice.btc_address = ""
     invoice.btc_amount_sats = None
-    invoice.btc_txid = ''
+    invoice.btc_txid = ""
     invoice.btc_watch_expires_at = None
     invoice.save(
         update_fields=[
-            'btc_address',
-            'btc_amount_sats',
-            'btc_txid',
-            'btc_watch_expires_at',
+            "btc_address",
+            "btc_amount_sats",
+            "btc_txid",
+            "btc_watch_expires_at",
         ]
     )
     return invoice
