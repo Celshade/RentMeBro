@@ -265,6 +265,7 @@ class Invoice(models.Model):
     class Status(models.TextChoices):
         DRAFT = 'draft', 'Draft'
         SENT = 'sent', 'Sent'
+        PENDING = 'pending', 'Pending'
         PAID = 'paid', 'Paid'
         VOID = 'void', 'Void'
 
@@ -278,6 +279,10 @@ class Invoice(models.Model):
     stripe_payment_intent_id = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     due_date = models.DateField()
+    btc_address = models.CharField(max_length=64, blank=True)
+    btc_amount_sats = models.BigIntegerField(null=True, blank=True)
+    btc_txid = models.CharField(max_length=64, blank=True)
+    btc_watch_expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ('billing_period', 'kind')
@@ -293,7 +298,11 @@ class Invoice(models.Model):
 
     @property
     def is_late(self) -> bool:
-        if self.status in (Invoice.Status.PAID, Invoice.Status.VOID):
+        if self.status in (
+            Invoice.Status.PENDING,
+            Invoice.Status.PAID,
+            Invoice.Status.VOID,
+        ):
             return False
         return timezone.now().date() > self.due_date
 
