@@ -477,3 +477,68 @@ class TestRecomputeInvoiceGas:
         invoice = InvoiceFactory(status=Invoice.Status.VOID)
         with pytest.raises(services.InvoiceLockedError):
             services.recompute_invoice_gas(invoice)
+
+    def test_raises_for_pending_invoice(self):
+        invoice = InvoiceFactory(status=Invoice.Status.PENDING)
+        with pytest.raises(services.InvoiceLockedError):
+            services.recompute_invoice_gas(invoice)
+
+    def test_clears_btc_fields_when_total_changes(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        MileageProfileFactory(
+            landlord=landlord,
+            renter=renter,
+            one_way_miles=Decimal("10.00"),
+            mpg=Decimal("25.00"),
+            effective_from=date(2024, 1, 1),
+        )
+        GasPriceEntryFactory(
+            landlord=landlord,
+            renter=renter,
+            price_per_gallon=Decimal("3.500"),
+            effective_from=date(2024, 1, 1),
+        )
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            kind=Invoice.Kind.GAS_ONLY,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="deadbeef",
+        )
+        InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
+            amount=Decimal("0.00"),
+        )
+        DrivenDayLogFactory(
+            landlord=landlord,
+            renter=renter,
+            date=date(2024, 6, 3),
+            kind=DrivenDayLog.Kind.DRIVEN,
+        )
+
+        updated = services.recompute_invoice_gas(invoice)
+
+        assert updated.btc_address == ""
+        assert updated.btc_amount_sats is None
+        assert updated.btc_txid == ""
+
+    def test_keeps_btc_fields_when_total_unchanged(self):
+        invoice = InvoiceFactory(
+            kind=Invoice.Kind.GAS_ONLY,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="deadbeef",
+        )
+        InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
+            amount=Decimal("0.00"),
+        )
+
+        updated = services.recompute_invoice_gas(invoice)
+
+        assert updated.btc_address == "bc1qexample"
+        assert updated.btc_amount_sats == 100000
+        assert updated.btc_txid == "deadbeef"
