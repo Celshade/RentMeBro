@@ -7,6 +7,8 @@
   --accent: #475569;
   --accent-bg: rgba(71, 85, 105, 0.1);
   --accent-border: rgba(71, 85, 105, 0.5);
+  --action: #2563eb;
+  --action-hover: #1d4ed8;
   --stripe-purple: #aa3bff;
   --stripe-purple-bg: rgba(170, 59, 255, 0.1);
   --stripe-purple-border: rgba(170, 59, 255, 0.5);
@@ -60,6 +62,8 @@
     --accent: #94a3b8;
     --accent-bg: rgba(148, 163, 184, 0.15);
     --accent-border: rgba(148, 163, 184, 0.5);
+    --action: #3b82f6;
+    --action-hover: #60a5fa;
     --stripe-purple: #c084fc;
     --stripe-purple-bg: rgba(192, 132, 252, 0.15);
     --stripe-purple-border: rgba(192, 132, 252, 0.5);
@@ -484,14 +488,15 @@ button:hover {
 }
 
 button[type='submit'] {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--action);
+  border-color: var(--action);
   color: #fff;
   font-weight: 600;
 }
 
 button[type='submit']:hover {
-  opacity: 0.9;
+  background: var(--action-hover);
+  border-color: var(--action-hover);
 }
 
 button:disabled {
