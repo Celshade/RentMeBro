@@ -10,9 +10,9 @@
   --driven-full: #0891b2;
   --driven-full-bg: rgba(8, 145, 178, 0.1);
   --driven-full-border: rgba(8, 145, 178, 0.5);
-  --driven-half: #059669;
-  --driven-half-bg: rgba(5, 150, 105, 0.1);
-  --driven-half-border: rgba(5, 150, 105, 0.5);
+  --driven-half: #475569;
+  --driven-half-bg: rgba(71, 85, 105, 0.1);
+  --driven-half-border: rgba(71, 85, 105, 0.5);
   --btc-orange: #f7931a;
   --btc-orange-bg: rgba(247, 147, 26, 0.1);
   --btc-orange-border: rgba(247, 147, 26, 0.5);
@@ -58,9 +58,9 @@
     --driven-full: #22d3ee;
     --driven-full-bg: rgba(34, 211, 238, 0.15);
     --driven-full-border: rgba(34, 211, 238, 0.5);
-    --driven-half: #34d399;
-    --driven-half-bg: rgba(52, 211, 153, 0.15);
-    --driven-half-border: rgba(52, 211, 153, 0.5);
+    --driven-half: #94a3b8;
+    --driven-half-bg: rgba(148, 163, 184, 0.15);
+    --driven-half-border: rgba(148, 163, 184, 0.5);
     --btc-orange: #ffa733;
     --btc-orange-bg: rgba(255, 167, 51, 0.15);
     --btc-orange-border: rgba(255, 167, 51, 0.5);
