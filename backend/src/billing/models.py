@@ -266,6 +266,7 @@ class Invoice(models.Model):
         DRAFT = 'draft', 'Draft'
         SENT = 'sent', 'Sent'
         PENDING = 'pending', 'Pending'
+        PARTIAL = 'partial', 'Partially Paid'
         PAID = 'paid', 'Paid'
         VOID = 'void', 'Void'
 
@@ -283,6 +284,13 @@ class Invoice(models.Model):
     btc_amount_sats = models.BigIntegerField(null=True, blank=True)
     btc_txid = models.CharField(max_length=64, blank=True)
     btc_watch_expires_at = models.DateTimeField(null=True, blank=True)
+    remainder_owed_usd = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    btc_credited_txid = models.CharField(max_length=64, blank=True)
+    btc_credited_usd = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
 
     class Meta:
         unique_together = ('billing_period', 'kind')
@@ -300,6 +308,7 @@ class Invoice(models.Model):
     def is_late(self) -> bool:
         if self.status in (
             Invoice.Status.PENDING,
+            Invoice.Status.PARTIAL,
             Invoice.Status.PAID,
             Invoice.Status.VOID,
         ):
