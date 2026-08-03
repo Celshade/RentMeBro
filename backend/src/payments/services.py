@@ -6,6 +6,7 @@ from datetime import timedelta
 import requests
 import stripe
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 
 from accounts.models import User
@@ -17,6 +18,8 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 logger = logging.getLogger(__name__)
 
 BTC_WATCH_WINDOW = timedelta(minutes=15)
+BTC_PRICE_CACHE_KEY = "btc_usd_price"
+BTC_PRICE_CACHE_TTL = timedelta(minutes=5).seconds
 
 
 class LandlordNotOnboardedError(Exception):
@@ -274,6 +277,36 @@ def attach_btc_payment(
     invoice.btc_amount_sats = amount_sats
     invoice.save(update_fields=["btc_address", "btc_amount_sats"])
     return invoice
+
+
+def get_btc_usd_price() -> int | None:
+    """Returns the current BTC/USD price, cached for a few minutes.
+
+    Landlords see this next to the BTC amount field as a manual-entry
+    aid, so a slightly stale price is fine and saves hitting
+    mempool.space's rate-limited price endpoint on every page load.
+
+    Returns:
+        The USD price of 1 BTC, or None if mempool.space is unreachable
+        and no cached price is available yet.
+    """
+    cached = cache.get(BTC_PRICE_CACHE_KEY)
+    if cached is not None:
+        return cached
+
+    base_url = settings.MEMPOOL_API_BASE_URL
+    try:
+        response = requests.get(f"{base_url}/v1/prices", timeout=5)
+        response.raise_for_status()
+        price = response.json().get("USD")
+    except requests.RequestException:
+        logger.warning("mempool.space price request failed")
+        return None
+
+    if price is None:
+        return None
+    cache.set(BTC_PRICE_CACHE_KEY, price, BTC_PRICE_CACHE_TTL)
+    return price
 
 
 def initiate_btc_watch(invoice: Invoice) -> Invoice:
