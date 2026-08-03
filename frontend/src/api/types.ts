@@ -198,7 +198,13 @@ export interface BillingPeriod {
 
 
 export type InvoiceKind = 'combined' | 'rent_only' | 'gas_only';
-export type InvoiceStatus = 'draft' | 'sent' | 'pending' | 'paid' | 'void';
+export type InvoiceStatus =
+  | 'draft'
+  | 'sent'
+  | 'pending'
+  | 'partial'
+  | 'paid'
+  | 'void';
 
 
 /**
@@ -216,8 +222,12 @@ export type InvoiceStatus = 'draft' | 'sent' | 'pending' | 'paid' | 'void';
  * @property total - Sum of all line item amounts, as a decimal string.
  * @property btc_address - The landlord's BTC address, or an empty
  *   string if BTC payment isn't attached.
- * @property btc_amount_sats - The fixed BTC amount, in satoshis, or
- *   null if BTC payment isn't attached.
+ * @property btc_amount_sats - The renter's current rate-locked BTC
+ *   amount, in satoshis, or null if no payment attempt is in
+ *   progress.
+ * @property remainder_owed_usd - The outstanding USD balance still
+ *   owed via BTC after a prior underpayment, or null unless the
+ *   invoice is 'partial'.
  */
 export interface Invoice {
   id: number;
@@ -232,6 +242,7 @@ export interface Invoice {
   total: string;
   btc_address: string;
   btc_amount_sats: number | null;
+  remainder_owed_usd: string | null;
 }
 
 
