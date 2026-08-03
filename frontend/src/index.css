@@ -616,6 +616,7 @@ button:disabled {
 
 .driven-days-calendar__cell--half .driven-days-calendar__fraction-bar {
   background: var(--driven-half);
+  max-width: 35%;
 }
 
 .calendar-key {
