@@ -20,6 +20,8 @@ from payments.services import (
     BtcNotEnabledError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
+    _sats_to_usd,
+    _usd_to_sats,
     attach_btc_payment,
     check_btc_payment,
     create_payment_intent_for_invoice,
@@ -298,48 +300,86 @@ def _btc_enabled_invoice(**kwargs) -> Invoice:
 
 
 class TestAttachBtcPayment:
-    def test_attaches_address_and_amount(self):
+    def test_attaches_address(self):
         invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
 
-        result = attach_btc_payment(invoice, "bc1qexample", 100000)
+        result = attach_btc_payment(invoice, "bc1qexample")
 
         assert result.btc_address == "bc1qexample"
-        assert result.btc_amount_sats == 100000
         invoice.refresh_from_db()
         assert invoice.btc_address == "bc1qexample"
-        assert invoice.btc_amount_sats == 100000
 
     def test_raises_if_landlord_not_enabled(self):
         invoice = InvoiceFactory(status=Invoice.Status.SENT)
 
         with pytest.raises(BtcNotEnabledError):
-            attach_btc_payment(invoice, "bc1qexample", 100000)
+            attach_btc_payment(invoice, "bc1qexample")
 
     @pytest.mark.parametrize(
         "locked_status",
-        [Invoice.Status.PENDING, Invoice.Status.PAID, Invoice.Status.VOID],
+        [
+            Invoice.Status.PENDING,
+            Invoice.Status.PARTIAL,
+            Invoice.Status.PAID,
+            Invoice.Status.VOID,
+        ],
     )
     def test_raises_for_locked_invoice(self, locked_status):
         invoice = _btc_enabled_invoice(status=locked_status)
 
         with pytest.raises(InvoiceLockedError):
-            attach_btc_payment(invoice, "bc1qexample", 100000)
+            attach_btc_payment(invoice, "bc1qexample")
 
 
 class TestInitiateBtcWatch:
-    def test_starts_watch_window_for_sent_invoice(self):
+    def test_starts_watch_window_and_generates_amount_for_sent_invoice(
+        self, mocker
+    ):
         invoice = _btc_enabled_invoice(
-            status=Invoice.Status.SENT,
-            btc_address="bc1qexample",
-            btc_amount_sats=100000,
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
         )
 
         result = initiate_btc_watch(invoice)
 
         assert result.btc_watch_expires_at is not None
         assert result.btc_watch_expires_at > timezone.now()
+        assert result.btc_amount_sats == 200000  # $100 @ $50k/BTC
 
-    def test_noop_if_not_sent(self):
+    def test_generates_amount_from_remainder_for_partial_invoice(
+        self, mocker
+    ):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.PARTIAL,
+            btc_address="bc1qexample",
+            remainder_owed_usd=Decimal("25.00"),
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_amount_sats == 50000  # $25 @ $50k/BTC
+
+    def test_noop_if_no_price_available(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=None
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_watch_expires_at is None
+        assert result.btc_amount_sats is None
+
+    def test_noop_if_not_sent_or_partial(self):
         invoice = _btc_enabled_invoice(status=Invoice.Status.DRAFT)
 
         result = initiate_btc_watch(invoice)
@@ -354,6 +394,155 @@ class TestInitiateBtcWatch:
         result = initiate_btc_watch(invoice)
 
         assert result.btc_watch_expires_at is None
+
+    def test_noop_if_current_quote_still_live(self, mocker):
+        expires_at = timezone.now() + timedelta(minutes=10)
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=expires_at,
+        )
+        get_price = mocker.patch("payments.services.get_btc_usd_price")
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_watch_expires_at == expires_at
+        assert result.btc_amount_sats == 100000
+        get_price.assert_not_called()
+
+    def test_restart_after_lapse_generates_fresh_quote(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now()
+            - timedelta(minutes=10),
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        response = MagicMock()
+        response.json.return_value = []
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=40000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_amount_sats == 250000  # $100 @ $40k/BTC
+        assert result.btc_watch_expires_at > timezone.now()
+
+    def test_restart_within_grace_honors_prior_amount(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now()
+            - timedelta(minutes=2),
+        )
+        response = MagicMock()
+        response.json.return_value = [
+            {
+                "txid": "late-tx",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 100000,
+                    }
+                ],
+                "status": {"confirmed": False},
+            }
+        ]
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.status == Invoice.Status.PENDING
+        assert result.btc_txid == "late-tx"
+
+    def test_restart_past_grace_logs_underpayment_as_partial(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now()
+            - timedelta(minutes=10),
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        response = MagicMock()
+        response.json.return_value = [
+            {
+                "txid": "short-tx",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 60000,
+                    }
+                ],
+                "status": {"confirmed": False},
+            }
+        ]
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.status == Invoice.Status.PARTIAL
+        assert result.btc_credited_txid == "short-tx"
+        assert result.btc_credited_usd == Decimal("30.00")  # 0.0006 @ $50k
+        assert result.remainder_owed_usd == Decimal("70.00")
+        # Immediately re-quoted against the new, smaller remainder.
+        assert result.btc_amount_sats == 140000  # $70 @ $50k/BTC
+        assert result.btc_watch_expires_at > timezone.now()
+
+    def test_restart_excludes_already_credited_txid_from_matching(
+        self, mocker
+    ):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.PARTIAL,
+            btc_address="bc1qexample",
+            btc_amount_sats=140000,
+            btc_watch_expires_at=timezone.now()
+            - timedelta(minutes=10),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+            remainder_owed_usd=Decimal("70.00"),
+        )
+        response = MagicMock()
+        response.json.return_value = [
+            {
+                "txid": "short-tx",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 60000,
+                    }
+                ],
+                "status": {"confirmed": False},
+            }
+        ]
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        # The already-credited tx must not be reused to satisfy (or
+        # shrink) the remainder a second time.
+        assert result.status == Invoice.Status.PARTIAL
+        assert result.remainder_owed_usd == Decimal("70.00")
+        assert result.btc_amount_sats == 140000
 
 
 class TestCheckBtcPayment:
@@ -497,6 +686,40 @@ class TestCheckBtcPayment:
 
         assert result.status == Invoice.Status.SENT
 
+    def test_excludes_already_credited_txid_from_matching(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.PARTIAL,
+            btc_address="bc1qexample",
+            btc_amount_sats=140000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+            remainder_owed_usd=Decimal("70.00"),
+        )
+        response = MagicMock()
+        response.json.return_value = [
+            {
+                "txid": "short-tx",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 140000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            }
+        ]
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+
+        result = check_btc_payment(invoice)
+
+        # The already-credited tx can't satisfy the remainder a second
+        # time even though its value covers it.
+        assert result.status == Invoice.Status.PARTIAL
+        assert result.btc_txid == ""
+
 
 class TestGetBtcUsdPrice:
     @pytest.fixture(autouse=True)
@@ -532,3 +755,46 @@ class TestGetBtcUsdPrice:
         )
 
         assert get_btc_usd_price() is None
+
+
+class TestUsdSatsConversion:
+    """Covers the arithmetic backing every auto-generated BTC amount:
+    `initiate_btc_watch` and `_reconcile_lapsed_watch` both derive their
+    sats/USD figures from these two helpers, so their rounding behavior
+    is worth pinning down directly rather than only indirectly through
+    higher-level tests."""
+
+    @pytest.mark.parametrize(
+        "usd,usd_per_btc,expected_sats",
+        [
+            (Decimal("100.00"), 50000, 200000),
+            (Decimal("1.00"), 1, 100000000),
+            (Decimal("0.01"), 65000, 15),  # rounds, doesn't truncate
+            (Decimal("0.00"), 50000, 0),
+        ],
+    )
+    def test_usd_to_sats(self, usd, usd_per_btc, expected_sats):
+        assert _usd_to_sats(usd, usd_per_btc) == expected_sats
+
+    def test_usd_to_sats_rounds_half_up(self):
+        # 0.000000005 BTC == 0.5 sats at this price; ROUND_HALF_UP -> 1.
+        assert _usd_to_sats(Decimal("0.0005"), 100000) == 1
+
+    @pytest.mark.parametrize(
+        "sats,usd_per_btc,expected_usd",
+        [
+            (200000, 50000, Decimal("100.00")),
+            (100000000, 1, Decimal("1.00")),
+            (1, 65000, Decimal("0.00")),
+            (0, 50000, Decimal("0.00")),
+        ],
+    )
+    def test_sats_to_usd(self, sats, usd_per_btc, expected_usd):
+        assert _sats_to_usd(sats, usd_per_btc) == expected_usd
+
+    def test_round_trip_is_stable_for_whole_cent_amounts(self):
+        original = Decimal("42.50")
+        usd_per_btc = 37000
+        sats = _usd_to_sats(original, usd_per_btc)
+
+        assert _sats_to_usd(sats, usd_per_btc) == original
