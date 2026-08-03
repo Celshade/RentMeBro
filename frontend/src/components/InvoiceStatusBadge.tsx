@@ -4,6 +4,7 @@ const LABELS: Record<InvoiceStatus, string> = {
   draft: 'Draft',
   sent: 'Unpaid',
   pending: 'Payment pending',
+  partial: 'Partially Paid',
   paid: 'Paid',
   void: 'Void',
 };

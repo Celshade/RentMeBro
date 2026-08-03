@@ -771,6 +771,11 @@ code {
   background: rgba(var(--pending-rgb), 0.12);
 }
 
+.status-badge--partial {
+  color: var(--btc-orange);
+  background: var(--btc-orange-bg);
+}
+
 .status-badge--draft {
   color: var(--text);
   background: var(--code-bg);
