@@ -10,18 +10,20 @@
   --driven-full: #0891b2;
   --driven-full-bg: rgba(8, 145, 178, 0.18);
   --driven-full-border: rgba(8, 145, 178, 0.65);
-  --driven-half: #1d4ed8;
-  --driven-half-bg: rgba(29, 78, 216, 0.135);
-  --driven-half-border: rgba(29, 78, 216, 0.49);
+  --pending-rgb: 29, 78, 216;
+  --pending: rgb(var(--pending-rgb));
+  --pending-bg: rgba(var(--pending-rgb), 0.135);
+  --pending-border: rgba(var(--pending-rgb), 0.49);
   --btc-orange: #f7931a;
   --btc-orange-bg: rgba(247, 147, 26, 0.1);
   --btc-orange-border: rgba(247, 147, 26, 0.5);
   --other-ride: #334155;
   --other-ride-bg: rgba(51, 65, 85, 0.115);
   --other-ride-border: rgba(51, 65, 85, 0.42);
-  --day-off: #dc2626;
-  --day-off-bg: rgba(220, 38, 38, 0.115);
-  --day-off-border: rgba(220, 38, 38, 0.42);
+  --late-rgb: 185, 28, 28;
+  --late: rgb(var(--late-rgb));
+  --late-bg: rgba(var(--late-rgb), 0.115);
+  --late-border: rgba(var(--late-rgb), 0.42);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -58,18 +60,20 @@
     --driven-full: #22d3ee;
     --driven-full-bg: rgba(34, 211, 238, 0.25);
     --driven-full-border: rgba(34, 211, 238, 0.7);
-    --driven-half: #3b82f6;
-    --driven-half-bg: rgba(59, 130, 246, 0.19);
-    --driven-half-border: rgba(59, 130, 246, 0.53);
+    --pending-rgb: 96, 165, 250;
+    --pending: rgb(var(--pending-rgb));
+    --pending-bg: rgba(var(--pending-rgb), 0.19);
+    --pending-border: rgba(var(--pending-rgb), 0.53);
     --btc-orange: #ffa733;
     --btc-orange-bg: rgba(255, 167, 51, 0.15);
     --btc-orange-border: rgba(255, 167, 51, 0.5);
     --other-ride: #cbd5e1;
     --other-ride-bg: rgba(203, 213, 225, 0.16);
     --other-ride-border: rgba(203, 213, 225, 0.45);
-    --day-off: #f87171;
-    --day-off-bg: rgba(248, 113, 113, 0.16);
-    --day-off-border: rgba(248, 113, 113, 0.45);
+    --late-rgb: 248, 113, 113;
+    --late: rgb(var(--late-rgb));
+    --late-bg: rgba(var(--late-rgb), 0.16);
+    --late-border: rgba(var(--late-rgb), 0.45);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -584,13 +588,13 @@ button:disabled {
 }
 
 .driven-days-calendar__cell--half {
-  background: var(--driven-half-bg);
-  border-color: var(--driven-half-border);
+  background: var(--pending-bg);
+  border-color: var(--pending-border);
   font-weight: 600;
 }
 
 .driven-days-calendar__cell--half:hover {
-  border-color: var(--driven-half);
+  border-color: var(--pending);
 }
 
 .driven-days-calendar__cell--selected {
@@ -600,12 +604,12 @@ button:disabled {
 }
 
 .driven-days-calendar__cell--day-off {
-  background: var(--day-off-bg);
-  border-color: var(--day-off-border);
+  background: var(--late-bg);
+  border-color: var(--late-border);
 }
 
 .driven-days-calendar__cell--day-off:hover {
-  border-color: var(--day-off);
+  border-color: var(--late);
 }
 
 .driven-days-calendar__cell--other-ride {
@@ -629,7 +633,7 @@ button:disabled {
 }
 
 .driven-days-calendar__cell--half .driven-days-calendar__fraction-bar {
-  background: var(--driven-half);
+  background: var(--pending);
   max-width: 35%;
 }
 
@@ -731,8 +735,8 @@ code {
 }
 
 .status-badge--pending {
-  color: #1d4ed8;
-  background: rgba(29, 78, 216, 0.12);
+  color: var(--pending);
+  background: rgba(var(--pending-rgb), 0.12);
 }
 
 .status-badge--draft {
@@ -747,8 +751,8 @@ code {
 }
 
 .status-badge--late {
-  color: #b91c1c;
-  background: rgba(185, 28, 28, 0.12);
+  color: var(--late);
+  background: rgba(var(--late-rgb), 0.12);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -763,13 +767,13 @@ code {
   }
 
   .status-badge--pending {
-    color: #60a5fa;
-    background: rgba(96, 165, 250, 0.15);
+    color: var(--pending);
+    background: rgba(var(--pending-rgb), 0.15);
   }
 
   .status-badge--late {
-    color: #f87171;
-    background: rgba(248, 113, 113, 0.15);
+    color: var(--late);
+    background: rgba(var(--late-rgb), 0.15);
   }
 
   .driven-days-calendar__week-price-btn--priced {
