@@ -7,6 +7,8 @@ import {
 } from '@stripe/react-stripe-js';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
+import type { Invoice } from '../api/types';
+import { PayInvoiceBtc } from './PayInvoiceBtc';
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string;
 
@@ -102,7 +104,7 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
  * @param props.invoiceId - The invoice to pay.
  * @param props.onPaid - Called after the renter successfully pays.
  */
-export function PayInvoice({
+function PayInvoiceCashApp({
   invoiceId,
   onPaid,
 }: {
@@ -132,5 +134,51 @@ export function PayInvoice({
     >
       <PaymentForm onDone={onPaid} />
     </Elements>
+  );
+}
+
+
+/**
+ * Renders a payment option for an invoice: Cash App Pay always, plus a
+ * "Pay with BTC" toggle when the landlord has attached a BTC address.
+ * @param props.invoice - The invoice to pay.
+ * @param props.onPaid - Called after the renter successfully pays.
+ */
+export function PayInvoice({
+  invoice,
+  onPaid,
+}: {
+  invoice: Invoice;
+  onPaid: () => void;
+}) {
+  const hasBtcOption = invoice.btc_address !== '';
+  const [mode, setMode] = useState<'cashapp' | 'btc'>('cashapp');
+
+  return (
+    <div>
+      {hasBtcOption && (
+        <div className="pay-invoice__mode-toggle">
+          <button
+            type="button"
+            onClick={() => setMode('cashapp')}
+            disabled={mode === 'cashapp'}
+          >
+            Pay with Cash App
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('btc')}
+            disabled={mode === 'btc'}
+          >
+            Pay with BTC
+          </button>
+        </div>
+      )}
+      {mode === 'cashapp' ? (
+        <PayInvoiceCashApp invoiceId={invoice.id} onPaid={onPaid} />
+      ) : (
+        <PayInvoiceBtc invoiceId={invoice.id} onPaid={onPaid} />
+      )}
+    </div>
   );
 }

@@ -152,7 +152,7 @@ export function RenterDashboard() {
                     </span>
                     {payingInvoiceId === invoice.id && (
                       <PayInvoice
-                        invoiceId={invoice.id}
+                        invoice={invoice}
                         onPaid={() => {
                           setPayingInvoiceId(null);
                           apiFetch<Invoice[]>('/api/invoices/').then(
