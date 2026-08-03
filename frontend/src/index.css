@@ -544,6 +544,7 @@ button[type='submit'].button--btc:hover {
 
 .driven-days-calendar {
   max-width: 360px;
+  margin-top: 16px;
 }
 
 .driven-days-calendar__header {
