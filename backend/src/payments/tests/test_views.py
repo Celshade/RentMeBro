@@ -360,3 +360,146 @@ class TestConnectWebhookView:
         )
 
         assert response.status_code == 400
+
+
+class TestBtcSettingsView:
+    def test_requires_authentication(self, api_client):
+        response = api_client.get(reverse("btc-settings"))
+        assert response.status_code == 401
+
+    def test_requires_landlord(self, api_client, renter):
+        api_client.force_authenticate(user=renter)
+        response = api_client.get(reverse("btc-settings"))
+        assert response.status_code == 403
+
+    def test_get_reports_disabled_by_default(self, api_client, landlord):
+        api_client.force_authenticate(user=landlord)
+        response = api_client.get(reverse("btc-settings"))
+        assert response.status_code == 200
+        assert response.data["enabled"] is False
+
+    def test_post_without_agree_returns_400(self, api_client, landlord):
+        api_client.force_authenticate(user=landlord)
+        response = api_client.post(reverse("btc-settings"), data={})
+        assert response.status_code == 400
+        landlord.refresh_from_db()
+        assert landlord.btc_payments_enabled is False
+
+    def test_post_with_agree_enables(self, api_client, landlord):
+        api_client.force_authenticate(user=landlord)
+        response = api_client.post(
+            reverse("btc-settings"), data={"agree": True}, format="json"
+        )
+        assert response.status_code == 200
+        landlord.refresh_from_db()
+        assert landlord.btc_payments_enabled is True
+
+
+class TestInvoiceBtcAttachView:
+    def test_requires_landlord(self, api_client, renter, invoice):
+        api_client.force_authenticate(user=renter)
+        response = api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "bc1qexample", "amount_sats": 100000},
+        )
+        assert response.status_code == 403
+
+    def test_other_landlord_gets_404(self, api_client, invoice):
+        from accounts.tests.factories import LandlordFactory
+
+        other_landlord = LandlordFactory()
+        api_client.force_authenticate(user=other_landlord)
+        response = api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "bc1qexample", "amount_sats": 100000},
+        )
+        assert response.status_code == 404
+
+    def test_owning_landlord_attaches(self, api_client, landlord, invoice):
+        landlord.btc_payments_enabled = True
+        landlord.save()
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "bc1qexample", "amount_sats": 100000},
+        )
+
+        assert response.status_code == 200
+        invoice.refresh_from_db()
+        assert invoice.btc_address == "bc1qexample"
+        assert invoice.btc_amount_sats == 100000
+
+    def test_not_enabled_returns_400(self, api_client, landlord, invoice):
+        api_client.force_authenticate(user=landlord)
+        response = api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "bc1qexample", "amount_sats": 100000},
+        )
+        assert response.status_code == 400
+
+    def test_locked_invoice_returns_409(self, api_client, landlord, invoice):
+        landlord.btc_payments_enabled = True
+        landlord.save()
+        invoice.status = Invoice.Status.PAID
+        invoice.save()
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "bc1qexample", "amount_sats": 100000},
+        )
+
+        assert response.status_code == 409
+
+
+class TestInvoiceBtcWatchView:
+    def test_requires_authentication(self, api_client, invoice):
+        response = api_client.post(
+            reverse("invoice-btc-watch", args=[invoice.id])
+        )
+        assert response.status_code == 401
+
+    def test_other_user_gets_404(self, api_client, invoice):
+        from accounts.tests.factories import UserFactory
+
+        other_renter = UserFactory()
+        api_client.force_authenticate(user=other_renter)
+        response = api_client.post(
+            reverse("invoice-btc-watch", args=[invoice.id])
+        )
+        assert response.status_code == 404
+
+    def test_starts_watch_for_own_invoice(self, api_client, renter, invoice):
+        invoice.status = Invoice.Status.SENT
+        invoice.btc_address = "bc1qexample"
+        invoice.btc_amount_sats = 100000
+        invoice.save()
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-watch", args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        assert response.data["btc_watch_expires_at"] is not None
+
+
+class TestInvoiceBtcCheckView:
+    def test_requires_authentication(self, api_client, invoice):
+        response = api_client.post(
+            reverse("invoice-btc-check", args=[invoice.id])
+        )
+        assert response.status_code == 401
+
+    def test_returns_current_status_for_own_invoice(
+        self, api_client, renter, invoice
+    ):
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-check", args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == invoice.status
