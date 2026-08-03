@@ -536,6 +536,25 @@ button[type='submit'].button--btc:hover {
   background: var(--pending-bg);
 }
 
+.btc-amount-unit-toggle button.is-active {
+  color: #fff;
+  font-weight: 600;
+}
+
+.btc-amount-unit-toggle button.is-active:hover {
+  opacity: 0.9;
+}
+
+.btc-amount-unit-toggle .button--btc.is-active {
+  background: var(--btc-orange);
+  border-color: var(--btc-orange);
+}
+
+.btc-amount-unit-toggle .button--usd.is-active {
+  background: var(--pending);
+  border-color: var(--pending);
+}
+
 .btc-amount-unit-toggle {
   display: flex;
   gap: 8px;

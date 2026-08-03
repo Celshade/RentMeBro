@@ -125,17 +125,22 @@ function AttachBtcPaymentForm({
       <div className="btc-amount-unit-toggle">
         <button
           type="button"
-          className="button--btc"
+          className={
+            'button--btc' + (amountUnit === 'btc' ? ' is-active' : '')
+          }
+          aria-pressed={amountUnit === 'btc'}
           onClick={() => switchAmountUnit('btc')}
-          disabled={amountUnit === 'btc'}
         >
           BTC
         </button>
         <button
           type="button"
-          className="button--usd"
+          className={
+            'button--usd' + (amountUnit === 'usd' ? ' is-active' : '')
+          }
+          aria-pressed={amountUnit === 'usd'}
           onClick={() => switchAmountUnit('usd')}
-          disabled={amountUnit === 'usd' || usdPerBtc === null}
+          disabled={usdPerBtc === null}
         >
           USD
         </button>
