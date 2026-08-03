@@ -17,11 +17,11 @@
   --btc-orange-bg: rgba(247, 147, 26, 0.1);
   --btc-orange-border: rgba(247, 147, 26, 0.5);
   --other-ride: #334155;
-  --other-ride-bg: rgba(51, 65, 85, 0.18);
-  --other-ride-border: rgba(51, 65, 85, 0.65);
+  --other-ride-bg: rgba(51, 65, 85, 0.135);
+  --other-ride-border: rgba(51, 65, 85, 0.49);
   --day-off: #dc2626;
-  --day-off-bg: rgba(220, 38, 38, 0.18);
-  --day-off-border: rgba(220, 38, 38, 0.65);
+  --day-off-bg: rgba(220, 38, 38, 0.135);
+  --day-off-border: rgba(220, 38, 38, 0.49);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -65,11 +65,11 @@
     --btc-orange-bg: rgba(255, 167, 51, 0.15);
     --btc-orange-border: rgba(255, 167, 51, 0.5);
     --other-ride: #cbd5e1;
-    --other-ride-bg: rgba(203, 213, 225, 0.25);
-    --other-ride-border: rgba(203, 213, 225, 0.7);
+    --other-ride-bg: rgba(203, 213, 225, 0.19);
+    --other-ride-border: rgba(203, 213, 225, 0.53);
     --day-off: #f87171;
-    --day-off-bg: rgba(248, 113, 113, 0.25);
-    --day-off-border: rgba(248, 113, 113, 0.7);
+    --day-off-bg: rgba(248, 113, 113, 0.19);
+    --day-off-border: rgba(248, 113, 113, 0.53);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
