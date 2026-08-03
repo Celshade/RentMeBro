@@ -85,7 +85,7 @@ function AttachBtcPaymentForm({
           required
         />
       </label>
-      <button type="submit" disabled={submitting}>
+      <button type="submit" className="button--btc" disabled={submitting}>
         {submitting ? 'Saving...' : 'Attach BTC payment'}
       </button>
       {error && <p role="alert">{error}</p>}

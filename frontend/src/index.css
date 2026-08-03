@@ -517,6 +517,16 @@ button:disabled {
   background: var(--btc-orange-bg);
 }
 
+button[type='submit'].button--btc {
+  background: transparent;
+  border-color: var(--btc-orange-border);
+  color: var(--btc-orange);
+}
+
+button[type='submit'].button--btc:hover {
+  background: var(--btc-orange-bg);
+}
+
 .driven-days-calendar {
   max-width: 360px;
 }
