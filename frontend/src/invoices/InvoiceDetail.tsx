@@ -218,7 +218,7 @@ export function InvoiceDetail() {
         !LOCKED_STATUSES.has(invoice.status) && (
           <section className="card">
             <div className="card__header">
-              <h2>BTC payment</h2>
+              <h2>BTC Payment</h2>
             </div>
             {invoice.btc_address && (
               <p>
@@ -234,7 +234,7 @@ export function InvoiceDetail() {
         <div className="dashboard-columns">
           <section className="card">
             <div className="card__header">
-              <h2>Mileage log</h2>
+              <h2>Mileage Log</h2>
             </div>
             <DrivenDaysCalendar
               logs={weeksToLogs(weeks)}
@@ -246,7 +246,7 @@ export function InvoiceDetail() {
 
           <section className="card">
             <div className="card__header">
-              <h2>Weekly breakdown</h2>
+              <h2>Weekly Breakdown</h2>
             </div>
             {weeks.length === 0 ? (
               <p className="empty-state">No days logged.</p>
