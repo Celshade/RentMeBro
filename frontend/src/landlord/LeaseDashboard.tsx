@@ -274,7 +274,7 @@ export function LeaseDashboard({
         {mileageProfile && (
           <section className="card">
             <div className="card__header">
-              <h2>Mileage log</h2>
+              <h2>Mileage Log</h2>
               {!logDayTarget && !bulkSelectMode && (
                 <span className="dashboard-toolbar__actions">
                   <button
@@ -283,13 +283,13 @@ export function LeaseDashboard({
                       setLogDayTarget({ dates: [''], logs: [null] })
                     }
                   >
-                    Log a day
+                    Log a Day
                   </button>
                   <button
                     type="button"
                     onClick={() => setBulkSelectMode(true)}
                   >
-                    Log multiple days
+                    Log Multiple Days
                   </button>
                 </span>
               )}
@@ -373,7 +373,7 @@ export function LeaseDashboard({
                 type="button"
                 onClick={() => setShowGenerateInvoice(true)}
               >
-                Generate invoice
+                Generate Invoice
               </button>
             )}
           </div>
