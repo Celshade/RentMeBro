@@ -18,7 +18,9 @@ urlpatterns = [
         InvoicePaymentIntentView.as_view(),
         name='invoice-pay',
     ),
-    path('stripe/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'),
+    path(
+        'stripe/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'
+    ),
     path(
         'stripe/connect-webhook/',
         ConnectWebhookView.as_view(),
