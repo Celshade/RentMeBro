@@ -633,6 +633,13 @@ button:disabled {
   max-width: 35%;
 }
 
+.driven-days-calendar__cell--other-ride .driven-days-calendar__fraction-bar {
+  background: var(--other-ride);
+  width: 12%;
+  min-width: 12%;
+  max-width: 12%;
+}
+
 .calendar-key {
   list-style: none;
   margin: 8px 0 0;
