@@ -1,16 +1,22 @@
-"""Stripe PaymentIntent creation and webhook event handling."""
+"""Stripe PaymentIntent creation, webhook handling, and BTC payments."""
 
 import logging
+from datetime import timedelta
 
+import requests
 import stripe
 from django.conf import settings
+from django.utils import timezone
 
 from accounts.models import User
 from billing.models import Invoice
+from billing.services import InvoiceLockedError
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 logger = logging.getLogger(__name__)
+
+BTC_WATCH_WINDOW = timedelta(minutes=15)
 
 
 class LandlordNotOnboardedError(Exception):
@@ -19,6 +25,10 @@ class LandlordNotOnboardedError(Exception):
 
 class InvoiceAlreadyPaidError(Exception):
     """The invoice's PaymentIntent already succeeded on Stripe."""
+
+
+class BtcNotEnabledError(Exception):
+    """The invoice's landlord hasn't enabled BTC payments."""
 
 
 # PaymentIntent statuses that can't back a new Elements confirmation;
@@ -211,3 +221,157 @@ def handle_account_updated(account: dict) -> None:
             "account.updated payload missing 'id' or 'charges_enabled': %r",
             account,
         )
+
+
+def enable_btc_payments(landlord: User) -> None:
+    """Enables BTC payments for a landlord after they confirm the dialogue.
+
+    Args:
+        landlord: The landlord enabling BTC payments.
+    """
+    landlord.btc_payments_enabled = True
+    landlord.btc_terms_accepted_at = timezone.now()
+    landlord.save(
+        update_fields=['btc_payments_enabled', 'btc_terms_accepted_at']
+    )
+
+
+def attach_btc_payment(
+    invoice: Invoice, address: str, amount_sats: int
+) -> Invoice:
+    """Attaches a fixed BTC address/amount to an invoice as a payment option.
+
+    Args:
+        invoice: The invoice to attach BTC payment info to.
+        address: The landlord's BTC address to display to the renter.
+        amount_sats: The fixed amount, in satoshis, the renter must send.
+
+    Returns:
+        The updated invoice.
+
+    Raises:
+        InvoiceLockedError: If the invoice is pending a BTC payment,
+            paid, or void.
+        BtcNotEnabledError: If the landlord hasn't enabled BTC
+            payments.
+    """
+    if invoice.status in (
+        Invoice.Status.PENDING,
+        Invoice.Status.PAID,
+        Invoice.Status.VOID,
+    ):
+        raise InvoiceLockedError(
+            f'Invoice {invoice.id} is {invoice.status} and can no longer '
+            'be edited.'
+        )
+    landlord = invoice.billing_period.landlord
+    if not landlord.btc_payments_enabled:
+        raise BtcNotEnabledError(
+            "Landlord hasn't enabled BTC payments yet."
+        )
+
+    invoice.btc_address = address
+    invoice.btc_amount_sats = amount_sats
+    invoice.save(update_fields=['btc_address', 'btc_amount_sats'])
+    return invoice
+
+
+def initiate_btc_watch(invoice: Invoice) -> Invoice:
+    """Starts (or restarts) the 15-minute window for an initial BTC tx.
+
+    Called when the renter opens the "Pay with BTC" panel. Restartable:
+    reopening the panel after the window has lapsed with no tx seen
+    starts a fresh 15 minutes. Once a tx has been seen (btc_txid is
+    set), the window no longer applies, so this is a no-op.
+
+    Args:
+        invoice: The invoice being watched. Must be SENT with a BTC
+            address already attached.
+
+    Returns:
+        The updated invoice.
+    """
+    if invoice.status != Invoice.Status.SENT or invoice.btc_txid:
+        return invoice
+
+    invoice.btc_watch_expires_at = timezone.now() + BTC_WATCH_WINDOW
+    invoice.save(update_fields=['btc_watch_expires_at'])
+    return invoice
+
+
+def _find_matching_output(
+    txs: list[dict], address: str, amount_sats: int
+) -> dict | None:
+    """Finds the first tx paying `address` at least `amount_sats`."""
+    for tx in txs:
+        paid_sats = sum(
+            vout['value']
+            for vout in tx.get('vout', [])
+            if vout.get('scriptpubkey_address') == address
+        )
+        if paid_sats >= amount_sats:
+            return tx
+    return None
+
+
+def check_btc_payment(invoice: Invoice) -> Invoice:
+    """Polls mempool.space for an invoice's BTC payment status.
+
+    Called by the renter's 60-second frontend timer while the "Pay
+    with BTC" panel is open. A mempool.space hiccup (timeout, non-200,
+    connection error) is logged and swallowed rather than raised, so
+    it doesn't break the renter's page.
+
+    Args:
+        invoice: The invoice to check. No-op if already PAID/VOID, or
+            if no tx has been seen yet and the watch window hasn't
+            been started (or has lapsed).
+
+    Returns:
+        The updated invoice.
+    """
+    if invoice.status in (Invoice.Status.PAID, Invoice.Status.VOID):
+        return invoice
+    if not invoice.btc_txid and (
+        invoice.btc_watch_expires_at is None
+        or timezone.now() > invoice.btc_watch_expires_at
+    ):
+        return invoice
+
+    base_url = settings.MEMPOOL_API_BASE_URL
+    try:
+        if invoice.btc_txid:
+            response = requests.get(
+                f'{base_url}/tx/{invoice.btc_txid}/status', timeout=5
+            )
+            response.raise_for_status()
+            confirmed = response.json().get('confirmed', False)
+            if confirmed:
+                invoice.status = Invoice.Status.PAID
+                invoice.save(update_fields=['status'])
+            return invoice
+
+        response = requests.get(
+            f'{base_url}/address/{invoice.btc_address}/txs', timeout=5
+        )
+        response.raise_for_status()
+        match = _find_matching_output(
+            response.json(), invoice.btc_address, invoice.btc_amount_sats
+        )
+    except requests.RequestException:
+        logger.warning(
+            'mempool.space request failed for invoice %s', invoice.id
+        )
+        return invoice
+
+    if match is None:
+        return invoice
+
+    invoice.btc_txid = match['txid']
+    invoice.status = (
+        Invoice.Status.PAID
+        if match.get('status', {}).get('confirmed')
+        else Invoice.Status.PENDING
+    )
+    invoice.save(update_fields=['status', 'btc_txid'])
+    return invoice
