@@ -129,7 +129,11 @@ export function LandlordDashboard({
         <div className="dashboard-toolbar">
           <h1>Your renters</h1>
           <div className="dashboard-toolbar__actions">
-            <button type="button" onClick={() => setShowPaymentSettings(true)}>
+            <button
+              type="button"
+              className="button--stripe"
+              onClick={() => setShowPaymentSettings(true)}
+            >
               Stripe Payments
               {paymentsLabel && (
                 <span
@@ -152,7 +156,11 @@ export function LandlordDashboard({
                 {refreshingConnect ? 'Refreshing...' : 'Refresh status'}
               </button>
             )}
-            <button type="button" onClick={() => setShowBtcSettings(true)}>
+            <button
+              type="button"
+              className="button--btc"
+              onClick={() => setShowBtcSettings(true)}
+            >
               BTC Payments
               {btcLabel && (
                 <span
@@ -197,7 +205,11 @@ export function LandlordDashboard({
               ← All renters
             </button>
           )}
-          <button type="button" onClick={() => setShowPaymentSettings(true)}>
+          <button
+            type="button"
+            className="button--stripe"
+            onClick={() => setShowPaymentSettings(true)}
+          >
             Stripe Payments
             {paymentsLabel && (
               <span
@@ -220,7 +232,11 @@ export function LandlordDashboard({
               {refreshingConnect ? 'Refreshing...' : 'Refresh status'}
             </button>
           )}
-          <button type="button" onClick={() => setShowBtcSettings(true)}>
+          <button
+            type="button"
+            className="button--btc"
+            onClick={() => setShowBtcSettings(true)}
+          >
             BTC Payments
             {btcLabel && (
               <span

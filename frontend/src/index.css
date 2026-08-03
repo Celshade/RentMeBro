@@ -10,6 +10,9 @@
   --half-day: #b45309;
   --half-day-bg: rgba(180, 83, 9, 0.12);
   --half-day-border: rgba(180, 83, 9, 0.5);
+  --btc-orange: #f7931a;
+  --btc-orange-bg: rgba(247, 147, 26, 0.1);
+  --btc-orange-border: rgba(247, 147, 26, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -46,6 +49,9 @@
     --half-day: #fbbf24;
     --half-day-bg: rgba(251, 191, 36, 0.15);
     --half-day-border: rgba(251, 191, 36, 0.5);
+    --btc-orange: #ffa733;
+    --btc-orange-bg: rgba(255, 167, 51, 0.15);
+    --btc-orange-border: rgba(255, 167, 51, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -463,6 +469,24 @@ button[type='submit']:hover {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.button--stripe {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.button--stripe:hover {
+  background: var(--accent-bg);
+}
+
+.button--btc {
+  border-color: var(--btc-orange-border);
+  color: var(--btc-orange);
+}
+
+.button--btc:hover {
+  background: var(--btc-orange-bg);
 }
 
 .driven-days-calendar {
