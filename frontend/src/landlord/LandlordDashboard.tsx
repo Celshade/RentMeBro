@@ -175,7 +175,7 @@ export function LandlordDashboard({
               )}
             </button>
             <button type="button" onClick={() => setAddingLease(true)}>
-              Add another renter
+              Add Another Renter
             </button>
           </div>
         </div>
@@ -198,7 +198,7 @@ export function LandlordDashboard({
   return (
     <div>
       <div className="dashboard-toolbar">
-        <h1>Your dashboard</h1>
+        <h1>Your Dashboard</h1>
         <div className="dashboard-toolbar__actions">
           {leases.length > 1 && (
             <button type="button" onClick={() => setSelectedLeaseId(null)}>
@@ -249,7 +249,7 @@ export function LandlordDashboard({
             )}
           </button>
           <button type="button" onClick={() => setAddingLease(true)}>
-            Add another renter
+            Add Another Renter
           </button>
         </div>
       </div>
