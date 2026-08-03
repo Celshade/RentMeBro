@@ -527,6 +527,15 @@ button[type='submit'].button--btc:hover {
   background: var(--btc-orange-bg);
 }
 
+.button--usd {
+  border-color: var(--pending-border);
+  color: var(--pending);
+}
+
+.button--usd:hover {
+  background: var(--pending-bg);
+}
+
 .btc-amount-unit-toggle {
   display: flex;
   gap: 8px;

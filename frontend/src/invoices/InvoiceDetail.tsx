@@ -125,6 +125,7 @@ function AttachBtcPaymentForm({
       <div className="btc-amount-unit-toggle">
         <button
           type="button"
+          className="button--btc"
           onClick={() => switchAmountUnit('btc')}
           disabled={amountUnit === 'btc'}
         >
@@ -132,6 +133,7 @@ function AttachBtcPaymentForm({
         </button>
         <button
           type="button"
+          className="button--usd"
           onClick={() => switchAmountUnit('usd')}
           disabled={amountUnit === 'usd' || usdPerBtc === null}
         >
