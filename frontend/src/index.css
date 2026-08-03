@@ -645,6 +645,11 @@ code {
   background: rgba(180, 83, 9, 0.12);
 }
 
+.status-badge--pending {
+  color: #1d4ed8;
+  background: rgba(29, 78, 216, 0.12);
+}
+
 .status-badge--draft {
   color: var(--text);
   background: var(--code-bg);
@@ -670,6 +675,11 @@ code {
   .status-badge--sent {
     color: #fbbf24;
     background: rgba(251, 191, 36, 0.15);
+  }
+
+  .status-badge--pending {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.15);
   }
 
   .status-badge--late {

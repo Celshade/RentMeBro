@@ -3,6 +3,7 @@ import type { InvoiceStatus } from '../api/types';
 const LABELS: Record<InvoiceStatus, string> = {
   draft: 'Draft',
   sent: 'Unpaid',
+  pending: 'Payment pending',
   paid: 'Paid',
   void: 'Void',
 };
