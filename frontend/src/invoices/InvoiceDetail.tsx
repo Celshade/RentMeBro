@@ -7,14 +7,91 @@ import {
   formatMoney,
 } from '../api/format';
 import type {
+  BtcSettings,
   DrivenDayLog,
   Invoice,
   InvoiceWeek,
   InvoiceWeekDay,
 } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
+
+const LOCKED_STATUSES = new Set(['paid', 'void', 'pending']);
+
+
+/**
+ * Inline form letting a landlord attach a fixed BTC address/amount to
+ * an invoice as a payment option, shown only once BTC payments are
+ * enabled and the invoice isn't already locked (paid/void/pending).
+ * @param props.invoice - The invoice to attach BTC payment info to.
+ * @param props.onAttached - Called with the updated invoice once the
+ *   attach succeeds.
+ */
+function AttachBtcPaymentForm({
+  invoice,
+  onAttached,
+}: {
+  invoice: Invoice;
+  onAttached: (invoice: Invoice) => void;
+}) {
+  const [address, setAddress] = useState(invoice.btc_address);
+  const [amountSats, setAmountSats] = useState(
+    invoice.btc_amount_sats?.toString() ?? ''
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
+        method: 'POST',
+        body: { address, amount_sats: Number(amountSats) },
+      });
+      onAttached({
+        ...invoice,
+        btc_address: address,
+        btc_amount_sats: Number(amountSats),
+      });
+    } catch {
+      setError('Could not attach BTC payment info. Try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <label>
+        BTC address
+        <input
+          type="text"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          required
+        />
+      </label>
+      <label>
+        Amount (satoshis)
+        <input
+          type="number"
+          min="1"
+          value={amountSats}
+          onChange={(e) => setAmountSats(e.target.value)}
+          required
+        />
+      </label>
+      <button type="submit" disabled={submitting}>
+        {submitting ? 'Saving...' : 'Attach BTC payment'}
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </form>
+  );
+}
 
 /** Describes a logged day the way the mileage log form does, not as raw data. */
 function formatDayDescription(day: InvoiceWeekDay): string {
@@ -47,9 +124,11 @@ function weeksToLogs(weeks: InvoiceWeek[]): DrivenDayLog[] {
  * both the renter and the landlord side of an invoice.
  */
 export function InvoiceDetail() {
+  const { user } = useAuth();
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [weeks, setWeeks] = useState<InvoiceWeek[]>([]);
+  const [btcSettings, setBtcSettings] = useState<BtcSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +146,13 @@ export function InvoiceDetail() {
       .catch(() => setError('Could not load this invoice.'))
       .finally(() => setLoading(false));
   }, [invoiceId]);
+
+  useEffect(() => {
+    if (user?.role !== 'landlord') return;
+    apiFetch<BtcSettings>('/api/payments/btc/settings/').then(
+      setBtcSettings
+    );
+  }, [user]);
 
   if (loading) return <p className="empty-state">Loading invoice…</p>;
   if (error) return <p className="empty-state">{error}</p>;
@@ -126,6 +212,23 @@ export function InvoiceDetail() {
           ))}
         </ul>
       </section>
+
+      {user?.role === 'landlord' &&
+        btcSettings?.enabled &&
+        !LOCKED_STATUSES.has(invoice.status) && (
+          <section className="card">
+            <div className="card__header">
+              <h2>BTC payment</h2>
+            </div>
+            {invoice.btc_address && (
+              <p>
+                Currently attached: {invoice.btc_address} (
+                {invoice.btc_amount_sats} sats)
+              </p>
+            )}
+            <AttachBtcPaymentForm invoice={invoice} onAttached={setInvoice} />
+          </section>
+        )}
 
       {hasGasBreakdown && (
         <div className="dashboard-columns">
