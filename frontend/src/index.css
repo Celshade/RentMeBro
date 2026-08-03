@@ -16,6 +16,9 @@
   --btc-orange: #f7931a;
   --btc-orange-bg: rgba(247, 147, 26, 0.1);
   --btc-orange-border: rgba(247, 147, 26, 0.5);
+  --other-ride: #2563eb;
+  --other-ride-bg: rgba(37, 99, 235, 0.1);
+  --other-ride-border: rgba(37, 99, 235, 0.4);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -58,6 +61,9 @@
     --btc-orange: #ffa733;
     --btc-orange-bg: rgba(255, 167, 51, 0.15);
     --btc-orange-border: rgba(255, 167, 51, 0.5);
+    --other-ride: #60a5fa;
+    --other-ride-bg: rgba(96, 165, 250, 0.15);
+    --other-ride-border: rgba(96, 165, 250, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -593,8 +599,8 @@ button:disabled {
 }
 
 .driven-days-calendar__cell--other-ride {
-  background: rgba(37, 99, 235, 0.1);
-  border-color: rgba(37, 99, 235, 0.4);
+  background: var(--other-ride-bg);
+  border-color: var(--other-ride-border);
 }
 
 .driven-days-calendar__fraction-bar {
@@ -746,11 +752,6 @@ code {
   .driven-days-calendar__cell--day-off {
     background: rgba(248, 113, 113, 0.15);
     border-color: rgba(248, 113, 113, 0.5);
-  }
-
-  .driven-days-calendar__cell--other-ride {
-    background: rgba(96, 165, 250, 0.15);
-    border-color: rgba(96, 165, 250, 0.5);
   }
 
   .driven-days-calendar__week-price-btn--priced {
