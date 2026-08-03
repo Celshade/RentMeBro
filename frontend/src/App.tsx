@@ -42,7 +42,7 @@ function AppShell({
           {backHandler && (
             <button onClick={backHandler}>Back to dashboard</button>
           )}
-          <button onClick={logout}>Log out</button>
+          <button onClick={logout}>Log Out</button>
         </div>
       </header>
       <main className="app-main">{children(registerBackHandler)}</main>
