@@ -8,6 +8,7 @@ import {
   formatMoney,
   satsToBtc,
   satsToUsdEstimate,
+  usdToBtc,
 } from '../api/format';
 import type {
   BtcSettings,
@@ -45,6 +46,8 @@ function AttachBtcPaymentForm({
       ? satsToBtc(invoice.btc_amount_sats)
       : ''
   );
+  const [amountUsd, setAmountUsd] = useState('');
+  const [amountUnit, setAmountUnit] = useState<'btc' | 'usd'>('btc');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usdPerBtc, setUsdPerBtc] = useState<number | null>(null);
@@ -54,6 +57,32 @@ function AttachBtcPaymentForm({
       .then((data) => setUsdPerBtc(data.usd))
       .catch(() => setUsdPerBtc(null));
   }, []);
+
+  /**
+   * Switches which currency the amount field accepts input in,
+   * converting the currently-entered value using the cached BTC
+   * price so the two stay equivalent across the switch.
+   */
+  function switchAmountUnit(unit: 'btc' | 'usd') {
+    if (unit === amountUnit || usdPerBtc === null) return;
+    if (unit === 'usd') {
+      setAmountUsd(
+        amountBtc !== ''
+          ? satsToUsdEstimate(btcToSats(amountBtc), usdPerBtc)
+          : ''
+      );
+    } else if (amountUsd !== '') {
+      setAmountBtc(usdToBtc(amountUsd, usdPerBtc));
+    }
+    setAmountUnit(unit);
+  }
+
+  function handleAmountUsdChange(value: string) {
+    setAmountUsd(value);
+    if (usdPerBtc !== null) {
+      setAmountBtc(value !== '' ? usdToBtc(value, usdPerBtc) : '');
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,21 +122,53 @@ function AttachBtcPaymentForm({
           required
         />
       </label>
-      <label>
-        Amount (BTC)
-        <input
-          type="number"
-          min="0.00000001"
-          step="0.00000001"
-          value={amountBtc}
-          onChange={(e) => setAmountBtc(e.target.value)}
-          required
-        />
-      </label>
+      <div className="btc-amount-unit-toggle">
+        <button
+          type="button"
+          onClick={() => switchAmountUnit('btc')}
+          disabled={amountUnit === 'btc'}
+        >
+          BTC
+        </button>
+        <button
+          type="button"
+          onClick={() => switchAmountUnit('usd')}
+          disabled={amountUnit === 'usd' || usdPerBtc === null}
+        >
+          USD
+        </button>
+      </div>
+      {amountUnit === 'btc' ? (
+        <label>
+          Amount (BTC)
+          <input
+            type="number"
+            min="0.00000001"
+            step="0.00000001"
+            value={amountBtc}
+            onChange={(e) => setAmountBtc(e.target.value)}
+            required
+          />
+        </label>
+      ) : (
+        <label>
+          Amount (USD)
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amountUsd}
+            onChange={(e) => handleAmountUsdChange(e.target.value)}
+            required
+          />
+        </label>
+      )}
       {usdPerBtc !== null && (
         <p className="btc-price-hint">
           1 BTC ≈ ${usdPerBtc.toLocaleString()}
-          {estimatedUsd !== null && ` — this amount ≈ $${estimatedUsd}`}
+          {amountUnit === 'usd' && amountBtc !== ''
+            ? ` — this amount ≈ ${amountBtc} BTC`
+            : estimatedUsd !== null && ` — this amount ≈ $${estimatedUsd}`}
           <span
             className="btc-price-hint__info"
             title={
