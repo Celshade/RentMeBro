@@ -111,7 +111,7 @@ function AttachBtcPaymentForm({
           <span
             className="btc-price-hint__info"
             title={
-              'Recent BTC price taken from mempool.space; this is not ' +
+              'Estimated BTC price taken from mempool.space; this is not ' +
               'a source of truth. You are responsible for verifying ' +
               'the price and entering your own amount.'
             }
