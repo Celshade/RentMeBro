@@ -483,6 +483,11 @@ class TestRecomputeInvoiceGas:
         with pytest.raises(services.InvoiceLockedError):
             services.recompute_invoice_gas(invoice)
 
+    def test_raises_for_partial_invoice(self):
+        invoice = InvoiceFactory(status=Invoice.Status.PARTIAL)
+        with pytest.raises(services.InvoiceLockedError):
+            services.recompute_invoice_gas(invoice)
+
     def test_clears_btc_fields_when_total_changes(self):
         landlord, renter = LandlordFactory(), UserFactory()
         MileageProfileFactory(

@@ -356,10 +356,11 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
 
     Raises:
         InvoiceLockedError: If the invoice is already pending a BTC
-            payment, paid, or void.
+            payment, has an outstanding BTC remainder, paid, or void.
     """
     if invoice.status in (
         Invoice.Status.PENDING,
+        Invoice.Status.PARTIAL,
         Invoice.Status.PAID,
         Invoice.Status.VOID,
     ):
@@ -388,12 +389,18 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
     invoice.btc_amount_sats = None
     invoice.btc_txid = ""
     invoice.btc_watch_expires_at = None
+    invoice.remainder_owed_usd = None
+    invoice.btc_credited_txid = ""
+    invoice.btc_credited_usd = None
     invoice.save(
         update_fields=[
             "btc_address",
             "btc_amount_sats",
             "btc_txid",
             "btc_watch_expires_at",
+            "remainder_owed_usd",
+            "btc_credited_txid",
+            "btc_credited_usd",
         ]
     )
     return invoice
