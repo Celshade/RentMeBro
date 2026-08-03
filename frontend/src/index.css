@@ -527,6 +527,16 @@ button[type='submit'].button--btc:hover {
   background: var(--btc-orange-bg);
 }
 
+.btc-price-hint {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.btc-price-hint__info {
+  cursor: help;
+  color: var(--btc-orange);
+}
+
 .driven-days-calendar {
   max-width: 360px;
 }
