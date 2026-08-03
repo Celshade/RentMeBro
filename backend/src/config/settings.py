@@ -120,6 +120,10 @@ STRIPE_CONNECT_WEBHOOK_SECRET = env(
     'STRIPE_CONNECT_WEBHOOK_SECRET', default=''
 )
 
+MEMPOOL_API_BASE_URL = env(
+    'MEMPOOL_API_BASE_URL', default='https://mempool.space/api'
+)
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
