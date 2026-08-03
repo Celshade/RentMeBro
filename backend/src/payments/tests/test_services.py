@@ -1,21 +1,30 @@
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
+import requests
+from django.utils import timezone
 
 from accounts.tests.factories import LandlordFactory
 from billing.models import Invoice
+from billing.services import InvoiceLockedError
 from billing.tests.factories import (
     BillingPeriodFactory,
     InvoiceFactory,
     InvoiceLineItemFactory,
 )
 from payments.services import (
+    BtcNotEnabledError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
+    attach_btc_payment,
+    check_btc_payment,
     create_payment_intent_for_invoice,
+    enable_btc_payments,
     handle_account_updated,
     handle_payment_intent_succeeded,
+    initiate_btc_watch,
     start_connect_onboarding,
 )
 
@@ -266,3 +275,221 @@ class TestHandleAccountUpdated:
             {'id': 'acct_unknown', 'charges_enabled': True}
         )
         # No exception raised; nothing to assert against.
+
+
+class TestEnableBtcPayments:
+    def test_enables_and_stamps_timestamp(self):
+        landlord = LandlordFactory(btc_payments_enabled=False)
+
+        enable_btc_payments(landlord)
+
+        landlord.refresh_from_db()
+        assert landlord.btc_payments_enabled is True
+        assert landlord.btc_terms_accepted_at is not None
+
+
+def _btc_enabled_invoice(**kwargs) -> Invoice:
+    landlord = LandlordFactory(btc_payments_enabled=True)
+    billing_period = BillingPeriodFactory(landlord=landlord)
+    return InvoiceFactory(billing_period=billing_period, **kwargs)
+
+
+class TestAttachBtcPayment:
+    def test_attaches_address_and_amount(self):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+
+        result = attach_btc_payment(invoice, "bc1qexample", 100000)
+
+        assert result.btc_address == "bc1qexample"
+        assert result.btc_amount_sats == 100000
+        invoice.refresh_from_db()
+        assert invoice.btc_address == "bc1qexample"
+        assert invoice.btc_amount_sats == 100000
+
+    def test_raises_if_landlord_not_enabled(self):
+        invoice = InvoiceFactory(status=Invoice.Status.SENT)
+
+        with pytest.raises(BtcNotEnabledError):
+            attach_btc_payment(invoice, "bc1qexample", 100000)
+
+    @pytest.mark.parametrize(
+        "locked_status",
+        [Invoice.Status.PENDING, Invoice.Status.PAID, Invoice.Status.VOID],
+    )
+    def test_raises_for_locked_invoice(self, locked_status):
+        invoice = _btc_enabled_invoice(status=locked_status)
+
+        with pytest.raises(InvoiceLockedError):
+            attach_btc_payment(invoice, "bc1qexample", 100000)
+
+
+class TestInitiateBtcWatch:
+    def test_starts_watch_window_for_sent_invoice(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_watch_expires_at is not None
+        assert result.btc_watch_expires_at > timezone.now()
+
+    def test_noop_if_not_sent(self):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.DRAFT)
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_watch_expires_at is None
+
+    def test_noop_if_tx_already_seen(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_txid="deadbeef"
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_watch_expires_at is None
+
+
+class TestCheckBtcPayment:
+    def test_noop_when_paid(self):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.PAID)
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PAID
+
+    def test_noop_when_no_txid_and_watch_expired(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.SENT
+
+    def test_noop_when_no_txid_and_watch_never_started(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.SENT
+
+    def test_unconfirmed_match_sets_pending(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        response = MagicMock()
+        response.json.return_value = [
+            {
+                "txid": "tx1",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 100000,
+                    }
+                ],
+                "status": {"confirmed": False},
+            }
+        ]
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PENDING
+        assert result.btc_txid == "tx1"
+
+    def test_confirmed_match_sets_paid(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        response = MagicMock()
+        response.json.return_value = [
+            {
+                "txid": "tx1",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 100000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            }
+        ]
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PAID
+        assert result.btc_txid == "tx1"
+
+    def test_confirms_via_known_txid(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.PENDING,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="tx1",
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        response = MagicMock()
+        response.json.return_value = {"confirmed": True}
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PAID
+
+    def test_no_match_is_noop(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        response = MagicMock()
+        response.json.return_value = []
+        mocker.patch(
+            "payments.services.requests.get", return_value=response
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.SENT
+        assert result.btc_txid == ""
+
+    def test_request_exception_is_swallowed(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        mocker.patch(
+            "payments.services.requests.get",
+            side_effect=requests.RequestException("boom"),
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.SENT
