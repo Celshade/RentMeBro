@@ -355,9 +355,14 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
         The updated invoice.
 
     Raises:
-        InvoiceLockedError: If the invoice is already paid or void.
+        InvoiceLockedError: If the invoice is already pending a BTC
+            payment, paid, or void.
     """
-    if invoice.status in (Invoice.Status.PAID, Invoice.Status.VOID):
+    if invoice.status in (
+        Invoice.Status.PENDING,
+        Invoice.Status.PAID,
+        Invoice.Status.VOID,
+    ):
         raise InvoiceLockedError(
             f'Invoice {invoice.id} is {invoice.status} and can no longer '
             'be edited.'
@@ -370,8 +375,25 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
         return invoice
 
     period = invoice.billing_period
-    gas_line_item.amount = compute_period_gas_total(
+    new_amount = compute_period_gas_total(
         period.landlord, period.renter, period.year, period.month
     )
+    if new_amount == gas_line_item.amount:
+        return invoice
+
+    gas_line_item.amount = new_amount
     gas_line_item.save(update_fields=['amount'])
+
+    invoice.btc_address = ''
+    invoice.btc_amount_sats = None
+    invoice.btc_txid = ''
+    invoice.btc_watch_expires_at = None
+    invoice.save(
+        update_fields=[
+            'btc_address',
+            'btc_amount_sats',
+            'btc_txid',
+            'btc_watch_expires_at',
+        ]
+    )
     return invoice
