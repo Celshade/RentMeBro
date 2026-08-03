@@ -107,7 +107,7 @@ export function RenterDashboard() {
         {mileageProfile && (
           <section className="card">
             <div className="card__header">
-              <h2>Mileage log</h2>
+              <h2>Mileage Log</h2>
             </div>
             <DrivenDaysCalendar logs={logs} />
             <DrivenDaysCalendarKey />
