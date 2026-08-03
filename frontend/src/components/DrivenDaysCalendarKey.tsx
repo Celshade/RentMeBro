@@ -1,11 +1,11 @@
 const ENTRIES: { swatchClass: string; label: string }[] = [
   { swatchClass: 'driven-days-calendar__cell--full', label: 'Full day' },
   { swatchClass: 'driven-days-calendar__cell--half', label: 'Half day' },
-  { swatchClass: 'driven-days-calendar__cell--day-off', label: 'Day off' },
   {
     swatchClass: 'driven-days-calendar__cell--other-ride',
-    label: 'Other ride (unpaid)',
+    label: 'Other ride',
   },
+  { swatchClass: 'driven-days-calendar__cell--day-off', label: 'Day off' },
 ];
 
 
