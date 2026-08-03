@@ -527,6 +527,12 @@ button[type='submit'].button--btc:hover {
   background: var(--btc-orange-bg);
 }
 
+.btc-amount-unit-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .btc-price-hint {
   color: var(--text);
   font-size: 14px;
