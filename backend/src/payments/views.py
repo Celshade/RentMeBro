@@ -190,7 +190,12 @@ class BtcPriceView(APIView):
 
 
 class InvoiceBtcAttachView(APIView):
-    """Attaches a fixed BTC address/amount to an invoice as a landlord."""
+    """Attaches a BTC address to an invoice as a landlord.
+
+    The renter's payment amount is no longer set here — it's generated
+    and rate-locked from the current market price once the renter
+    starts paying (see `InvoiceBtcWatchView`).
+    """
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
@@ -201,11 +206,7 @@ class InvoiceBtcAttachView(APIView):
             billing_period__landlord=request.user,
         )
         try:
-            attach_btc_payment(
-                invoice,
-                request.data.get("address", ""),
-                request.data.get("amount_sats"),
-            )
+            attach_btc_payment(invoice, request.data.get("address", ""))
         except InvoiceLockedError as exc:
             return Response(
                 {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
@@ -214,12 +215,7 @@ class InvoiceBtcAttachView(APIView):
             return Response(
                 {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
-        return Response(
-            {
-                "btc_address": invoice.btc_address,
-                "btc_amount_sats": invoice.btc_amount_sats,
-            }
-        )
+        return Response({"btc_address": invoice.btc_address})
 
 
 def _btc_status_response(invoice: Invoice) -> Response:
@@ -228,6 +224,7 @@ def _btc_status_response(invoice: Invoice) -> Response:
             "btc_address": invoice.btc_address,
             "btc_amount_sats": invoice.btc_amount_sats,
             "btc_watch_expires_at": invoice.btc_watch_expires_at,
+            "remainder_owed_usd": invoice.remainder_owed_usd,
             "status": invoice.status,
         }
     )

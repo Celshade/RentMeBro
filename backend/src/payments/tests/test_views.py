@@ -426,7 +426,7 @@ class TestInvoiceBtcAttachView:
         api_client.force_authenticate(user=renter)
         response = api_client.post(
             reverse("invoice-btc-attach", args=[invoice.id]),
-            data={"address": "bc1qexample", "amount_sats": 100000},
+            data={"address": "bc1qexample"},
         )
         assert response.status_code == 403
 
@@ -437,7 +437,7 @@ class TestInvoiceBtcAttachView:
         api_client.force_authenticate(user=other_landlord)
         response = api_client.post(
             reverse("invoice-btc-attach", args=[invoice.id]),
-            data={"address": "bc1qexample", "amount_sats": 100000},
+            data={"address": "bc1qexample"},
         )
         assert response.status_code == 404
 
@@ -448,19 +448,19 @@ class TestInvoiceBtcAttachView:
 
         response = api_client.post(
             reverse("invoice-btc-attach", args=[invoice.id]),
-            data={"address": "bc1qexample", "amount_sats": 100000},
+            data={"address": "bc1qexample"},
         )
 
         assert response.status_code == 200
         invoice.refresh_from_db()
         assert invoice.btc_address == "bc1qexample"
-        assert invoice.btc_amount_sats == 100000
+        assert invoice.btc_amount_sats is None
 
     def test_not_enabled_returns_400(self, api_client, landlord, invoice):
         api_client.force_authenticate(user=landlord)
         response = api_client.post(
             reverse("invoice-btc-attach", args=[invoice.id]),
-            data={"address": "bc1qexample", "amount_sats": 100000},
+            data={"address": "bc1qexample"},
         )
         assert response.status_code == 400
 
@@ -473,7 +473,7 @@ class TestInvoiceBtcAttachView:
 
         response = api_client.post(
             reverse("invoice-btc-attach", args=[invoice.id]),
-            data={"address": "bc1qexample", "amount_sats": 100000},
+            data={"address": "bc1qexample"},
         )
 
         assert response.status_code == 409
@@ -496,10 +496,14 @@ class TestInvoiceBtcWatchView:
         )
         assert response.status_code == 404
 
-    def test_starts_watch_for_own_invoice(self, api_client, renter, invoice):
+    def test_starts_watch_for_own_invoice(
+        self, api_client, renter, invoice, mocker
+    ):
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
         invoice.status = Invoice.Status.SENT
         invoice.btc_address = "bc1qexample"
-        invoice.btc_amount_sats = 100000
         invoice.save()
         api_client.force_authenticate(user=renter)
 
