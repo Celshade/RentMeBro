@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import { apiFetch } from '../api/client';
+import { satsToBtc } from '../api/format';
 import type { BtcInvoiceStatus } from '../api/types';
 
 const POLL_INTERVAL_MS = 60_000;
-const SATS_PER_BTC = 100_000_000;
-
-
-/** Formats a satoshi amount as a BTC decimal string. */
-function satsToBtc(sats: number): string {
-  return (sats / SATS_PER_BTC).toFixed(8);
-}
 
 
 /** Whether the initial "have we seen any tx yet" window has lapsed. */
