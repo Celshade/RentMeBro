@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import {
+  btcToSats,
   formatBillingPeriod,
   formatInvoiceKind,
   formatMoney,
+  satsToBtc,
+  satsToUsdEstimate,
 } from '../api/format';
 import type {
   BtcSettings,
@@ -37,25 +40,35 @@ function AttachBtcPaymentForm({
   onAttached: (invoice: Invoice) => void;
 }) {
   const [address, setAddress] = useState(invoice.btc_address);
-  const [amountSats, setAmountSats] = useState(
-    invoice.btc_amount_sats?.toString() ?? ''
+  const [amountBtc, setAmountBtc] = useState(
+    invoice.btc_amount_sats !== null
+      ? satsToBtc(invoice.btc_amount_sats)
+      : ''
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usdPerBtc, setUsdPerBtc] = useState<number | null>(null);
+
+  useEffect(() => {
+    apiFetch<{ usd: number }>('/api/payments/btc/price/')
+      .then((data) => setUsdPerBtc(data.usd))
+      .catch(() => setUsdPerBtc(null));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    const amountSats = btcToSats(amountBtc);
     try {
       await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
         method: 'POST',
-        body: { address, amount_sats: Number(amountSats) },
+        body: { address, amount_sats: amountSats },
       });
       onAttached({
         ...invoice,
         btc_address: address,
-        btc_amount_sats: Number(amountSats),
+        btc_amount_sats: amountSats,
       });
     } catch {
       setError('Could not attach BTC payment info. Try again.');
@@ -63,6 +76,11 @@ function AttachBtcPaymentForm({
       setSubmitting(false);
     }
   }
+
+  const estimatedUsd =
+    usdPerBtc !== null && amountBtc !== ''
+      ? satsToUsdEstimate(btcToSats(amountBtc), usdPerBtc)
+      : null;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -76,15 +94,33 @@ function AttachBtcPaymentForm({
         />
       </label>
       <label>
-        Amount (satoshis)
+        Amount (BTC)
         <input
           type="number"
-          min="1"
-          value={amountSats}
-          onChange={(e) => setAmountSats(e.target.value)}
+          min="0.00000001"
+          step="0.00000001"
+          value={amountBtc}
+          onChange={(e) => setAmountBtc(e.target.value)}
           required
         />
       </label>
+      {usdPerBtc !== null && (
+        <p className="btc-price-hint">
+          1 BTC ≈ ${usdPerBtc.toLocaleString()}
+          {estimatedUsd !== null && ` — this amount ≈ $${estimatedUsd}`}
+          <span
+            className="btc-price-hint__info"
+            title={
+              'Recent BTC price taken from mempool.space; this is not ' +
+              'a source of truth. You are responsible for verifying ' +
+              'the price and entering your own amount.'
+            }
+          >
+            {' '}
+            ⓘ
+          </span>
+        </p>
+      )}
       <button type="submit" className="button--btc" disabled={submitting}>
         {submitting ? 'Saving...' : 'Attach BTC payment'}
       </button>
@@ -220,10 +256,10 @@ export function InvoiceDetail() {
             <div className="card__header">
               <h2>BTC Payment</h2>
             </div>
-            {invoice.btc_address && (
+            {invoice.btc_address && invoice.btc_amount_sats !== null && (
               <p>
                 Currently attached: {invoice.btc_address} (
-                {invoice.btc_amount_sats} sats)
+                {satsToBtc(invoice.btc_amount_sats)} BTC)
               </p>
             )}
             <AttachBtcPaymentForm invoice={invoice} onAttached={setInvoice} />
