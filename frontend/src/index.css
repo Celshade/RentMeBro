@@ -4,9 +4,12 @@
   --bg: #fff;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+  --accent: #475569;
+  --accent-bg: rgba(71, 85, 105, 0.1);
+  --accent-border: rgba(71, 85, 105, 0.5);
+  --stripe-purple: #aa3bff;
+  --stripe-purple-bg: rgba(170, 59, 255, 0.1);
+  --stripe-purple-border: rgba(170, 59, 255, 0.5);
   --driven-full: #0891b2;
   --driven-full-bg: rgba(8, 145, 178, 0.18);
   --driven-full-border: rgba(8, 145, 178, 0.65);
@@ -54,9 +57,12 @@
     --bg: #16171d;
     --border: #2e303a;
     --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
+    --accent: #94a3b8;
+    --accent-bg: rgba(148, 163, 184, 0.15);
+    --accent-border: rgba(148, 163, 184, 0.5);
+    --stripe-purple: #c084fc;
+    --stripe-purple-bg: rgba(192, 132, 252, 0.15);
+    --stripe-purple-border: rgba(192, 132, 252, 0.5);
     --driven-full: #22d3ee;
     --driven-full-bg: rgba(34, 211, 238, 0.25);
     --driven-full-border: rgba(34, 211, 238, 0.7);
@@ -494,12 +500,12 @@ button:disabled {
 }
 
 .button--stripe {
-  border-color: var(--accent-border);
-  color: var(--accent);
+  border-color: var(--stripe-purple-border);
+  color: var(--stripe-purple);
 }
 
 .button--stripe:hover {
-  background: var(--accent-bg);
+  background: var(--stripe-purple-bg);
 }
 
 .button--btc {
