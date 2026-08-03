@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { formatUserName } from '../api/format';
 import type { ConnectStatus, Lease } from '../api/types';
+import { BtcPaymentSettings } from './BtcPaymentSettings';
 import { CreateLease } from './CreateLease';
 import { LeaseDashboard } from './LeaseDashboard';
 import { StripeConnectSettings } from './StripeConnectSettings';
@@ -37,6 +38,7 @@ export function LandlordDashboard({
   const [selectedLeaseId, setSelectedLeaseId] = useState<number | null>(null);
   const [addingLease, setAddingLease] = useState(false);
   const [showPaymentSettings, setShowPaymentSettings] = useState(false);
+  const [showBtcSettings, setShowBtcSettings] = useState(false);
   const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(
     null
   );
@@ -75,6 +77,10 @@ export function LandlordDashboard({
         onClose={() => setShowPaymentSettings(false)}
       />
     );
+  }
+
+  if (showBtcSettings) {
+    return <BtcPaymentSettings onClose={() => setShowBtcSettings(false)} />;
   }
 
   const paymentsLabel = paymentsStatusLabel(connectStatus);
@@ -129,6 +135,9 @@ export function LandlordDashboard({
                 {refreshingConnect ? 'Refreshing...' : 'Refresh status'}
               </button>
             )}
+            <button type="button" onClick={() => setShowBtcSettings(true)}>
+              BTC Payments
+            </button>
             <button type="button" onClick={() => setAddingLease(true)}>
               Add another renter
             </button>
@@ -183,6 +192,9 @@ export function LandlordDashboard({
               {refreshingConnect ? 'Refreshing...' : 'Refresh status'}
             </button>
           )}
+          <button type="button" onClick={() => setShowBtcSettings(true)}>
+            BTC Payments
+          </button>
           <button type="button" onClick={() => setAddingLease(true)}>
             Add another renter
           </button>
