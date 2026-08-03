@@ -8,12 +8,18 @@ from rest_framework.views import APIView
 
 from billing.models import Invoice
 from billing.permissions import IsLandlord
+from billing.services import InvoiceLockedError
 from payments.services import (
+    BtcNotEnabledError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
+    attach_btc_payment,
+    check_btc_payment,
     create_payment_intent_for_invoice,
+    enable_btc_payments,
     handle_account_updated,
     handle_payment_intent_succeeded,
+    initiate_btc_watch,
     refresh_connect_status,
     start_connect_onboarding,
 )
@@ -147,3 +153,95 @@ class ConnectWebhookView(APIView):
             handle_account_updated(event['data']['object'])
 
         return Response(status=status.HTTP_200_OK)
+
+
+class BtcSettingsView(APIView):
+    """Reports and enables the landlord's BTC payment option."""
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def get(self, request) -> Response:
+        return Response({"enabled": request.user.btc_payments_enabled})
+
+    def post(self, request) -> Response:
+        if request.data.get("agree") is not True:
+            return Response(
+                {"detail": "You must confirm before enabling BTC payments."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        enable_btc_payments(request.user)
+        return Response({"enabled": True})
+
+
+class InvoiceBtcAttachView(APIView):
+    """Attaches a fixed BTC address/amount to an invoice as a landlord."""
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def post(self, request, invoice_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice,
+            id=invoice_id,
+            billing_period__landlord=request.user,
+        )
+        try:
+            attach_btc_payment(
+                invoice,
+                request.data.get("address", ""),
+                request.data.get("amount_sats"),
+            )
+        except InvoiceLockedError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
+            )
+        except BtcNotEnabledError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(
+            {
+                "btc_address": invoice.btc_address,
+                "btc_amount_sats": invoice.btc_amount_sats,
+            }
+        )
+
+
+def _btc_status_response(invoice: Invoice) -> Response:
+    return Response(
+        {
+            "btc_address": invoice.btc_address,
+            "btc_amount_sats": invoice.btc_amount_sats,
+            "btc_watch_expires_at": invoice.btc_watch_expires_at,
+            "status": invoice.status,
+        }
+    )
+
+
+class InvoiceBtcWatchView(APIView):
+    """Starts (or restarts) the renter's BTC payment watch window."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, invoice_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice, id=invoice_id, billing_period__renter=request.user
+        )
+        invoice = initiate_btc_watch(invoice)
+        return _btc_status_response(invoice)
+
+
+class InvoiceBtcCheckView(APIView):
+    """Polls mempool.space for the renter's BTC payment status.
+
+    Hit by the renter's browser every 60 seconds while the "Pay with
+    BTC" panel is open.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, invoice_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice, id=invoice_id, billing_period__renter=request.user
+        )
+        invoice = check_btc_payment(invoice)
+        return _btc_status_response(invoice)
