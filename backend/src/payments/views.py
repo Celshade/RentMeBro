@@ -17,6 +17,7 @@ from payments.services import (
     check_btc_payment,
     create_payment_intent_for_invoice,
     enable_btc_payments,
+    get_btc_usd_price,
     handle_account_updated,
     handle_payment_intent_succeeded,
     initiate_btc_watch,
@@ -171,6 +172,21 @@ class BtcSettingsView(APIView):
             )
         enable_btc_payments(request.user)
         return Response({"enabled": True})
+
+
+class BtcPriceView(APIView):
+    """Reports the current BTC/USD price for manual amount entry."""
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def get(self, request) -> Response:
+        price = get_btc_usd_price()
+        if price is None:
+            return Response(
+                {"detail": "BTC price is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({"usd": price})
 
 
 class InvoiceBtcAttachView(APIView):

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from payments.views import (
+    BtcPriceView,
     BtcSettingsView,
     ConnectOnboardingView,
     ConnectStatusView,
@@ -40,6 +41,11 @@ urlpatterns = [
         "payments/btc/settings/",
         BtcSettingsView.as_view(),
         name="btc-settings",
+    ),
+    path(
+        "payments/btc/price/",
+        BtcPriceView.as_view(),
+        name="btc-price",
     ),
     path(
         "invoices/<int:invoice_id>/btc/",
