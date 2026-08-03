@@ -1,5 +1,6 @@
 import type { InvoiceKind, User } from './types';
 
+const SATS_PER_BTC = 100_000_000;
 
 const INVOICE_KIND_LABELS: Record<InvoiceKind, string> = {
   combined: 'Rent + Gas',
@@ -62,6 +63,38 @@ export function formatBillingPeriod(month: number, year: number): string {
 export function formatUserName(user: User): string {
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ');
   return name || user.email;
+}
+
+
+/**
+ * Formats a satoshi amount as a BTC decimal string.
+ * @param sats - An amount in satoshis.
+ * @returns The equivalent BTC amount, fixed to 8 decimal places.
+ */
+export function satsToBtc(sats: number): string {
+  return (sats / SATS_PER_BTC).toFixed(8);
+}
+
+
+/**
+ * Converts a BTC decimal amount to whole satoshis.
+ * @param btc - A BTC amount, as typed by the user (e.g. "0.0021").
+ * @returns The equivalent amount in satoshis, rounded to the nearest
+ *   whole sat.
+ */
+export function btcToSats(btc: string): number {
+  return Math.round(Number(btc) * SATS_PER_BTC);
+}
+
+
+/**
+ * Formats a satoshi amount's estimated USD value at a given BTC price.
+ * @param sats - An amount in satoshis.
+ * @param usdPerBtc - The current price of 1 BTC in USD.
+ * @returns The estimated USD value, fixed to 2 decimal places.
+ */
+export function satsToUsdEstimate(sats: number, usdPerBtc: number): string {
+  return ((sats / SATS_PER_BTC) * usdPerBtc).toFixed(2);
 }
 
 
