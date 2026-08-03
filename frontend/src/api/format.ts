@@ -99,6 +99,17 @@ export function satsToUsdEstimate(sats: number, usdPerBtc: number): string {
 
 
 /**
+ * Converts a USD decimal amount to its equivalent BTC amount.
+ * @param usd - A USD amount, as typed by the user (e.g. "50.00").
+ * @param usdPerBtc - The current price of 1 BTC in USD.
+ * @returns The equivalent BTC amount, fixed to 8 decimal places.
+ */
+export function usdToBtc(usd: string, usdPerBtc: number): string {
+  return (Number(usd) / usdPerBtc).toFixed(8);
+}
+
+
+/**
  * Formats a user's name alongside their email, when the two differ.
  * @param user - The user to format.
  * @returns "Name (email)", or just the email if no name is set.
