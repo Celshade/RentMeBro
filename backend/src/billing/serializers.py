@@ -166,11 +166,14 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = [
-            'id', 'billing_period', 'kind', 'status', 'due_date',
-            'stripe_payment_intent_id', 'created_at', 'line_items', 'total',
-            'is_late',
+            "id", "billing_period", "kind", "status", "due_date",
+            "stripe_payment_intent_id", "created_at", "line_items", "total",
+            "is_late", "btc_address", "btc_amount_sats",
         ]
-        read_only_fields = ['status', 'stripe_payment_intent_id', 'created_at']
+        read_only_fields = [
+            "status", "stripe_payment_intent_id", "created_at",
+            "btc_address", "btc_amount_sats",
+        ]
 
 
 class InvoiceWeekDaySerializer(serializers.Serializer):
