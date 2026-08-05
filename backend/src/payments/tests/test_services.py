@@ -379,8 +379,30 @@ class TestInitiateBtcWatch:
         assert result.btc_watch_expires_at is None
         assert result.btc_amount_sats is None
 
-    def test_noop_if_not_sent_or_partial(self):
-        invoice = _btc_enabled_invoice(status=Invoice.Status.DRAFT)
+    def test_starts_watch_for_draft_invoice(self, mocker):
+        """Nothing promotes an invoice out of DRAFT, so refusing to
+        watch one would block BTC on every generated invoice while
+        Stripe kept billing them.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.DRAFT, btc_address="bc1qexample"
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_watch_expires_at is not None
+        assert result.btc_amount_sats == 200000  # $100 @ $50k/BTC
+
+    @pytest.mark.parametrize(
+        "status",
+        [Invoice.Status.PENDING, Invoice.Status.PAID, Invoice.Status.VOID],
+    )
+    def test_noop_if_invoice_is_not_payable(self, status):
+        invoice = _btc_enabled_invoice(status=status)
 
         result = initiate_btc_watch(invoice)
 
