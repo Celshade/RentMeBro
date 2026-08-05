@@ -11,14 +11,23 @@
  * @param props.address - The invoice's attached BTC address. Renders
  *   nothing when empty, so callers can pass `invoice.btc_address`
  *   straight through without guarding first.
+ * @param props.label - What the glyph is marking, for the tooltip and
+ *   screen readers. Defaults to the whole-invoice wording; pass
+ *   something else when marking a single line item.
  */
-export function BtcAttachedGlyph({ address }: { address: string }) {
+export function BtcAttachedGlyph({
+  address,
+  label = 'Bitcoin payment available',
+}: {
+  address: string;
+  label?: string;
+}) {
   if (!address) return null;
   return (
     <span
       className="btc-glyph"
-      title={`Bitcoin payment available — ${address}`}
-      aria-label="Bitcoin payment available"
+      title={`${label} — ${address}`}
+      aria-label={label}
     >
       ₿
     </span>
