@@ -10,9 +10,11 @@ from billing.models import Invoice
 from billing.permissions import IsLandlord
 from billing.services import InvoiceLockedError
 from payments.services import (
+    BtcLineItemError,
     BtcNotEnabledError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
+    NothingLeftToChargeError,
     attach_btc_payment,
     check_btc_payment,
     create_payment_intent_for_invoice,
@@ -48,6 +50,10 @@ class InvoicePaymentIntentView(APIView):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
         except InvoiceAlreadyPaidError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
+            )
+        except NothingLeftToChargeError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -206,16 +212,25 @@ class InvoiceBtcAttachView(APIView):
             billing_period__landlord=request.user,
         )
         try:
-            attach_btc_payment(invoice, request.data.get("address", ""))
+            attach_btc_payment(
+                invoice,
+                request.data.get("address", ""),
+                line_item_id=request.data.get("line_item"),
+            )
         except InvoiceLockedError as exc:
             return Response(
                 {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
             )
-        except BtcNotEnabledError as exc:
+        except (BtcNotEnabledError, BtcLineItemError) as exc:
             return Response(
                 {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
-        return Response({"btc_address": invoice.btc_address})
+        return Response(
+            {
+                "btc_address": invoice.btc_address,
+                "btc_line_item": invoice.btc_line_item_id,
+            }
+        )
 
 
 def _btc_status_response(invoice: Invoice) -> Response:
