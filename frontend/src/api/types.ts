@@ -203,6 +203,7 @@ export type InvoiceStatus =
   | 'sent'
   | 'pending'
   | 'partial'
+  | 'underpaid'
   | 'paid'
   | 'void';
 
