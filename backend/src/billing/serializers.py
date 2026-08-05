@@ -162,6 +162,13 @@ class InvoiceSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True
     )
     is_late = serializers.BooleanField(read_only=True)
+    btc_portion_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    stripe_portion_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    is_split_payment = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Invoice
@@ -169,11 +176,13 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "id", "billing_period", "kind", "status", "due_date",
             "stripe_payment_intent_id", "created_at", "line_items", "total",
             "is_late", "btc_address", "btc_amount_sats",
-            "remainder_owed_usd",
+            "remainder_owed_usd", "btc_line_item", "btc_portion_usd",
+            "stripe_portion_usd", "is_split_payment",
         ]
         read_only_fields = [
             "status", "stripe_payment_intent_id", "created_at",
             "btc_address", "btc_amount_sats", "remainder_owed_usd",
+            "btc_line_item",
         ]
 
 
