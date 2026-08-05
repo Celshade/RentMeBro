@@ -49,10 +49,10 @@ def resolve_settled_status(invoice: Invoice) -> str:
     """Works out an invoice's status from which payment legs have settled.
 
     An invoice split across BTC and card only reaches PAID once both
-    legs land; until then it sits at PARTIAL, which is also what a BTC
-    underpayment produces. The two are told apart by
-    `remainder_owed_usd` (set only on a shortfall) rather than by
-    status, so neither meaning has to own the field.
+    legs land; until then it sits at PARTIAL. A BTC shortfall is the
+    separate UNDERPAID status, and outranks PARTIAL when both apply
+    (the renter underpaid one leg of a split invoice) because being
+    short needs chasing, while a missing second leg is just progress.
 
     Args:
         invoice: The invoice to resolve. Its `btc_settled_at` /
@@ -62,6 +62,8 @@ def resolve_settled_status(invoice: Invoice) -> str:
     Returns:
         The status the invoice should now hold.
     """
+    if invoice.remainder_owed_usd and invoice.remainder_owed_usd > 0:
+        return Invoice.Status.UNDERPAID
     if not invoice.is_split_payment:
         return Invoice.Status.PAID
     if invoice.btc_settled_at is not None and (
@@ -91,8 +93,19 @@ def _settle_btc_leg(invoice: Invoice, confirmed: bool) -> None:
 
     if invoice.btc_settled_at is None:
         invoice.btc_settled_at = timezone.now()
+    # The tx that settles the leg clears any shortfall it was topping
+    # up, so the invoice doesn't resolve back to UNDERPAID on a stale
+    # remainder. The credited tx/amount stay as the audit trail.
+    invoice.remainder_owed_usd = None
     invoice.status = resolve_settled_status(invoice)
-    invoice.save(update_fields=["status", "btc_txid", "btc_settled_at"])
+    invoice.save(
+        update_fields=[
+            "status",
+            "btc_txid",
+            "btc_settled_at",
+            "remainder_owed_usd",
+        ]
+    )
 
 
 # PaymentIntent statuses that can't back a new Elements confirmation;
@@ -354,6 +367,7 @@ def attach_btc_payment(
     if invoice.status in (
         Invoice.Status.PENDING,
         Invoice.Status.PARTIAL,
+        Invoice.Status.UNDERPAID,
         Invoice.Status.PAID,
         Invoice.Status.VOID,
     ):
@@ -438,10 +452,9 @@ def _invoice_usd_owed(invoice: Invoice) -> Decimal:
     """The USD still owed via BTC: the BTC portion, or whatever's left
     after a prior underpayment was credited toward it.
 
-    Keys off `remainder_owed_usd` rather than PARTIAL status, because
-    PARTIAL now also covers a split invoice whose card leg settled
-    first — which carries no remainder and still owes its full BTC
-    portion.
+    Keys off `remainder_owed_usd` rather than status, so a split
+    invoice whose card leg settled first (PARTIAL, no remainder) still
+    quotes its full BTC portion rather than an empty one.
     """
     if invoice.remainder_owed_usd is not None:
         return invoice.remainder_owed_usd
@@ -512,7 +525,8 @@ def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
     If nothing satisfies that (grace-period) amount but something short
     of it was sent, that's a genuine shortfall rather than a timing
     race: it's credited toward the invoice as a fixed, logged USD
-    remainder (`Invoice.Status.PARTIAL`) rather than silently replaced.
+    remainder (`Invoice.Status.UNDERPAID`) rather than silently
+    replaced.
     The credited tx is excluded from all future matching so it can't
     also satisfy the smaller remainder quote generated next.
 
@@ -523,9 +537,9 @@ def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
 
     Returns:
         The updated invoice. If a full or grace-period match was
-        found, its status is now PENDING/PAID. Otherwise, unchanged
-        (no on-chain payment at all) or PARTIAL (a shortfall was
-        credited).
+        found, its status is now PENDING/PAID/PARTIAL. Otherwise,
+        unchanged (no on-chain payment at all) or UNDERPAID (a
+        shortfall was credited).
     """
     txs = _fetch_address_txs(invoice.btc_address)
     if txs is None:
@@ -554,7 +568,7 @@ def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
 
     credited_usd = _sats_to_usd(underpayment["paid_sats"], price)
     usd_owed = _invoice_usd_owed(invoice)
-    invoice.status = Invoice.Status.PARTIAL
+    invoice.status = Invoice.Status.UNDERPAID
     invoice.remainder_owed_usd = max(usd_owed - credited_usd, Decimal("0"))
     invoice.btc_credited_txid = underpayment["txid"]
     invoice.btc_credited_usd = credited_usd
@@ -580,9 +594,9 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
     the current quote is still live. Restarting (the prior window has
     lapsed) first reconciles that lapsed window (see
     `_reconcile_lapsed_watch`) before generating a fresh amount from
-    the current market price — against the invoice's full total, or
+    the current market price — against the invoice's BTC portion, or
     against whatever remainder is still owed if a prior underpayment
-    left the invoice PARTIAL.
+    left the invoice UNDERPAID.
 
     DRAFT counts as payable here: nothing in the product promotes an
     invoice out of DRAFT, renters see drafts on their dashboard, and
@@ -591,19 +605,20 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
     normally-generated invoice.
 
     Args:
-        invoice: The invoice being watched. Must be DRAFT, SENT or
-            PARTIAL, with a BTC address already attached and its BTC
-            leg not yet settled.
+        invoice: The invoice being watched. Must be DRAFT, SENT,
+            PARTIAL or UNDERPAID, with a BTC address already attached
+            and its BTC leg not yet settled.
 
     Returns:
         The updated invoice. If reconciling a lapsed window resolved
-        it (PENDING/PAID) or logged a new shortfall (PARTIAL with no
+        it (PENDING/PAID) or logged a new shortfall (UNDERPAID with no
         price data available), no new quote is generated.
     """
     if invoice.status not in (
         Invoice.Status.DRAFT,
         Invoice.Status.SENT,
         Invoice.Status.PARTIAL,
+        Invoice.Status.UNDERPAID,
     ):
         return invoice
     if invoice.btc_txid:
