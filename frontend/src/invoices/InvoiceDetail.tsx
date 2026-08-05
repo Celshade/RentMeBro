@@ -16,6 +16,7 @@ import type {
   InvoiceWeekDay,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { BtcAttachedBadge } from '../components/BtcAttachedBadge';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
@@ -190,11 +191,12 @@ export function InvoiceDetail() {
       <div className="stat-grid">
         <div className="stat-tile">
           <span className="stat-tile__label">Status</span>
-          <span className="stat-tile__value">
+          <span className="stat-tile__value stat-tile__value--badges">
             <InvoiceStatusBadge
               status={invoice.status}
               isLate={invoice.is_late}
             />
+            <BtcAttachedBadge address={invoice.btc_address} />
           </span>
         </div>
         <div className="stat-tile">
