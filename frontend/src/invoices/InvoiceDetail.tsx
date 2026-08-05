@@ -55,11 +55,11 @@ function AttachBtcPaymentForm({
     setSubmitting(true);
     setError(null);
     try {
-      // Keeps whatever line item the toggle assigned; this form only
+      // Keeps whatever line items the toggles assigned; this form only
       // owns the address.
       await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
         method: 'POST',
-        body: { address, line_item: invoice.btc_line_item },
+        body: { address, line_items: invoice.btc_line_items },
       });
       // Re-read rather than patching locally: the split portions are
       // derived server-side, so this keeps them authoritative.
@@ -178,20 +178,23 @@ export function InvoiceDetail() {
   }, [user]);
 
   /**
-   * Points the attached BTC address at one line item, or back at the
-   * whole invoice when the currently-assigned item is toggled off.
+   * Adds or removes one line item from the set the attached BTC address
+   * covers, leaving the other items' assignments alone. Clearing the
+   * last one points BTC back at the whole invoice.
    * @param lineItemId - The line item being toggled.
    */
   async function handleAssignBtc(lineItemId: number) {
     if (!invoice) return;
-    const nextItemId =
-      invoice.btc_line_item === lineItemId ? null : lineItemId;
+    const assigned = invoice.btc_line_items;
+    const nextItemIds = assigned.includes(lineItemId)
+      ? assigned.filter((id) => id !== lineItemId)
+      : [...assigned, lineItemId];
     setAssigningItemId(lineItemId);
     setAssignError(null);
     try {
       await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
         method: 'POST',
-        body: { address: invoice.btc_address, line_item: nextItemId },
+        body: { address: invoice.btc_address, line_items: nextItemIds },
       });
       setInvoice(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
     } catch {
@@ -275,36 +278,33 @@ export function InvoiceDetail() {
           <h2>Line items</h2>
         </div>
         <ul className="list">
-          {invoice.line_items.map((item) => (
-            <li key={item.id} className="list-row">
-              <span>
-                <BtcAttachedGlyph
-                  address={
-                    invoice.btc_line_item === item.id
-                      ? invoice.btc_address
-                      : ''
-                  }
-                  label="Paid in BTC"
-                />
-                {item.description}
-              </span>
-              <span className="renter-dashboard__invoice-actions">
-                ${item.amount}
-                {canAssignBtc && (
-                  <button
-                    type="button"
-                    className="button--btc"
-                    disabled={assigningItemId !== null}
-                    onClick={() => handleAssignBtc(item.id)}
-                  >
-                    {invoice.btc_line_item === item.id
-                      ? 'Unassign BTC'
-                      : 'Assign BTC'}
-                  </button>
-                )}
-              </span>
-            </li>
-          ))}
+          {invoice.line_items.map((item) => {
+            const isAssigned = invoice.btc_line_items.includes(item.id);
+            return (
+              <li key={item.id} className="list-row">
+                <span>
+                  <BtcAttachedGlyph
+                    address={isAssigned ? invoice.btc_address : ''}
+                    label="Paid in BTC"
+                  />
+                  {item.description}
+                </span>
+                <span className="renter-dashboard__invoice-actions">
+                  ${item.amount}
+                  {canAssignBtc && (
+                    <button
+                      type="button"
+                      className="button--btc"
+                      disabled={assigningItemId !== null}
+                      onClick={() => handleAssignBtc(item.id)}
+                    >
+                      {isAssigned ? 'Unassign BTC' : 'Assign BTC'}
+                    </button>
+                  )}
+                </span>
+              </li>
+            );
+          })}
         </ul>
         {assignError && <p role="alert">{assignError}</p>}
       </section>
