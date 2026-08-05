@@ -332,7 +332,7 @@ def enable_btc_payments(landlord: User) -> None:
 
 
 def attach_btc_payment(
-    invoice: Invoice, address: str, line_item_id: int | None = None
+    invoice: Invoice, address: str, line_item_ids: list[int] | None = None
 ) -> Invoice:
     """Attaches a BTC address to an invoice as a payment option.
 
@@ -341,17 +341,18 @@ def attach_btc_payment(
     moment the renter actually starts paying (`initiate_btc_watch`),
     not chosen by the landlord up front.
 
-    Optionally scopes BTC to a single line item, so a landlord can take
-    (say) gas in BTC and leave rent on card. Scoping is only offered
-    when there's more than one line item: pointing BTC at an invoice's
-    only charge is just a whole-invoice BTC payment, and it would leave
-    the card leg with nothing to bill.
+    Optionally scopes BTC to a subset of the line items, so a landlord
+    can take (say) gas in BTC and leave rent on card, or take both in
+    BTC. Scoping is only offered when there's more than one line item:
+    pointing BTC at an invoice's only charge is just a whole-invoice BTC
+    payment, and it would leave the card leg with nothing to bill.
 
     Args:
         invoice: The invoice to attach a BTC address to.
         address: The landlord's BTC address to display to the renter.
-        line_item_id: The line item BTC should cover, or None for the
-            whole invoice. Passing None clears any existing scope.
+        line_item_ids: The line items BTC should cover, or None/empty
+            for the whole invoice. Passing None clears any existing
+            scope.
 
     Returns:
         The updated invoice.
@@ -361,7 +362,7 @@ def attach_btc_payment(
             has an outstanding BTC remainder, paid, or void.
         BtcNotEnabledError: If the landlord hasn't enabled BTC
             payments.
-        BtcLineItemError: If the line item doesn't belong to this
+        BtcLineItemError: If a line item doesn't belong to this
             invoice, or the invoice has only one line item.
     """
     if invoice.status in (
@@ -381,7 +382,8 @@ def attach_btc_payment(
             "Landlord hasn't enabled BTC payments yet."
         )
 
-    if line_item_id is not None:
+    item_ids = list(line_item_ids or [])
+    if item_ids:
         if invoice.line_items.count() < 2:
             raise BtcLineItemError(
                 "This invoice has only one charge, so BTC can't be "
@@ -389,14 +391,20 @@ def attach_btc_payment(
             )
         # Scoped to the invoice's own line items, so a landlord can't
         # point BTC at a charge on someone else's invoice.
-        if not invoice.line_items.filter(id=line_item_id).exists():
+        owned_ids = set(
+            invoice.line_items.filter(id__in=item_ids).values_list(
+                "id", flat=True
+            )
+        )
+        stray_ids = [id_ for id_ in item_ids if id_ not in owned_ids]
+        if stray_ids:
             raise BtcLineItemError(
-                f"Line item {line_item_id} isn't part of this invoice."
+                f"Line item {stray_ids[0]} isn't part of this invoice."
             )
 
     invoice.btc_address = address
-    invoice.btc_line_item_id = line_item_id
-    invoice.save(update_fields=["btc_address", "btc_line_item"])
+    invoice.save(update_fields=["btc_address"])
+    invoice.btc_line_items.set(item_ids)
     return invoice
 
 
