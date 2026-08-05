@@ -399,6 +399,14 @@ body {
   border-left-color: var(--btc-orange);
 }
 
+.pay-invoice__split-notice {
+  font-size: 14px;
+  color: var(--text);
+  border-left: 3px solid var(--btc-orange);
+  padding-left: 10px;
+  margin-bottom: 12px;
+}
+
 .btc-glyph {
   color: var(--btc-orange);
   font-weight: 700;
