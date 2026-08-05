@@ -39,6 +39,9 @@ function AttachBtcPaymentForm({
   onAttached: (invoice: Invoice) => void;
 }) {
   const [address, setAddress] = useState(invoice.btc_address);
+  const [lineItemId, setLineItemId] = useState<number | null>(
+    invoice.btc_line_item
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usdPerBtc, setUsdPerBtc] = useState<number | null>(null);
@@ -49,6 +52,13 @@ function AttachBtcPaymentForm({
       .catch(() => setUsdPerBtc(null));
   }, []);
 
+  // Scoping only makes sense with something left over for the card leg;
+  // pointing BTC at an invoice's only charge is a whole-invoice payment.
+  const canScope = invoice.line_items.length > 1;
+  const scopedItem =
+    invoice.line_items.find((item) => item.id === lineItemId) ?? null;
+  const coveredUsd = scopedItem ? scopedItem.amount : invoice.total;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -56,9 +66,11 @@ function AttachBtcPaymentForm({
     try {
       await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
         method: 'POST',
-        body: { address },
+        body: { address, line_item: lineItemId },
       });
-      onAttached({ ...invoice, btc_address: address });
+      // Re-read rather than patching locally: the split portions are
+      // derived server-side, so this keeps them authoritative.
+      onAttached(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
     } catch {
       setError('Could not attach BTC address. Try again.');
     } finally {
@@ -67,7 +79,7 @@ function AttachBtcPaymentForm({
   }
 
   const estimatedBtc =
-    usdPerBtc !== null ? usdToBtc(invoice.total, usdPerBtc) : null;
+    usdPerBtc !== null ? usdToBtc(coveredUsd, usdPerBtc) : null;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -80,11 +92,41 @@ function AttachBtcPaymentForm({
           required
         />
       </label>
+      {canScope && (
+        <label>
+          BTC covers
+          <select
+            value={lineItemId ?? ''}
+            onChange={(e) =>
+              setLineItemId(e.target.value ? Number(e.target.value) : null)
+            }
+          >
+            <option value="">
+              Entire invoice (${formatMoney(invoice.total)})
+            </option>
+            {invoice.line_items.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.description} (${formatMoney(item.amount)})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {scopedItem && (
+        <p className="btc-price-hint">
+          The renter pays ${formatMoney(scopedItem.amount)} in BTC and the
+          remaining $
+          {formatMoney(
+            String(Number(invoice.total) - Number(scopedItem.amount))
+          )}{' '}
+          by card.
+        </p>
+      )}
       {usdPerBtc !== null && (
         <p className="btc-price-hint">
           1 BTC ≈ ${usdPerBtc.toLocaleString()}
           {estimatedBtc !== null &&
-            ` — this invoice's ${formatMoney(invoice.total)} \
+            ` — the BTC portion's ${formatMoney(coveredUsd)} \
 ≈ ${estimatedBtc} BTC`}
           <span
             className="btc-price-hint__info"
@@ -203,6 +245,12 @@ export function InvoiceDetail() {
           <span className="stat-tile__value">
             {invoice.btc_address ? '₿ BTC + Cash App' : 'Cash App'}
           </span>
+          {invoice.is_split_payment && (
+            <span className="stat-tile__meta">
+              ${formatMoney(invoice.btc_portion_usd)} in BTC ·{' '}
+              ${formatMoney(invoice.stripe_portion_usd)} by card
+            </span>
+          )}
           {invoice.btc_address && (
             <span className="stat-tile__meta">{invoice.btc_address}</span>
           )}
@@ -248,6 +296,9 @@ export function InvoiceDetail() {
               <p>
                 Currently attached: {invoice.btc_address} (
                 {satsToBtc(invoice.btc_amount_sats)} BTC)
+                {invoice.is_split_payment &&
+                  `, covering $${formatMoney(invoice.btc_portion_usd)} of \
+this invoice`}
               </p>
             )}
             <AttachBtcPaymentForm invoice={invoice} onAttached={setInvoice} />
