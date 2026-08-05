@@ -226,8 +226,22 @@ export type InvoiceStatus =
  *   amount, in satoshis, or null if no payment attempt is in
  *   progress.
  * @property remainder_owed_usd - The outstanding USD balance still
- *   owed via BTC after a prior underpayment, or null unless the
- *   invoice is 'partial'.
+ *   owed via BTC after a prior underpayment, or null when there's no
+ *   shortfall. This is what distinguishes an underpaid invoice from
+ *   one merely split across two payment methods, since both sit at
+ *   'partial'.
+ * @property btc_line_item - The id of the line item the BTC address
+ *   covers, or null when it covers the whole invoice.
+ * @property btc_portion_usd - The USD the BTC leg owes, as a decimal
+ *   string: one line item's amount, or the full total.
+ * @property stripe_portion_usd - The USD left for the card leg, as a
+ *   decimal string.
+ * @property is_split_payment - Whether this invoice needs both a BTC
+ *   and a card payment to settle. False when BTC covers everything.
+ * @property btc_settled_at - When the BTC leg settled (ISO 8601), or
+ *   null if it hasn't.
+ * @property stripe_settled_at - When the card leg settled (ISO 8601),
+ *   or null if it hasn't.
  */
 export interface Invoice {
   id: number;
@@ -243,6 +257,12 @@ export interface Invoice {
   btc_address: string;
   btc_amount_sats: number | null;
   remainder_owed_usd: string | null;
+  btc_line_item: number | null;
+  btc_portion_usd: string;
+  stripe_portion_usd: string;
+  is_split_payment: boolean;
+  btc_settled_at: string | null;
+  stripe_settled_at: string | null;
 }
 
 
