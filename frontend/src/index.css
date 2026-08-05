@@ -830,7 +830,7 @@ code {
 
 /* A BTC underpayment needs chasing; an invoice merely split across two
    payment methods doesn't. Amber separates the shortfall from the
-   orange "Partially Paid" pill without adding a second badge. */
+   orange "Partially Paid" pill. */
 .status-badge--underpaid {
   color: #b45309;
   background: rgba(180, 83, 9, 0.12);
