@@ -361,6 +361,7 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
     if invoice.status in (
         Invoice.Status.PENDING,
         Invoice.Status.PARTIAL,
+        Invoice.Status.UNDERPAID,
         Invoice.Status.PAID,
         Invoice.Status.VOID,
     ):
