@@ -15,11 +15,14 @@ from billing.tests.factories import (
     InvoiceFactory,
     InvoiceLineItemFactory,
 )
+from billing.models import InvoiceLineItem
 from payments.services import (
     BTC_PRICE_CACHE_KEY,
+    BtcLineItemError,
     BtcNotEnabledError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
+    NothingLeftToChargeError,
     _sats_to_usd,
     _usd_to_sats,
     attach_btc_payment,
@@ -71,6 +74,46 @@ class TestCreatePaymentIntentForInvoice:
         mock_retrieve.assert_not_called()
         invoice.refresh_from_db()
         assert invoice.stripe_payment_intent_id == 'pi_new123'
+
+    def test_charges_only_the_card_portion_of_a_split_invoice(self, mocker):
+        """Billing the full total alongside a line-item-scoped BTC
+        address would charge the BTC-covered line item twice.
+        """
+        invoice = _onboarded_invoice()
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal('1000.00'))
+        gas = InvoiceLineItemFactory(
+            invoice=invoice,
+            amount=Decimal('200.00'),
+            kind=InvoiceLineItem.Kind.GAS,
+        )
+        invoice.btc_line_item = gas
+        invoice.save(update_fields=['btc_line_item'])
+        fake_intent = MagicMock(id='pi_split', client_secret='secret')
+        mock_create = mocker.patch(
+            'payments.services.stripe.PaymentIntent.create',
+            return_value=fake_intent,
+        )
+
+        create_payment_intent_for_invoice(invoice)
+
+        # $1000 of rent, not the $1200 invoice total.
+        assert mock_create.call_args.kwargs['amount'] == 100000
+
+    def test_raises_when_btc_covers_the_whole_invoice(self, mocker):
+        invoice = _onboarded_invoice()
+        only_item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal('500.00')
+        )
+        invoice.btc_line_item = only_item
+        invoice.save(update_fields=['btc_line_item'])
+        mock_create = mocker.patch(
+            'payments.services.stripe.PaymentIntent.create'
+        )
+
+        with pytest.raises(NothingLeftToChargeError):
+            create_payment_intent_for_invoice(invoice)
+
+        mock_create.assert_not_called()
 
     def test_reuses_existing_intent(self, mocker):
         invoice = _onboarded_invoice(stripe_payment_intent_id='pi_existing')
@@ -299,6 +342,26 @@ def _btc_enabled_invoice(**kwargs) -> Invoice:
     return InvoiceFactory(billing_period=billing_period, **kwargs)
 
 
+def _two_line_item_invoice(**kwargs) -> tuple[Invoice, InvoiceLineItem]:
+    """A $1000 rent + $200 gas invoice, returned with its gas line item.
+
+    Gas is the charge these tests scope BTC to, leaving $1000 of rent
+    for the card leg.
+    """
+    invoice = _btc_enabled_invoice(**kwargs)
+    InvoiceLineItemFactory(
+        invoice=invoice,
+        amount=Decimal("1000.00"),
+        kind=InvoiceLineItem.Kind.RENT,
+    )
+    gas = InvoiceLineItemFactory(
+        invoice=invoice,
+        amount=Decimal("200.00"),
+        kind=InvoiceLineItem.Kind.GAS,
+    )
+    return invoice, gas
+
+
 class TestAttachBtcPayment:
     def test_attaches_address(self):
         invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
@@ -329,6 +392,159 @@ class TestAttachBtcPayment:
 
         with pytest.raises(InvoiceLockedError):
             attach_btc_payment(invoice, "bc1qexample")
+
+    def test_scopes_btc_to_a_line_item(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+
+        result = attach_btc_payment(
+            invoice, "bc1qexample", line_item_id=gas.id
+        )
+
+        assert result.btc_line_item_id == gas.id
+        assert result.btc_portion_usd == Decimal("200.00")
+        assert result.stripe_portion_usd == Decimal("1000.00")
+        assert result.is_split_payment is True
+
+    def test_defaults_to_covering_the_whole_invoice(self):
+        invoice, _ = _two_line_item_invoice(status=Invoice.Status.SENT)
+
+        result = attach_btc_payment(invoice, "bc1qexample")
+
+        assert result.btc_line_item_id is None
+        assert result.btc_portion_usd == Decimal("1200.00")
+        assert result.is_split_payment is False
+
+    def test_reattaching_without_a_line_item_clears_the_scope(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        attach_btc_payment(invoice, "bc1qexample", line_item_id=gas.id)
+
+        result = attach_btc_payment(invoice, "bc1qexample")
+
+        assert result.btc_line_item_id is None
+
+    def test_raises_for_a_line_item_on_another_invoice(self):
+        """Scoping is filtered to the invoice's own line items, so a
+        landlord can't point BTC at someone else's charge.
+        """
+        invoice, _ = _two_line_item_invoice(status=Invoice.Status.SENT)
+        other_line_item = InvoiceLineItemFactory()
+
+        with pytest.raises(BtcLineItemError):
+            attach_btc_payment(
+                invoice, "bc1qexample", line_item_id=other_line_item.id
+            )
+
+    def test_raises_when_the_invoice_has_only_one_charge(self):
+        """Scoping BTC to an invoice's only line item is just a
+        whole-invoice payment, and leaves the card leg nothing to bill.
+        """
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        only_item = InvoiceLineItemFactory(invoice=invoice)
+
+        with pytest.raises(BtcLineItemError):
+            attach_btc_payment(
+                invoice, "bc1qexample", line_item_id=only_item.id
+            )
+
+
+class TestSplitPaymentSettlement:
+    """A split invoice reaches PAID only once both legs land."""
+
+    def _split_invoice(self) -> Invoice:
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        return attach_btc_payment(
+            invoice, "bc1qexample", line_item_id=gas.id
+        )
+
+    def test_btc_leg_alone_leaves_invoice_partial(self, mocker):
+        invoice = self._split_invoice()
+        mocker.patch(
+            "payments.services._fetch_address_txs",
+            return_value=[{"txid": "abc", "status": {"confirmed": True}}],
+        )
+        mocker.patch(
+            "payments.services._find_matching_output",
+            return_value={"txid": "abc", "status": {"confirmed": True}},
+        )
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PARTIAL
+        assert result.btc_settled_at is not None
+        assert result.stripe_settled_at is None
+
+    def test_card_leg_alone_leaves_invoice_partial(self):
+        invoice = self._split_invoice()
+        landlord = invoice.billing_period.landlord
+
+        handle_payment_intent_succeeded(
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id=landlord.stripe_account_id,
+        )
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PARTIAL
+        assert invoice.stripe_settled_at is not None
+
+    def test_both_legs_settle_the_invoice(self):
+        invoice = self._split_invoice()
+        invoice.btc_settled_at = timezone.now()
+        invoice.save(update_fields=["btc_settled_at"])
+        landlord = invoice.billing_period.landlord
+
+        handle_payment_intent_succeeded(
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id=landlord.stripe_account_id,
+        )
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
+
+    def test_unsplit_invoice_still_settles_on_one_leg(self):
+        """The card leg covering the whole invoice means PAID outright,
+        which is how every pre-split invoice behaves.
+        """
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        InvoiceLineItemFactory(invoice=invoice)
+        landlord = invoice.billing_period.landlord
+
+        handle_payment_intent_succeeded(
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id=landlord.stripe_account_id,
+        )
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
+
+    def test_watch_quotes_only_the_btc_portion(self, mocker):
+        invoice = self._split_invoice()
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        # $200 of gas @ $50k/BTC, not the $1200 invoice total.
+        assert result.btc_amount_sats == 400000
+
+    def test_watch_is_a_noop_once_the_btc_leg_settled(self, mocker):
+        """A split invoice waits at PARTIAL for its card leg, which the
+        status gate allows -- so a settled BTC leg must be caught
+        separately or the renter gets quoted for it twice.
+        """
+        invoice = self._split_invoice()
+        invoice.status = Invoice.Status.PARTIAL
+        invoice.btc_settled_at = timezone.now()
+        invoice.save(update_fields=["status", "btc_settled_at"])
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_amount_sats is None
+        assert result.btc_watch_expires_at is None
 
 
 class TestInitiateBtcWatch:
