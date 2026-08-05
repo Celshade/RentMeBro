@@ -16,6 +16,7 @@ import type {
   InvoiceWeekDay,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { BtcAttachedGlyph } from '../components/BtcAttachedGlyph';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
@@ -39,9 +40,6 @@ function AttachBtcPaymentForm({
   onAttached: (invoice: Invoice) => void;
 }) {
   const [address, setAddress] = useState(invoice.btc_address);
-  const [lineItemId, setLineItemId] = useState<number | null>(
-    invoice.btc_line_item
-  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usdPerBtc, setUsdPerBtc] = useState<number | null>(null);
@@ -52,21 +50,16 @@ function AttachBtcPaymentForm({
       .catch(() => setUsdPerBtc(null));
   }, []);
 
-  // Scoping only makes sense with something left over for the card leg;
-  // pointing BTC at an invoice's only charge is a whole-invoice payment.
-  const canScope = invoice.line_items.length > 1;
-  const scopedItem =
-    invoice.line_items.find((item) => item.id === lineItemId) ?? null;
-  const coveredUsd = scopedItem ? scopedItem.amount : invoice.total;
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
+      // Keeps whatever line item the toggle assigned; this form only
+      // owns the address.
       await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
         method: 'POST',
-        body: { address, line_item: lineItemId },
+        body: { address, line_item: invoice.btc_line_item },
       });
       // Re-read rather than patching locally: the split portions are
       // derived server-side, so this keeps them authoritative.
@@ -79,7 +72,9 @@ function AttachBtcPaymentForm({
   }
 
   const estimatedBtc =
-    usdPerBtc !== null ? usdToBtc(coveredUsd, usdPerBtc) : null;
+    usdPerBtc !== null
+      ? usdToBtc(invoice.btc_portion_usd, usdPerBtc)
+      : null;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -92,41 +87,11 @@ function AttachBtcPaymentForm({
           required
         />
       </label>
-      {canScope && (
-        <label>
-          BTC covers
-          <select
-            value={lineItemId ?? ''}
-            onChange={(e) =>
-              setLineItemId(e.target.value ? Number(e.target.value) : null)
-            }
-          >
-            <option value="">
-              Entire invoice (${formatMoney(invoice.total)})
-            </option>
-            {invoice.line_items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.description} (${formatMoney(item.amount)})
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {scopedItem && (
-        <p className="btc-price-hint">
-          The renter pays ${formatMoney(scopedItem.amount)} in BTC and the
-          remaining $
-          {formatMoney(
-            String(Number(invoice.total) - Number(scopedItem.amount))
-          )}{' '}
-          by card.
-        </p>
-      )}
       {usdPerBtc !== null && (
         <p className="btc-price-hint">
           1 BTC ≈ ${usdPerBtc.toLocaleString()}
           {estimatedBtc !== null &&
-            ` — the BTC portion's ${formatMoney(coveredUsd)} \
+            ` — the BTC portion's ${formatMoney(invoice.btc_portion_usd)} \
 ≈ ${estimatedBtc} BTC`}
           <span
             className="btc-price-hint__info"
@@ -187,6 +152,8 @@ export function InvoiceDetail() {
   const [btcSettings, setBtcSettings] = useState<BtcSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [assigningItemId, setAssigningItemId] = useState<number | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -210,11 +177,43 @@ export function InvoiceDetail() {
     );
   }, [user]);
 
+  /**
+   * Points the attached BTC address at one line item, or back at the
+   * whole invoice when the currently-assigned item is toggled off.
+   * @param lineItemId - The line item being toggled.
+   */
+  async function handleAssignBtc(lineItemId: number) {
+    if (!invoice) return;
+    const nextItemId =
+      invoice.btc_line_item === lineItemId ? null : lineItemId;
+    setAssigningItemId(lineItemId);
+    setAssignError(null);
+    try {
+      await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
+        method: 'POST',
+        body: { address: invoice.btc_address, line_item: nextItemId },
+      });
+      setInvoice(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
+    } catch {
+      setAssignError('Could not change what BTC covers. Try again.');
+    } finally {
+      setAssigningItemId(null);
+    }
+  }
+
   if (loading) return <p className="empty-state">Loading invoice…</p>;
   if (error) return <p className="empty-state">{error}</p>;
   if (!invoice) return <p className="empty-state">Invoice not found.</p>;
 
   const hasGasBreakdown = invoice.kind !== 'rent_only';
+  // Needs an address to point somewhere, more than one charge to split
+  // between, and an invoice that's still editable.
+  const canAssignBtc =
+    user?.role === 'landlord' &&
+    btcSettings?.enabled === true &&
+    invoice.btc_address !== '' &&
+    invoice.line_items.length > 1 &&
+    !LOCKED_STATUSES.has(invoice.status);
 
   return (
     <div className="invoice-detail">
@@ -278,11 +277,36 @@ export function InvoiceDetail() {
         <ul className="list">
           {invoice.line_items.map((item) => (
             <li key={item.id} className="list-row">
-              <span>{item.description}</span>
-              <span>${item.amount}</span>
+              <span>
+                <BtcAttachedGlyph
+                  address={
+                    invoice.btc_line_item === item.id
+                      ? invoice.btc_address
+                      : ''
+                  }
+                  label="Paid in BTC"
+                />
+                {item.description}
+              </span>
+              <span className="renter-dashboard__invoice-actions">
+                ${item.amount}
+                {canAssignBtc && (
+                  <button
+                    type="button"
+                    className="button--btc"
+                    disabled={assigningItemId !== null}
+                    onClick={() => handleAssignBtc(item.id)}
+                  >
+                    {invoice.btc_line_item === item.id
+                      ? 'Unassign BTC'
+                      : 'Assign BTC'}
+                  </button>
+                )}
+              </span>
             </li>
           ))}
         </ul>
+        {assignError && <p role="alert">{assignError}</p>}
       </section>
 
       {user?.role === 'landlord' &&
