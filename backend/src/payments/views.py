@@ -215,7 +215,7 @@ class InvoiceBtcAttachView(APIView):
             attach_btc_payment(
                 invoice,
                 request.data.get("address", ""),
-                line_item_id=request.data.get("line_item"),
+                line_item_ids=request.data.get("line_items"),
             )
         except InvoiceLockedError as exc:
             return Response(
@@ -228,7 +228,9 @@ class InvoiceBtcAttachView(APIView):
         return Response(
             {
                 "btc_address": invoice.btc_address,
-                "btc_line_item": invoice.btc_line_item_id,
+                "btc_line_items": list(
+                    invoice.btc_line_items.values_list("id", flat=True)
+                ),
             }
         )
 
