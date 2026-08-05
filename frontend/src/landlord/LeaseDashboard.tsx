@@ -14,6 +14,7 @@ import type {
   MileageProfile,
 } from '../api/types';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
+import { BtcAttachedBadge } from '../components/BtcAttachedBadge';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
@@ -411,6 +412,7 @@ export function LeaseDashboard({
                         status={invoice.status}
                         isLate={invoice.is_late}
                       />
+                      <BtcAttachedBadge address={invoice.btc_address} />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
                       {!isLocked && invoice.kind !== 'rent_only' && (
                         isEditing ? (
