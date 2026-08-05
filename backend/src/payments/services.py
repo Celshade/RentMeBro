@@ -479,16 +479,26 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
     against whatever remainder is still owed if a prior underpayment
     left the invoice PARTIAL.
 
+    DRAFT counts as payable here: nothing in the product promotes an
+    invoice out of DRAFT, renters see drafts on their dashboard, and
+    the Stripe path bills them without checking status. Excluding DRAFT
+    would leave BTC as the one method that silently refuses every
+    normally-generated invoice.
+
     Args:
-        invoice: The invoice being watched. Must be SENT or PARTIAL,
-            with a BTC address already attached.
+        invoice: The invoice being watched. Must be DRAFT, SENT or
+            PARTIAL, with a BTC address already attached.
 
     Returns:
         The updated invoice. If reconciling a lapsed window resolved
         it (PENDING/PAID) or logged a new shortfall (PARTIAL with no
         price data available), no new quote is generated.
     """
-    if invoice.status not in (Invoice.Status.SENT, Invoice.Status.PARTIAL):
+    if invoice.status not in (
+        Invoice.Status.DRAFT,
+        Invoice.Status.SENT,
+        Invoice.Status.PARTIAL,
+    ):
         return invoice
     if invoice.btc_txid:
         return invoice
