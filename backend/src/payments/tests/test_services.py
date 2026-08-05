@@ -8,14 +8,13 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from accounts.tests.factories import LandlordFactory
-from billing.models import Invoice
+from billing.models import Invoice, InvoiceLineItem
 from billing.services import InvoiceLockedError
 from billing.tests.factories import (
     BillingPeriodFactory,
     InvoiceFactory,
     InvoiceLineItemFactory,
 )
-from billing.models import InvoiceLineItem
 from payments.services import (
     BTC_PRICE_CACHE_KEY,
     BtcLineItemError,
@@ -33,6 +32,7 @@ from payments.services import (
     handle_account_updated,
     handle_payment_intent_succeeded,
     initiate_btc_watch,
+    resolve_settled_status,
     start_connect_onboarding,
 )
 
@@ -383,6 +383,7 @@ class TestAttachBtcPayment:
         [
             Invoice.Status.PENDING,
             Invoice.Status.PARTIAL,
+            Invoice.Status.UNDERPAID,
             Invoice.Status.PAID,
             Invoice.Status.VOID,
         ],
@@ -517,6 +518,45 @@ class TestSplitPaymentSettlement:
         invoice.refresh_from_db()
         assert invoice.status == Invoice.Status.PAID
 
+    def test_underpaying_a_split_invoice_outranks_partial(self):
+        """Both statuses apply when a renter underpays one leg of a
+        split invoice, and status holds only one value -- being short
+        needs chasing, so it wins over a merely-missing second leg.
+        """
+        invoice = self._split_invoice()
+        invoice.stripe_settled_at = timezone.now()
+        invoice.remainder_owed_usd = Decimal("40.00")
+        invoice.save(
+            update_fields=["stripe_settled_at", "remainder_owed_usd"]
+        )
+
+        assert resolve_settled_status(invoice) == Invoice.Status.UNDERPAID
+
+    def test_settling_the_btc_leg_clears_a_prior_shortfall(self, mocker):
+        """The tx topping up a shortfall settles the leg, so a stale
+        remainder mustn't drag the invoice back to UNDERPAID.
+        """
+        invoice = self._split_invoice()
+        invoice.remainder_owed_usd = Decimal("40.00")
+        invoice.stripe_settled_at = timezone.now()
+        invoice.save(
+            update_fields=["remainder_owed_usd", "stripe_settled_at"]
+        )
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        mocker.patch(
+            "payments.services._fetch_address_txs",
+            return_value=[{"txid": "abc", "status": {"confirmed": True}}],
+        )
+        mocker.patch(
+            "payments.services._find_matching_output",
+            return_value={"txid": "abc", "status": {"confirmed": True}},
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.remainder_owed_usd is None
+        assert result.status == Invoice.Status.PAID
+
     def test_watch_quotes_only_the_btc_portion(self, mocker):
         invoice = self._split_invoice()
         mocker.patch(
@@ -565,11 +605,11 @@ class TestInitiateBtcWatch:
         assert result.btc_watch_expires_at > timezone.now()
         assert result.btc_amount_sats == 200000  # $100 @ $50k/BTC
 
-    def test_generates_amount_from_remainder_for_partial_invoice(
+    def test_generates_amount_from_remainder_for_underpaid_invoice(
         self, mocker
     ):
         invoice = _btc_enabled_invoice(
-            status=Invoice.Status.PARTIAL,
+            status=Invoice.Status.UNDERPAID,
             btc_address="bc1qexample",
             remainder_owed_usd=Decimal("25.00"),
         )
@@ -702,7 +742,7 @@ class TestInitiateBtcWatch:
         assert result.status == Invoice.Status.PENDING
         assert result.btc_txid == "late-tx"
 
-    def test_restart_past_grace_logs_underpayment_as_partial(self, mocker):
+    def test_restart_past_grace_logs_underpayment_as_underpaid(self, mocker):
         invoice = _btc_enabled_invoice(
             status=Invoice.Status.SENT,
             btc_address="bc1qexample",
@@ -733,7 +773,7 @@ class TestInitiateBtcWatch:
 
         result = initiate_btc_watch(invoice)
 
-        assert result.status == Invoice.Status.PARTIAL
+        assert result.status == Invoice.Status.UNDERPAID
         assert result.btc_credited_txid == "short-tx"
         assert result.btc_credited_usd == Decimal("30.00")  # 0.0006 @ $50k
         assert result.remainder_owed_usd == Decimal("70.00")
@@ -745,7 +785,7 @@ class TestInitiateBtcWatch:
         self, mocker
     ):
         invoice = _btc_enabled_invoice(
-            status=Invoice.Status.PARTIAL,
+            status=Invoice.Status.UNDERPAID,
             btc_address="bc1qexample",
             btc_amount_sats=140000,
             btc_watch_expires_at=timezone.now()
@@ -778,7 +818,7 @@ class TestInitiateBtcWatch:
 
         # The already-credited tx must not be reused to satisfy (or
         # shrink) the remainder a second time.
-        assert result.status == Invoice.Status.PARTIAL
+        assert result.status == Invoice.Status.UNDERPAID
         assert result.remainder_owed_usd == Decimal("70.00")
         assert result.btc_amount_sats == 140000
 
@@ -926,7 +966,7 @@ class TestCheckBtcPayment:
 
     def test_excludes_already_credited_txid_from_matching(self, mocker):
         invoice = _btc_enabled_invoice(
-            status=Invoice.Status.PARTIAL,
+            status=Invoice.Status.UNDERPAID,
             btc_address="bc1qexample",
             btc_amount_sats=140000,
             btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
@@ -955,7 +995,7 @@ class TestCheckBtcPayment:
 
         # The already-credited tx can't satisfy the remainder a second
         # time even though its value covers it.
-        assert result.status == Invoice.Status.PARTIAL
+        assert result.status == Invoice.Status.UNDERPAID
         assert result.btc_txid == ""
 
 
