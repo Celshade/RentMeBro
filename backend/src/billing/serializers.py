@@ -176,14 +176,14 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "id", "billing_period", "kind", "status", "due_date",
             "stripe_payment_intent_id", "created_at", "line_items", "total",
             "is_late", "btc_address", "btc_amount_sats",
-            "remainder_owed_usd", "btc_line_item", "btc_portion_usd",
+            "remainder_owed_usd", "btc_line_items", "btc_portion_usd",
             "stripe_portion_usd", "is_split_payment", "btc_settled_at",
             "stripe_settled_at",
         ]
         read_only_fields = [
             "status", "stripe_payment_intent_id", "created_at",
             "btc_address", "btc_amount_sats", "remainder_owed_usd",
-            "btc_line_item", "btc_settled_at", "stripe_settled_at",
+            "btc_line_items", "btc_settled_at", "stripe_settled_at",
         ]
 
 
