@@ -387,6 +387,25 @@ body {
   border-bottom: none;
 }
 
+/* Every invoice row carries the accent slot, transparent by default, so
+   BTC and non-BTC rows stay aligned rather than the marked ones
+   indenting by the width of their border. */
+.invoice-row {
+  border-left: 3px solid transparent;
+  padding-left: 10px;
+}
+
+.invoice-row--btc {
+  border-left-color: var(--btc-orange);
+}
+
+.btc-glyph {
+  color: var(--btc-orange);
+  font-weight: 700;
+  cursor: help;
+  margin-right: 4px;
+}
+
 .empty-state {
   color: var(--text);
   font-size: 14px;
@@ -801,12 +820,12 @@ code {
   background: rgba(var(--late-rgb), 0.12);
 }
 
-/* Outlined rather than tinted, so an attached-BTC marker stays visually
-   distinct from the solid-filled "Partially Paid" status pill. */
-.status-badge--btc {
-  color: var(--btc-orange);
-  background: transparent;
-  border: 1px solid var(--btc-orange-border);
+/* A BTC underpayment needs chasing; an invoice merely split across two
+   payment methods doesn't. Amber separates the shortfall from the
+   orange "Partially Paid" pill without adding a second badge. */
+.status-badge--underpaid {
+  color: #b45309;
+  background: rgba(180, 83, 9, 0.12);
   cursor: help;
 }
 
@@ -829,6 +848,11 @@ code {
   .status-badge--late {
     color: var(--late);
     background: rgba(var(--late-rgb), 0.15);
+  }
+
+  .status-badge--underpaid {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.15);
   }
 
   .driven-days-calendar__week-price-btn--priced {
