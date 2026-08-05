@@ -37,6 +37,64 @@ class BtcNotEnabledError(Exception):
     """The invoice's landlord hasn't enabled BTC payments."""
 
 
+class BtcLineItemError(Exception):
+    """The line item BTC was scoped to isn't valid for this invoice."""
+
+
+class NothingLeftToChargeError(Exception):
+    """BTC already covers the whole invoice; the card leg owes nothing."""
+
+
+def resolve_settled_status(invoice: Invoice) -> str:
+    """Works out an invoice's status from which payment legs have settled.
+
+    An invoice split across BTC and card only reaches PAID once both
+    legs land; until then it sits at PARTIAL, which is also what a BTC
+    underpayment produces. The two are told apart by
+    `remainder_owed_usd` (set only on a shortfall) rather than by
+    status, so neither meaning has to own the field.
+
+    Args:
+        invoice: The invoice to resolve. Its `btc_settled_at` /
+            `stripe_settled_at` should already reflect the leg that
+            just landed.
+
+    Returns:
+        The status the invoice should now hold.
+    """
+    if not invoice.is_split_payment:
+        return Invoice.Status.PAID
+    if invoice.btc_settled_at is not None and (
+        invoice.stripe_settled_at is not None
+    ):
+        return Invoice.Status.PAID
+    return Invoice.Status.PARTIAL
+
+
+def _settle_btc_leg(invoice: Invoice, confirmed: bool) -> None:
+    """Records the BTC leg's outcome and re-resolves the invoice status.
+
+    An unconfirmed tx leaves the invoice PENDING no matter how the card
+    leg stands: the money is visible in the mempool but not final, so
+    nothing has settled yet. `stripe_settled_at` outlives that, so a
+    split invoice still resolves correctly once the tx confirms.
+
+    Args:
+        invoice: The invoice whose BTC tx was just matched. Its
+            `btc_txid` should already be set on the instance.
+        confirmed: Whether the matched tx has a confirmation yet.
+    """
+    if not confirmed:
+        invoice.status = Invoice.Status.PENDING
+        invoice.save(update_fields=["status", "btc_txid"])
+        return
+
+    if invoice.btc_settled_at is None:
+        invoice.btc_settled_at = timezone.now()
+    invoice.status = resolve_settled_status(invoice)
+    invoice.save(update_fields=["status", "btc_txid", "btc_settled_at"])
+
+
 # PaymentIntent statuses that can't back a new Elements confirmation;
 # Stripe rejects Elements.create() with a client_secret pointing at
 # one of these ("terminal state" error).
@@ -73,6 +131,10 @@ def create_payment_intent_for_invoice(
     so that's done inline rather than making the renter wait on the
     webhook.
 
+    Bills the invoice's card portion, not its total: a landlord can
+    scope BTC to a single line item, and charging the full total
+    alongside that would bill the BTC-covered charge twice.
+
     Args:
         invoice: The invoice to create a PaymentIntent for.
 
@@ -85,6 +147,8 @@ def create_payment_intent_for_invoice(
             Stripe Connect onboarding yet.
         InvoiceAlreadyPaidError: The invoice's prior PaymentIntent
             already succeeded; the invoice has now been reconciled.
+        NothingLeftToChargeError: BTC covers the invoice in full,
+            leaving the card leg nothing to bill.
     """
     landlord = invoice.billing_period.landlord
     if not landlord.stripe_charges_enabled:
@@ -113,7 +177,11 @@ def create_payment_intent_for_invoice(
             f'{invoice.stripe_payment_intent_id}'
         )
 
-    amount_cents = int(invoice.total * 100)
+    amount_cents = int(invoice.stripe_portion_usd * 100)
+    if amount_cents <= 0:
+        raise NothingLeftToChargeError(
+            'BTC already covers this invoice in full.'
+        )
     intent = stripe.PaymentIntent.create(
         amount=amount_cents,
         currency='usd',
@@ -130,7 +198,13 @@ def create_payment_intent_for_invoice(
 def handle_payment_intent_succeeded(
     payment_intent: dict, connected_account_id: str | None = None
 ) -> None:
-    """Marks the invoice referenced by a succeeded PaymentIntent as paid.
+    """Settles the card leg of the invoice a succeeded PaymentIntent
+    refers to.
+
+    Settling the card leg only means PAID when the card leg is the
+    whole invoice. On an invoice split with BTC it means PARTIAL until
+    the BTC side lands too, so the status is resolved from both legs
+    rather than assumed.
 
     Standard Connect accounts are landlord-owned, so a landlord has
     real API access to their own account and could otherwise submit a
@@ -139,8 +213,8 @@ def handle_payment_intent_succeeded(
     to match the invoice's actual landlord closes that off.
 
     Stripe webhooks are at-least-once delivery, so this can run twice
-    for the same event. That's harmless today only because setting
-    status to PAID a second time is a no-op; if this handler grows a
+    for the same event. `stripe_settled_at` is only stamped once, so a
+    redelivery can't move the settlement time; if this handler grows a
     non-idempotent side effect (an email, a counter increment, etc.),
     add dedup keyed on the Stripe event id before doing so.
 
@@ -164,8 +238,10 @@ def handle_payment_intent_succeeded(
     landlord = invoice.billing_period.landlord
     if connected_account_id != landlord.stripe_account_id:
         return
-    invoice.status = Invoice.Status.PAID
-    invoice.save(update_fields=['status'])
+    if invoice.stripe_settled_at is None:
+        invoice.stripe_settled_at = timezone.now()
+    invoice.status = resolve_settled_status(invoice)
+    invoice.save(update_fields=['status', 'stripe_settled_at'])
 
 
 def start_connect_onboarding(landlord: User) -> str:
@@ -242,7 +318,9 @@ def enable_btc_payments(landlord: User) -> None:
     )
 
 
-def attach_btc_payment(invoice: Invoice, address: str) -> Invoice:
+def attach_btc_payment(
+    invoice: Invoice, address: str, line_item_id: int | None = None
+) -> Invoice:
     """Attaches a BTC address to an invoice as a payment option.
 
     The amount the renter must send is no longer fixed here — it's
@@ -250,9 +328,17 @@ def attach_btc_payment(invoice: Invoice, address: str) -> Invoice:
     moment the renter actually starts paying (`initiate_btc_watch`),
     not chosen by the landlord up front.
 
+    Optionally scopes BTC to a single line item, so a landlord can take
+    (say) gas in BTC and leave rent on card. Scoping is only offered
+    when there's more than one line item: pointing BTC at an invoice's
+    only charge is just a whole-invoice BTC payment, and it would leave
+    the card leg with nothing to bill.
+
     Args:
         invoice: The invoice to attach a BTC address to.
         address: The landlord's BTC address to display to the renter.
+        line_item_id: The line item BTC should cover, or None for the
+            whole invoice. Passing None clears any existing scope.
 
     Returns:
         The updated invoice.
@@ -262,6 +348,8 @@ def attach_btc_payment(invoice: Invoice, address: str) -> Invoice:
             has an outstanding BTC remainder, paid, or void.
         BtcNotEnabledError: If the landlord hasn't enabled BTC
             payments.
+        BtcLineItemError: If the line item doesn't belong to this
+            invoice, or the invoice has only one line item.
     """
     if invoice.status in (
         Invoice.Status.PENDING,
@@ -279,8 +367,22 @@ def attach_btc_payment(invoice: Invoice, address: str) -> Invoice:
             "Landlord hasn't enabled BTC payments yet."
         )
 
+    if line_item_id is not None:
+        if invoice.line_items.count() < 2:
+            raise BtcLineItemError(
+                "This invoice has only one charge, so BTC can't be "
+                "scoped to part of it."
+            )
+        # Scoped to the invoice's own line items, so a landlord can't
+        # point BTC at a charge on someone else's invoice.
+        if not invoice.line_items.filter(id=line_item_id).exists():
+            raise BtcLineItemError(
+                f"Line item {line_item_id} isn't part of this invoice."
+            )
+
     invoice.btc_address = address
-    invoice.save(update_fields=["btc_address"])
+    invoice.btc_line_item_id = line_item_id
+    invoice.save(update_fields=["btc_address", "btc_line_item"])
     return invoice
 
 
@@ -333,11 +435,17 @@ def get_btc_usd_price() -> int | None:
 
 
 def _invoice_usd_owed(invoice: Invoice) -> Decimal:
-    """The USD amount still owed via BTC: the full total, or whatever's
-    left after a prior underpayment was credited toward it."""
-    if invoice.status == Invoice.Status.PARTIAL:
+    """The USD still owed via BTC: the BTC portion, or whatever's left
+    after a prior underpayment was credited toward it.
+
+    Keys off `remainder_owed_usd` rather than PARTIAL status, because
+    PARTIAL now also covers a split invoice whose card leg settled
+    first — which carries no remainder and still owes its full BTC
+    portion.
+    """
+    if invoice.remainder_owed_usd is not None:
         return invoice.remainder_owed_usd
-    return invoice.total
+    return invoice.btc_portion_usd
 
 
 def _fetch_address_txs(address: str) -> list[dict] | None:
@@ -431,12 +539,9 @@ def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
         )
         if match is not None:
             invoice.btc_txid = match["txid"]
-            invoice.status = (
-                Invoice.Status.PAID
-                if match.get("status", {}).get("confirmed")
-                else Invoice.Status.PENDING
+            _settle_btc_leg(
+                invoice, match.get("status", {}).get("confirmed", False)
             )
-            invoice.save(update_fields=["status", "btc_txid"])
             return invoice
 
     underpayment = _find_largest_output(txs, invoice.btc_address)
@@ -487,7 +592,8 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
 
     Args:
         invoice: The invoice being watched. Must be DRAFT, SENT or
-            PARTIAL, with a BTC address already attached.
+            PARTIAL, with a BTC address already attached and its BTC
+            leg not yet settled.
 
     Returns:
         The updated invoice. If reconciling a lapsed window resolved
@@ -501,6 +607,11 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
     ):
         return invoice
     if invoice.btc_txid:
+        return invoice
+    # A split invoice waiting on its card leg stays PARTIAL, which the
+    # status gate above lets through -- so the settled BTC leg has to
+    # be checked separately or the renter gets quoted for it twice.
+    if invoice.btc_settled_at is not None:
         return invoice
 
     now = timezone.now()
@@ -559,10 +670,8 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
                 f"{base_url}/tx/{invoice.btc_txid}/status", timeout=5
             )
             response.raise_for_status()
-            confirmed = response.json().get("confirmed", False)
-            if confirmed:
-                invoice.status = Invoice.Status.PAID
-                invoice.save(update_fields=["status"])
+            if response.json().get("confirmed", False):
+                _settle_btc_leg(invoice, True)
             return invoice
 
         txs = _fetch_address_txs(invoice.btc_address)
@@ -585,10 +694,5 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
         return invoice
 
     invoice.btc_txid = match["txid"]
-    invoice.status = (
-        Invoice.Status.PAID
-        if match.get("status", {}).get("confirmed")
-        else Invoice.Status.PENDING
-    )
-    invoice.save(update_fields=["status", "btc_txid"])
+    _settle_btc_leg(invoice, match.get("status", {}).get("confirmed", False))
     return invoice
