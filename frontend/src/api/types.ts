@@ -231,10 +231,11 @@ export type InvoiceStatus =
  *   shortfall. This is what distinguishes an underpaid invoice from
  *   one merely split across two payment methods, since both sit at
  *   'partial'.
- * @property btc_line_item - The id of the line item the BTC address
- *   covers, or null when it covers the whole invoice.
+ * @property btc_line_items - The ids of the line items the BTC address
+ *   covers, empty when it covers the whole invoice. Any subset can be
+ *   assigned -- one charge, several, or all of them.
  * @property btc_portion_usd - The USD the BTC leg owes, as a decimal
- *   string: one line item's amount, or the full total.
+ *   string: the assigned line items' amounts, or the full total.
  * @property stripe_portion_usd - The USD left for the card leg, as a
  *   decimal string.
  * @property is_split_payment - Whether this invoice needs both a BTC
@@ -258,7 +259,7 @@ export interface Invoice {
   btc_address: string;
   btc_amount_sats: number | null;
   remainder_owed_usd: string | null;
-  btc_line_item: number | null;
+  btc_line_items: number[];
   btc_portion_usd: string;
   stripe_portion_usd: string;
   is_split_payment: boolean;
