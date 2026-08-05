@@ -16,7 +16,6 @@ import type {
   InvoiceWeekDay,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import { BtcAttachedBadge } from '../components/BtcAttachedBadge';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
@@ -195,9 +194,18 @@ export function InvoiceDetail() {
             <InvoiceStatusBadge
               status={invoice.status}
               isLate={invoice.is_late}
+              remainderOwedUsd={invoice.remainder_owed_usd}
             />
-            <BtcAttachedBadge address={invoice.btc_address} />
           </span>
+        </div>
+        <div className="stat-tile">
+          <span className="stat-tile__label">Payment options</span>
+          <span className="stat-tile__value">
+            {invoice.btc_address ? '₿ BTC + Cash App' : 'Cash App'}
+          </span>
+          {invoice.btc_address && (
+            <span className="stat-tile__meta">{invoice.btc_address}</span>
+          )}
         </div>
         <div className="stat-tile">
           <span className="stat-tile__label">Kind</span>
