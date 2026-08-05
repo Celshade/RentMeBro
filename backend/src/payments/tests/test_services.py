@@ -86,8 +86,7 @@ class TestCreatePaymentIntentForInvoice:
             amount=Decimal('200.00'),
             kind=InvoiceLineItem.Kind.GAS,
         )
-        invoice.btc_line_item = gas
-        invoice.save(update_fields=['btc_line_item'])
+        invoice.btc_line_items.set([gas])
         fake_intent = MagicMock(id='pi_split', client_secret='secret')
         mock_create = mocker.patch(
             'payments.services.stripe.PaymentIntent.create',
@@ -104,8 +103,7 @@ class TestCreatePaymentIntentForInvoice:
         only_item = InvoiceLineItemFactory(
             invoice=invoice, amount=Decimal('500.00')
         )
-        invoice.btc_line_item = only_item
-        invoice.save(update_fields=['btc_line_item'])
+        invoice.btc_line_items.set([only_item])
         mock_create = mocker.patch(
             'payments.services.stripe.PaymentIntent.create'
         )
@@ -398,30 +396,48 @@ class TestAttachBtcPayment:
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
 
         result = attach_btc_payment(
-            invoice, "bc1qexample", line_item_id=gas.id
+            invoice, "bc1qexample", line_item_ids=[gas.id]
         )
 
-        assert result.btc_line_item_id == gas.id
+        assert list(result.btc_line_items.all()) == [gas]
         assert result.btc_portion_usd == Decimal("200.00")
         assert result.stripe_portion_usd == Decimal("1000.00")
         assert result.is_split_payment is True
+
+    def test_scopes_btc_to_every_line_item(self):
+        """Assigning both charges is allowed: they aren't exclusive.
+
+        Covering everything leaves the card leg nothing, so it's a
+        whole-invoice BTC payment rather than a split one.
+        """
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        rent = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
+
+        result = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=[gas.id, rent.id]
+        )
+
+        assert set(result.btc_line_items.all()) == {gas, rent}
+        assert result.btc_portion_usd == Decimal("1200.00")
+        assert result.stripe_portion_usd == Decimal("0.00")
+        assert result.is_split_payment is False
 
     def test_defaults_to_covering_the_whole_invoice(self):
         invoice, _ = _two_line_item_invoice(status=Invoice.Status.SENT)
 
         result = attach_btc_payment(invoice, "bc1qexample")
 
-        assert result.btc_line_item_id is None
+        assert result.btc_line_items.exists() is False
         assert result.btc_portion_usd == Decimal("1200.00")
         assert result.is_split_payment is False
 
     def test_reattaching_without_a_line_item_clears_the_scope(self):
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
-        attach_btc_payment(invoice, "bc1qexample", line_item_id=gas.id)
+        attach_btc_payment(invoice, "bc1qexample", line_item_ids=[gas.id])
 
         result = attach_btc_payment(invoice, "bc1qexample")
 
-        assert result.btc_line_item_id is None
+        assert result.btc_line_items.exists() is False
 
     def test_raises_for_a_line_item_on_another_invoice(self):
         """Scoping is filtered to the invoice's own line items, so a
@@ -432,7 +448,7 @@ class TestAttachBtcPayment:
 
         with pytest.raises(BtcLineItemError):
             attach_btc_payment(
-                invoice, "bc1qexample", line_item_id=other_line_item.id
+                invoice, "bc1qexample", line_item_ids=[other_line_item.id]
             )
 
     def test_raises_when_the_invoice_has_only_one_charge(self):
@@ -444,7 +460,7 @@ class TestAttachBtcPayment:
 
         with pytest.raises(BtcLineItemError):
             attach_btc_payment(
-                invoice, "bc1qexample", line_item_id=only_item.id
+                invoice, "bc1qexample", line_item_ids=[only_item.id]
             )
 
 
@@ -454,7 +470,7 @@ class TestSplitPaymentSettlement:
     def _split_invoice(self) -> Invoice:
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
         return attach_btc_payment(
-            invoice, "bc1qexample", line_item_id=gas.id
+            invoice, "bc1qexample", line_item_ids=[gas.id]
         )
 
     def test_btc_leg_alone_leaves_invoice_partial(self, mocker):
