@@ -291,6 +291,15 @@ class Invoice(models.Model):
     btc_credited_usd = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
+    btc_line_item = models.ForeignKey(
+        'InvoiceLineItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    btc_settled_at = models.DateTimeField(null=True, blank=True)
+    stripe_settled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ('billing_period', 'kind')
@@ -314,6 +323,38 @@ class Invoice(models.Model):
         ):
             return False
         return timezone.now().date() > self.due_date
+
+    @property
+    def btc_portion_usd(self) -> Decimal:
+        """The USD the BTC address covers: one line item, or everything.
+
+        A landlord can scope BTC to a single charge (say gas) and leave
+        the rest on card, so the amount quoted to the renter isn't
+        always the invoice total.
+        """
+        if self.btc_line_item_id is None:
+            return self.total
+        return self.btc_line_item.amount
+
+    @property
+    def stripe_portion_usd(self) -> Decimal:
+        """The USD left for the card/Cash App leg to cover."""
+        if self.btc_line_item_id is None:
+            return self.total
+        return self.total - self.btc_line_item.amount
+
+    @property
+    def is_split_payment(self) -> bool:
+        """Whether this invoice needs both a BTC and a card payment.
+
+        Scoping BTC to a line item that happens to be the invoice's only
+        charge leaves nothing for the card leg, which is just a
+        whole-invoice BTC payment wearing a different hat.
+        """
+        return (
+            self.btc_line_item_id is not None
+            and self.stripe_portion_usd > 0
+        )
 
 
 class InvoiceLineItem(models.Model):
