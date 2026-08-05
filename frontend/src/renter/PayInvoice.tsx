@@ -7,6 +7,7 @@ import {
 } from '@stripe/react-stripe-js';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
+import { formatMoney } from '../api/format';
 import type { Invoice } from '../api/types';
 import { PayInvoiceBtc } from './PayInvoiceBtc';
 
@@ -141,6 +142,11 @@ function PayInvoiceCashApp({
 /**
  * Renders a payment option for an invoice: Cash App Pay always, plus a
  * "Pay with BTC" toggle when the landlord has attached a BTC address.
+ *
+ * When the landlord has scoped BTC to one line item the two aren't
+ * alternatives -- both legs have to be paid to settle the invoice -- so
+ * the split is spelled out and the toggle opens on whichever leg is
+ * still outstanding.
  * @param props.invoice - The invoice to pay.
  * @param props.onPaid - Called after the renter successfully pays.
  */
@@ -152,10 +158,24 @@ export function PayInvoice({
   onPaid: () => void;
 }) {
   const hasBtcOption = invoice.btc_address !== '';
-  const [mode, setMode] = useState<'cashapp' | 'btc'>('cashapp');
+  const [mode, setMode] = useState<'cashapp' | 'btc'>(
+    invoice.is_split_payment && invoice.stripe_settled_at !== null
+      ? 'btc'
+      : 'cashapp'
+  );
 
   return (
     <div>
+      {invoice.is_split_payment && (
+        <p className="pay-invoice__split-notice">
+          This invoice is split across two payments:{' '}
+          <strong>${formatMoney(invoice.btc_portion_usd)} in BTC</strong>{' '}
+          {invoice.btc_settled_at !== null ? '(paid)' : '(due)'} and{' '}
+          <strong>${formatMoney(invoice.stripe_portion_usd)} by card</strong>{' '}
+          {invoice.stripe_settled_at !== null ? '(paid)' : '(due)'}. Both
+          are needed to settle it.
+        </p>
+      )}
       {hasBtcOption && (
         <div className="pay-invoice__mode-toggle">
           <button
