@@ -14,7 +14,7 @@ import type {
   MileageProfile,
 } from '../api/types';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
-import { BtcAttachedBadge } from '../components/BtcAttachedBadge';
+import { BtcAttachedGlyph } from '../components/BtcAttachedGlyph';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
@@ -396,8 +396,16 @@ export function LeaseDashboard({
                   invoice.status === 'paid' || invoice.status === 'void';
                 const isEditing = editingInvoiceId === invoice.id;
                 return (
-                  <li key={invoice.id} className="list-row">
+                  <li
+                    key={invoice.id}
+                    className={
+                      invoice.btc_address
+                        ? 'list-row invoice-row invoice-row--btc'
+                        : 'list-row invoice-row'
+                    }
+                  >
                     <span>
+                      <BtcAttachedGlyph address={invoice.btc_address} />
                       <strong>
                         {formatBillingPeriod(
                           invoice.billing_period.month,
@@ -411,8 +419,8 @@ export function LeaseDashboard({
                       <InvoiceStatusBadge
                         status={invoice.status}
                         isLate={invoice.is_late}
+                        remainderOwedUsd={invoice.remainder_owed_usd}
                       />
-                      <BtcAttachedBadge address={invoice.btc_address} />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
                       {!isLocked && invoice.kind !== 'rent_only' && (
                         isEditing ? (
