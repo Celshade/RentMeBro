@@ -280,6 +280,15 @@ body {
   color: var(--text-h);
 }
 
+/* For tiles holding pills rather than text, which would otherwise sit
+   flush against each other (JSX drops the newline between them). */
+.stat-tile__value--badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .stat-tile__value--muted {
   font-size: 15px;
   font-weight: 400;
@@ -790,6 +799,15 @@ code {
 .status-badge--late {
   color: var(--late);
   background: rgba(var(--late-rgb), 0.12);
+}
+
+/* Outlined rather than tinted, so an attached-BTC marker stays visually
+   distinct from the solid-filled "Partially Paid" status pill. */
+.status-badge--btc {
+  color: var(--btc-orange);
+  background: transparent;
+  border: 1px solid var(--btc-orange-border);
+  cursor: help;
 }
 
 @media (prefers-color-scheme: dark) {
