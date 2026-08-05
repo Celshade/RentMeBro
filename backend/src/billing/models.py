@@ -266,7 +266,12 @@ class Invoice(models.Model):
         DRAFT = 'draft', 'Draft'
         SENT = 'sent', 'Sent'
         PENDING = 'pending', 'Pending'
+        # PARTIAL and UNDERPAID both mean "some money arrived" but call
+        # for different responses: a split invoice is progressing
+        # normally and just needs its other leg, while an underpaid one
+        # is short and needs chasing.
         PARTIAL = 'partial', 'Partially Paid'
+        UNDERPAID = 'underpaid', 'Underpaid'
         PAID = 'paid', 'Paid'
         VOID = 'void', 'Void'
 
@@ -318,6 +323,7 @@ class Invoice(models.Model):
         if self.status in (
             Invoice.Status.PENDING,
             Invoice.Status.PARTIAL,
+            Invoice.Status.UNDERPAID,
             Invoice.Status.PAID,
             Invoice.Status.VOID,
         ):
