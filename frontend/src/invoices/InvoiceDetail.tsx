@@ -209,13 +209,13 @@ export function InvoiceDetail() {
   if (!invoice) return <p className="empty-state">Invoice not found.</p>;
 
   const hasGasBreakdown = invoice.kind !== 'rent_only';
-  // Needs an address to point somewhere, more than one charge to split
-  // between, and an invoice that's still editable.
+  // Needs an address to point somewhere and an invoice that's still
+  // editable. Assignable even with a single charge -- that just marks
+  // the whole invoice as BTC-billed.
   const canAssignBtc =
     user?.role === 'landlord' &&
     btcSettings?.enabled === true &&
     invoice.btc_address !== '' &&
-    invoice.line_items.length > 1 &&
     !LOCKED_STATUSES.has(invoice.status);
 
   return (
