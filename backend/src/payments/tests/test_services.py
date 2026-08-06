@@ -98,20 +98,27 @@ class TestCreatePaymentIntentForInvoice:
         # $1000 of rent, not the $1200 invoice total.
         assert mock_create.call_args.kwargs['amount'] == 100000
 
-    def test_raises_when_btc_covers_the_whole_invoice(self, mocker):
+    def test_bills_the_full_total_when_btc_covers_every_charge(
+        self, mocker
+    ):
+        """Marking every charge as BTC-billed doesn't take the card
+        leg off the table -- either rail can still settle the
+        invoice on its own.
+        """
         invoice = _onboarded_invoice()
         only_item = InvoiceLineItemFactory(
             invoice=invoice, amount=Decimal('500.00')
         )
         invoice.btc_line_items.set([only_item])
+        fake_intent = MagicMock(id='pi_full', client_secret='secret')
         mock_create = mocker.patch(
-            'payments.services.stripe.PaymentIntent.create'
+            'payments.services.stripe.PaymentIntent.create',
+            return_value=fake_intent,
         )
 
-        with pytest.raises(NothingLeftToChargeError):
-            create_payment_intent_for_invoice(invoice)
+        create_payment_intent_for_invoice(invoice)
 
-        mock_create.assert_not_called()
+        assert mock_create.call_args.kwargs['amount'] == 50000
 
     def test_reuses_existing_intent(self, mocker):
         invoice = _onboarded_invoice(stripe_payment_intent_id='pi_existing')
@@ -407,8 +414,9 @@ class TestAttachBtcPayment:
     def test_scopes_btc_to_every_line_item(self):
         """Assigning both charges is allowed: they aren't exclusive.
 
-        Covering everything leaves the card leg nothing, so it's a
-        whole-invoice BTC payment rather than a split one.
+        Covering everything is a whole-invoice BTC payment rather
+        than a split one, but the card leg still stands ready to
+        bill the full total if the renter pays that way instead.
         """
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
         rent = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
@@ -419,7 +427,7 @@ class TestAttachBtcPayment:
 
         assert set(result.btc_line_items.all()) == {gas, rent}
         assert result.btc_portion_usd == Decimal("1200.00")
-        assert result.stripe_portion_usd == Decimal("0.00")
+        assert result.stripe_portion_usd == Decimal("1200.00")
         assert result.is_split_payment is False
 
     def test_defaults_to_covering_the_whole_invoice(self):
@@ -451,17 +459,20 @@ class TestAttachBtcPayment:
                 invoice, "bc1qexample", line_item_ids=[other_line_item.id]
             )
 
-    def test_raises_when_the_invoice_has_only_one_charge(self):
-        """Scoping BTC to an invoice's only line item is just a
-        whole-invoice payment, and leaves the card leg nothing to bill.
+    def test_scopes_btc_to_an_invoice_with_only_one_charge(self):
+        """Scoping BTC to an invoice's only line item is just marking
+        the whole invoice as BTC-billed -- allowed, not an error.
         """
         invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
         only_item = InvoiceLineItemFactory(invoice=invoice)
 
-        with pytest.raises(BtcLineItemError):
-            attach_btc_payment(
-                invoice, "bc1qexample", line_item_ids=[only_item.id]
-            )
+        result = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=[only_item.id]
+        )
+
+        assert list(result.btc_line_items.all()) == [only_item]
+        assert result.stripe_portion_usd == only_item.amount
+        assert result.is_split_payment is False
 
 
 class TestSplitPaymentSettlement:
