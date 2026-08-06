@@ -231,15 +231,19 @@ export type InvoiceStatus =
  *   shortfall. This is what distinguishes an underpaid invoice from
  *   one merely split across two payment methods, since both sit at
  *   'partial'.
- * @property btc_line_items - The ids of the line items the BTC address
- *   covers, empty when it covers the whole invoice. Any subset can be
- *   assigned -- one charge, several, or all of them.
+ * @property btc_line_items - The ids of the line items marked as
+ *   BTC-billed, empty when nothing's marked yet even if a BTC address
+ *   is attached. Any subset can be assigned -- one charge, several,
+ *   or all of them.
  * @property btc_portion_usd - The USD the BTC leg owes, as a decimal
- *   string: the assigned line items' amounts, or the full total.
+ *   string: the marked line items' amounts, or the full total when
+ *   nothing's marked.
  * @property stripe_portion_usd - The USD left for the card leg, as a
- *   decimal string.
+ *   decimal string. The full total unless BTC is marked on a strict
+ *   subset of the charges.
  * @property is_split_payment - Whether this invoice needs both a BTC
- *   and a card payment to settle. False when BTC covers everything.
+ *   and a card payment to settle. False unless BTC is marked on a
+ *   strict subset of the charges.
  * @property btc_settled_at - When the BTC leg settled (ISO 8601), or
  *   null if it hasn't.
  * @property stripe_settled_at - When the card leg settled (ISO 8601),
