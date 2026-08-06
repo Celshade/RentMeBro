@@ -568,6 +568,29 @@ button[type='submit'].button--btc:hover {
   background: var(--btc-orange-bg);
 }
 
+.btc-address-form {
+  max-width: 560px;
+}
+
+.btc-address-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.btc-address-row__field {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.btc-address-row__actions {
+  display: flex;
+  gap: 8px;
+}
+
 .btc-price-hint {
   color: var(--text);
   font-size: 14px;
