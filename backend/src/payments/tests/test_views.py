@@ -478,6 +478,53 @@ class TestInvoiceBtcAttachView:
 
         assert response.status_code == 409
 
+    def test_scopes_to_posted_line_items(self, api_client, landlord, invoice):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        landlord.btc_payments_enabled = True
+        landlord.save()
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "bc1qexample", "line_items": [line_item.id]},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["btc_line_items"] == [line_item.id]
+        invoice.refresh_from_db()
+        assert list(invoice.btc_line_items.all()) == [line_item]
+
+    def test_blank_address_detaches_and_clears_line_items(
+        self, api_client, landlord, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        landlord.btc_payments_enabled = True
+        landlord.save()
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        api_client.force_authenticate(user=landlord)
+        api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "bc1qexample", "line_items": [line_item.id]},
+            format="json",
+        )
+
+        response = api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "", "line_items": []},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["btc_address"] == ""
+        assert response.data["btc_line_items"] == []
+        invoice.refresh_from_db()
+        assert invoice.btc_address == ""
+        assert invoice.btc_line_items.exists() is False
+
 
 class TestInvoiceBtcWatchView:
     def test_requires_authentication(self, api_client, invoice):
