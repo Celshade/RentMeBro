@@ -213,9 +213,11 @@ export function InvoiceDetail() {
   }, [user]);
 
   /**
-   * Adds or removes one line item from the set the attached BTC address
-   * covers, leaving the other items' assignments alone. Clearing the
-   * last one points BTC back at the whole invoice.
+   * Adds or removes one line item from the set marked as BTC-billed,
+   * leaving the other items' assignments alone. Clearing the last one
+   * leaves the address attached but nothing marked yet -- the invoice
+   * stays payable in BTC, it just isn't billed that way until a
+   * charge is assigned again.
    * @param lineItemId - The line item being toggled.
    */
   async function handleAssignBtc(lineItemId: number) {
