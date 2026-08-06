@@ -343,15 +343,16 @@ def attach_btc_payment(
 
     Optionally scopes BTC to a subset of the line items, so a landlord
     can take (say) gas in BTC and leave rent on card, or take both in
-    BTC. Scoping is only offered when there's more than one line item:
-    pointing BTC at an invoice's only charge is just a whole-invoice BTC
-    payment, and it would leave the card leg with nothing to bill.
+    BTC. Scoping to every line item is allowed too -- that just marks
+    the whole invoice as BTC-billed rather than leaving it unscoped.
 
     Args:
         invoice: The invoice to attach a BTC address to.
         address: The landlord's BTC address to display to the renter.
+            A blank address detaches BTC entirely, which also clears
+            any line items marked as BTC-billed.
         line_item_ids: The line items BTC should cover, or None/empty
-            for the whole invoice. Passing None clears any existing
+            for none marked yet. Passing None clears any existing
             scope.
 
     Returns:
@@ -363,7 +364,7 @@ def attach_btc_payment(
         BtcNotEnabledError: If the landlord hasn't enabled BTC
             payments.
         BtcLineItemError: If a line item doesn't belong to this
-            invoice, or the invoice has only one line item.
+            invoice.
     """
     if invoice.status in (
         Invoice.Status.PENDING,
@@ -384,11 +385,6 @@ def attach_btc_payment(
 
     item_ids = list(line_item_ids or [])
     if item_ids:
-        if invoice.line_items.count() < 2:
-            raise BtcLineItemError(
-                "This invoice has only one charge, so BTC can't be "
-                "scoped to part of it."
-            )
         # Scoped to the invoice's own line items, so a landlord can't
         # point BTC at a charge on someone else's invoice.
         owned_ids = set(
@@ -401,6 +397,11 @@ def attach_btc_payment(
             raise BtcLineItemError(
                 f"Line item {stray_ids[0]} isn't part of this invoice."
             )
+
+    # A blank address detaches BTC outright, so nothing can be left
+    # marked as BTC-billed against a payment option that's gone.
+    if not address:
+        item_ids = []
 
     invoice.btc_address = address
     invoice.save(update_fields=["btc_address"])
