@@ -395,17 +395,20 @@ export function LeaseDashboard({
                 const isLocked =
                   invoice.status === 'paid' || invoice.status === 'void';
                 const isEditing = editingInvoiceId === invoice.id;
+                const hasBtcMarked = invoice.btc_line_items.length > 0;
                 return (
                   <li
                     key={invoice.id}
                     className={
-                      invoice.btc_address
+                      hasBtcMarked
                         ? 'list-row invoice-row invoice-row--btc'
                         : 'list-row invoice-row'
                     }
                   >
                     <span>
-                      <BtcAttachedGlyph address={invoice.btc_address} />
+                      <BtcAttachedGlyph
+                        address={hasBtcMarked ? invoice.btc_address : ''}
+                      />
                       <strong>
                         {formatBillingPeriod(
                           invoice.billing_period.month,
