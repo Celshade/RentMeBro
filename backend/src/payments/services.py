@@ -145,8 +145,11 @@ def create_payment_intent_for_invoice(
     webhook.
 
     Bills the invoice's card portion, not its total: a landlord can
-    scope BTC to a single line item, and charging the full total
-    alongside that would bill the BTC-covered charge twice.
+    scope BTC to a subset of the line items, and charging the full
+    total alongside that would bill the BTC-covered charges twice. A
+    landlord who scopes BTC to every charge instead leaves the card
+    leg free to bill the full total, so either rail can settle the
+    invoice on its own.
 
     Args:
         invoice: The invoice to create a PaymentIntent for.
@@ -160,8 +163,10 @@ def create_payment_intent_for_invoice(
             Stripe Connect onboarding yet.
         InvoiceAlreadyPaidError: The invoice's prior PaymentIntent
             already succeeded; the invoice has now been reconciled.
-        NothingLeftToChargeError: BTC covers the invoice in full,
-            leaving the card leg nothing to bill.
+        NothingLeftToChargeError: Not expected in normal operation
+            now that a fully-BTC-scoped invoice still bills the full
+            total by card; kept as a safety net in case
+            stripe_portion_usd ever comes back non-positive.
     """
     landlord = invoice.billing_period.landlord
     if not landlord.stripe_charges_enabled:
