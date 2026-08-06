@@ -26,11 +26,14 @@ const LOCKED_STATUSES = new Set(['paid', 'void', 'pending']);
 
 /**
  * Inline form letting a landlord attach a fixed BTC address/amount to
- * an invoice as a payment option, shown only once BTC payments are
- * enabled and the invoice isn't already locked (paid/void/pending).
- * @param props.invoice - The invoice to attach BTC payment info to.
- * @param props.onAttached - Called with the updated invoice once the
- *   attach succeeds.
+ * an invoice as a payment option, or remove one already attached,
+ * shown only once BTC payments are enabled and the invoice isn't
+ * already locked (paid/void/pending). Removing clears any line items
+ * marked as BTC-billed along with the address.
+ * @param props.invoice - The invoice to attach or remove BTC payment
+ *   info on.
+ * @param props.onAttached - Called with the updated invoice once an
+ *   attach or a removal succeeds.
  */
 function AttachBtcPaymentForm({
   invoice,
@@ -66,6 +69,28 @@ function AttachBtcPaymentForm({
       onAttached(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
     } catch {
       setError('Could not attach BTC address. Try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /**
+   * Detaches BTC entirely: blanks the address and, since the backend
+   * clears the scope along with it, drops any line items marked as
+   * BTC-billed too.
+   */
+  async function handleRemove() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
+        method: 'POST',
+        body: { address: '', line_items: [] },
+      });
+      setAddress('');
+      onAttached(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
+    } catch {
+      setError('Could not remove BTC address. Try again.');
     } finally {
       setSubmitting(false);
     }
@@ -109,6 +134,16 @@ function AttachBtcPaymentForm({
       <button type="submit" className="button--btc" disabled={submitting}>
         {submitting ? 'Saving...' : 'Attach BTC Address'}
       </button>
+      {invoice.btc_address !== '' && (
+        <button
+          type="button"
+          className="button--btc"
+          disabled={submitting}
+          onClick={handleRemove}
+        >
+          Remove BTC Address
+        </button>
+      )}
       {error && <p role="alert">{error}</p>}
     </form>
   );
