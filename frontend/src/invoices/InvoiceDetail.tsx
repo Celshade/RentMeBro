@@ -102,16 +102,33 @@ function AttachBtcPaymentForm({
       : null;
 
   return (
-    <form onSubmit={handleSubmit}>
-      <label>
-        BTC address
-        <input
-          type="text"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          required
-        />
-      </label>
+    <form onSubmit={handleSubmit} className="btc-address-form">
+      <div className="btc-address-row">
+        <label className="btc-address-row__field">
+          BTC address
+          <input
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            required
+          />
+        </label>
+        <div className="btc-address-row__actions">
+          <button type="submit" className="button--btc" disabled={submitting}>
+            {submitting ? 'Saving...' : 'Attach'}
+          </button>
+          {invoice.btc_address !== '' && (
+            <button
+              type="button"
+              className="button--btc"
+              disabled={submitting}
+              onClick={handleRemove}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
       {usdPerBtc !== null && (
         <p className="btc-price-hint">
           1 BTC ≈ ${usdPerBtc.toLocaleString()}
@@ -130,19 +147,6 @@ function AttachBtcPaymentForm({
             ⓘ
           </span>
         </p>
-      )}
-      <button type="submit" className="button--btc" disabled={submitting}>
-        {submitting ? 'Saving...' : 'Attach BTC Address'}
-      </button>
-      {invoice.btc_address !== '' && (
-        <button
-          type="button"
-          className="button--btc"
-          disabled={submitting}
-          onClick={handleRemove}
-        >
-          Remove BTC Address
-        </button>
       )}
       {error && <p role="alert">{error}</p>}
     </form>
@@ -355,8 +359,7 @@ export function InvoiceDetail() {
             </div>
             {invoice.btc_address && invoice.btc_amount_sats !== null && (
               <p>
-                Currently attached: {invoice.btc_address} (
-                {satsToBtc(invoice.btc_amount_sats)} BTC)
+                Attached: {satsToBtc(invoice.btc_amount_sats)} BTC
                 {invoice.is_split_payment &&
                   `, covering $${formatMoney(invoice.btc_portion_usd)} of \
 this invoice`}
