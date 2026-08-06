@@ -327,13 +327,26 @@ class Invoice(models.Model):
         return timezone.now().date() > self.due_date
 
     @property
+    def _btc_covers_everything(self) -> bool:
+        """Whether the BTC scope is empty or spans every line item.
+
+        Both ends of that range mean the same thing for the card leg:
+        nothing has been carved out for it, so it can still bill the
+        full total rather than being left with a strict subset.
+        """
+        assigned = self.btc_line_items.count()
+        return assigned == 0 or assigned == self.line_items.count()
+
+    @property
     def btc_portion_usd(self) -> Decimal:
         """The USD the BTC address covers: the assigned charges, or everything.
 
         A landlord can scope BTC to any subset of the charges -- say gas
         only, or gas and rent both -- and leave the rest on card, so the
         amount quoted to the renter isn't always the invoice total.
-        Assigning nothing leaves BTC covering the whole invoice.
+        Assigning nothing quotes the whole invoice, since that's the
+        amount BTC would need to cover if the renter paid entirely in
+        BTC without anything marked yet.
         """
         amounts = [item.amount for item in self.btc_line_items.all()]
         if not amounts:
@@ -342,8 +355,14 @@ class Invoice(models.Model):
 
     @property
     def stripe_portion_usd(self) -> Decimal:
-        """The USD left for the card/Cash App leg to cover."""
-        if not self.btc_line_items.exists():
+        """The USD left for the card/Cash App leg to cover.
+
+        A landlord scoping BTC to every charge (or leaving it
+        unscoped) doesn't take the card leg off the table -- the
+        renter can still pay the full total by card instead. Only a
+        strict subset actually reduces what the card leg owes.
+        """
+        if self._btc_covers_everything:
             return self.total
         return self.total - self.btc_portion_usd
 
@@ -351,12 +370,13 @@ class Invoice(models.Model):
     def is_split_payment(self) -> bool:
         """Whether this invoice needs both a BTC and a card payment.
 
-        Scoping BTC to charges that add up to the whole invoice -- every
-        line item, or the only one there is -- leaves nothing for the
-        card leg, which is just a whole-invoice BTC payment wearing a
-        different hat.
+        Only true once BTC is scoped to a strict subset of the
+        charges -- some assigned, some not -- so each leg has
+        something of its own to bill. Scoping to everything (or
+        nothing) leaves either rail able to cover the full total on
+        its own.
         """
-        return self.btc_line_items.exists() and self.stripe_portion_usd > 0
+        return bool(self.btc_address) and not self._btc_covers_everything
 
 
 class InvoiceLineItem(models.Model):
