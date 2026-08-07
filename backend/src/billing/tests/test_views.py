@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.tests.factories import LandlordFactory, UserFactory
 from billing.models import Invoice
@@ -369,6 +370,77 @@ class TestInvoiceViewSetCreate:
             {'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'rent_only'},
         )
         assert response.status_code == 400
+
+
+class TestInvoiceViewSetRetrieve:
+    """Fix 3: a pending BTC tx is checked on retrieve, so a payment
+    that confirms after the renter's tab closes still gets settled.
+    """
+
+    def test_checks_pending_btc_tx_on_retrieve(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            btc_address="bc1qexample",
+            btc_txid="tx1",
+            btc_settled_at=None,
+        )
+        mock_check = mocker.patch(
+            "billing.views.check_btc_payment", return_value=invoice
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_check.assert_called_once_with(invoice)
+
+    def test_does_not_check_when_no_txid_seen(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            btc_address="bc1qexample",
+            btc_txid="",
+            btc_settled_at=None,
+        )
+        mock_check = mocker.patch("billing.views.check_btc_payment")
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_check.assert_not_called()
+
+    def test_does_not_check_an_already_settled_leg(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            btc_address="bc1qexample",
+            btc_txid="tx1",
+            btc_settled_at=timezone.now(),
+        )
+        mock_check = mocker.patch("billing.views.check_btc_payment")
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_check.assert_not_called()
 
 
 class TestInvoiceViewSetWeeks:
