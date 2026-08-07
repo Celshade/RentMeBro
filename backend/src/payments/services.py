@@ -1,13 +1,14 @@
 """Stripe PaymentIntent creation, webhook handling, and BTC payments."""
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 import requests
 import stripe
 from django.conf import settings
 from django.core.cache import cache
+from django.core.mail import send_mail
 from django.utils import timezone
 
 from accounts.models import User
@@ -73,7 +74,9 @@ def resolve_settled_status(invoice: Invoice) -> str:
     return Invoice.Status.PARTIAL
 
 
-def _settle_btc_leg(invoice: Invoice, confirmed: bool) -> None:
+def _settle_btc_leg(
+    invoice: Invoice, confirmed: bool, paid_sats: int | None = None
+) -> None:
     """Records the BTC leg's outcome and re-resolves the invoice status.
 
     An unconfirmed tx leaves the invoice PENDING no matter how the card
@@ -85,6 +88,13 @@ def _settle_btc_leg(invoice: Invoice, confirmed: bool) -> None:
         invoice: The invoice whose BTC tx was just matched. Its
             `btc_txid` should already be set on the instance.
         confirmed: Whether the matched tx has a confirmation yet.
+        paid_sats: What the matched tx actually paid, if it may exceed
+            the quote. Callers pass None for an exact match, since by
+            definition it paid no more than quoted. This is re-passed
+            on every poll of an already-settled tx (a still-PARTIAL
+            split invoice keeps polling for its card leg), so the
+            overpaid flag/email below must gate on the unset->set
+            transition rather than firing every time.
     """
     if not confirmed:
         invoice.status = Invoice.Status.PENDING
@@ -97,15 +107,37 @@ def _settle_btc_leg(invoice: Invoice, confirmed: bool) -> None:
     # up, so the invoice doesn't resolve back to UNDERPAID on a stale
     # remainder. The credited tx/amount stay as the audit trail.
     invoice.remainder_owed_usd = None
+    update_fields = [
+        "status",
+        "btc_txid",
+        "btc_settled_at",
+        "remainder_owed_usd",
+    ]
+
+    was_overpaid_unset = invoice.btc_overpaid_usd is None
+    if (
+        was_overpaid_unset
+        and paid_sats is not None
+        and invoice.btc_amount_sats
+        and paid_sats > invoice.btc_amount_sats
+    ):
+        price = get_btc_usd_price()
+        if price is not None:
+            quoted_usd = _sats_to_usd(invoice.btc_amount_sats, price)
+            received_usd = _sats_to_usd(paid_sats, price)
+            invoice.btc_overpaid_usd = received_usd - quoted_usd
+            update_fields.append("btc_overpaid_usd")
+
     invoice.status = resolve_settled_status(invoice)
-    invoice.save(
-        update_fields=[
-            "status",
-            "btc_txid",
-            "btc_settled_at",
-            "remainder_owed_usd",
-        ]
-    )
+    invoice.save(update_fields=update_fields)
+
+    if was_overpaid_unset and invoice.btc_overpaid_usd is not None:
+        _notify_landlord_discrepancy(
+            invoice,
+            kind="overpaid",
+            quoted_usd=quoted_usd,
+            received_usd=received_usd,
+        )
 
 
 # PaymentIntent statuses that can't back a new Elements confirmation;
@@ -475,15 +507,72 @@ def _invoice_usd_owed(invoice: Invoice) -> Decimal:
     return invoice.btc_portion_usd
 
 
-def _fetch_address_txs(address: str) -> list[dict] | None:
+def _notify_landlord_discrepancy(
+    invoice: Invoice, *, kind: str, quoted_usd: Decimal, received_usd: Decimal
+) -> None:
+    """Emails the landlord that a BTC payment didn't land on-quote.
+
+    Reuses the plain-text `send_mail` pattern from
+    `LeaseRentRevision._notify_renter` (`billing/models.py`) rather
+    than adding templating for a rare event. Wrapped so a dead SMTP
+    host (the default `EMAIL_BACKEND` is the console backend) can
+    never lose an already-settled/credited payment -- callers must
+    gate on the unset->set transition themselves so this fires once
+    per discrepancy, not once per 60s poll.
+
+    Args:
+        invoice: The invoice the discrepancy was just recorded on.
+        kind: 'overpaid' or 'underpaid'.
+        quoted_usd: What the renter was quoted.
+        received_usd: What actually arrived.
+    """
+    renter = invoice.billing_period.renter
+    landlord = invoice.billing_period.landlord
+    difference = abs(received_usd - quoted_usd)
+    txid = invoice.btc_txid or invoice.btc_credited_txid
+    try:
+        send_mail(
+            subject=f'BTC {kind} payment on invoice #{invoice.id}',
+            message=(
+                f'{renter.email} paid ${received_usd} in BTC toward '
+                f'invoice #{invoice.id}, quoted at ${quoted_usd} '
+                f'(${difference} {kind}).\nTransaction: {txid}'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[landlord.email],
+        )
+    except Exception:
+        logger.warning(
+            "Failed to email landlord about BTC %s on invoice %s",
+            kind,
+            invoice.id,
+            exc_info=True,
+        )
+
+
+def _fetch_address_txs(
+    address: str, *, mempool_only: bool = False
+) -> list[dict] | None:
     """Fetches an address's transactions from mempool.space.
+
+    `mempool_only` selects `/txs/mempool` (unconfirmed only) over
+    `/txs` (up to 50 mempool + the first 25 confirmed, newest first).
+    The live 60s poll uses `mempool_only=True` so historical confirmed
+    txs are never even received -- the address-reuse cross-match bug
+    this guards against is enforced by the API response shape itself,
+    not by our own filtering. `_reconcile_lapsed_watch` deliberately
+    looks backwards at a window that already closed, so it keeps using
+    the full `/txs` endpoint.
 
     Returns:
         The parsed tx list, or None if the request failed (logged).
     """
     base_url = settings.MEMPOOL_API_BASE_URL
+    path = "txs/mempool" if mempool_only else "txs"
     try:
-        response = requests.get(f"{base_url}/address/{address}/txs", timeout=5)
+        response = requests.get(
+            f"{base_url}/address/{address}/{path}", timeout=5
+        )
         response.raise_for_status()
         return response.json()
     except requests.RequestException:
@@ -500,30 +589,141 @@ def _paid_sats(tx: dict, address: str) -> int:
     )
 
 
+def _watch_started_at(invoice: Invoice) -> datetime:
+    """The moment the invoice's current (or just-lapsed) watch window
+    began.
+
+    Derived rather than stored as its own field, since
+    `initiate_btc_watch` already sets `btc_watch_expires_at = start +
+    BTC_WATCH_WINDOW`. Valid on the lapsed path too, since
+    `_reconcile_lapsed_watch` runs before that field is cleared.
+    """
+    return invoice.btc_watch_expires_at - BTC_WATCH_WINDOW
+
+
+def _first_seen_at(txids: list[str]) -> dict[str, int]:
+    """Maps unconfirmed txids to when mempool.space first observed them.
+
+    The only way to time-bound an unconfirmed tx -- it carries no
+    `block_time`. A request failure is swallowed (logged); callers
+    treat a missing entry as "not in window," failing closed rather
+    than letting an unbounded tx through.
+
+    Args:
+        txids: The txids to look up.
+
+    Returns:
+        txid -> first-seen epoch seconds. Missing/unmined/unknown
+        entries are simply absent rather than mapped to 0.
+    """
+    base_url = settings.MEMPOOL_API_BASE_URL
+    try:
+        response = requests.get(
+            f"{base_url}/v1/transaction-times",
+            params=[("txId[]", txid) for txid in txids],
+            timeout=5,
+        )
+        response.raise_for_status()
+        times = response.json()
+    except requests.RequestException:
+        logger.warning("mempool.space transaction-times request failed")
+        return {}
+    return dict(zip(txids, times))
+
+
+def _first_seen_for_candidates(
+    txs: list[dict], address: str
+) -> dict[str, int]:
+    """First-seen timestamps for the unconfirmed txs worth time-checking.
+
+    Skips the `_first_seen_at` request entirely when nothing paid the
+    address anything at all -- the common "no payment yet" poll -- and
+    again for any tx that's already confirmed, since those carry their
+    own `block_time` and never need this lookup.
+    """
+    unconfirmed_txids = [
+        tx["txid"]
+        for tx in txs
+        if _paid_sats(tx, address) > 0
+        and not tx.get("status", {}).get("confirmed", False)
+    ]
+    if not unconfirmed_txids:
+        return {}
+    return _first_seen_at(unconfirmed_txids)
+
+
+def _is_in_window(
+    tx: dict, started_at: datetime, first_seen: dict[str, int]
+) -> bool:
+    """Whether `tx` could belong to the watch window starting at
+    `started_at`.
+
+    Confirmed txs are checked against their block time; unconfirmed
+    ones carry no `block_time` key at all, so they're checked against
+    when mempool.space first observed them instead -- never the other
+    way around.
+
+    Args:
+        tx: A transaction from mempool.space.
+        started_at: The earliest moment a tx may belong to this watch.
+        first_seen: txid -> first-seen epoch seconds, from
+            `_first_seen_at`. A tx missing from this map (lookup
+            failed, or mined/unknown) fails closed as not in window.
+    """
+    tx_status = tx.get("status", {})
+    if tx_status.get("confirmed", False):
+        return tx_status.get("block_time", 0) >= started_at.timestamp()
+    return first_seen.get(tx["txid"], 0) >= started_at.timestamp()
+
+
 def _find_matching_output(
-    txs: list[dict], address: str, amount_sats: int
+    txs: list[dict],
+    address: str,
+    amount_sats: int,
+    started_at: datetime,
+    first_seen: dict[str, int],
 ) -> dict | None:
-    """Finds the first tx paying `address` at least `amount_sats`."""
+    """Finds the first in-window tx paying `address` exactly `amount_sats`.
+
+    Exact rather than `>=` so a reused address's unrelated history
+    can't cross-match a rate-locked quote the way `20,997 >= 10,192`
+    once did; time-bounded so nothing that predates the renter
+    starting this watch can match at all, regardless of amount.
+    """
     for tx in txs:
-        if _paid_sats(tx, address) >= amount_sats:
+        if _paid_sats(tx, address) != amount_sats:
+            continue
+        if _is_in_window(tx, started_at, first_seen):
             return tx
     return None
 
 
-def _find_largest_output(txs: list[dict], address: str) -> dict | None:
-    """Finds the tx paying `address` the most, if anything paid it at all.
+def _find_largest_output(
+    txs: list[dict],
+    address: str,
+    started_at: datetime,
+    first_seen: dict[str, int],
+) -> dict | None:
+    """Finds the in-window tx paying `address` the most, if anything did.
 
-    Used once a watch window has fully lapsed with no full match, to
-    detect a genuine underpayment worth crediting toward the invoice
-    rather than silently discarding.
+    Used once no exact match is found, so the caller can classify the
+    result as an overpayment (settle, flag the excess) or a shortfall
+    (credit toward the invoice) instead of discarding a close-but-not-
+    exact payment outright.
     """
     best: dict | None = None
     best_sats = 0
     for tx in txs:
+        if not _is_in_window(tx, started_at, first_seen):
+            continue
         paid_sats = _paid_sats(tx, address)
         if paid_sats > 0 and paid_sats > best_sats:
             best_sats = paid_sats
-            best = {"txid": tx["txid"], "paid_sats": paid_sats}
+            best = {
+                "txid": tx["txid"],
+                "paid_sats": paid_sats,
+                "confirmed": tx.get("status", {}).get("confirmed", False),
+            }
     return best
 
 
@@ -550,10 +750,10 @@ def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
             reading across this reconciliation).
 
     Returns:
-        The updated invoice. If a full or grace-period match was
-        found, its status is now PENDING/PAID/PARTIAL. Otherwise,
-        unchanged (no on-chain payment at all) or UNDERPAID (a
-        shortfall was credited).
+        The updated invoice. If a full, overpaid, or grace-period
+        match was found, its status is now PENDING/PAID/PARTIAL.
+        Otherwise, unchanged (no on-chain payment at all) or
+        UNDERPAID (a shortfall was credited).
     """
     txs = _fetch_address_txs(invoice.btc_address)
     if txs is None:
@@ -561,30 +761,43 @@ def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
     if invoice.btc_credited_txid:
         txs = [t for t in txs if t.get("txid") != invoice.btc_credited_txid]
 
+    started_at = _watch_started_at(invoice)
+    first_seen = _first_seen_for_candidates(txs, invoice.btc_address)
+    amount_sats = invoice.btc_amount_sats
+
     if now <= invoice.btc_watch_expires_at + BTC_GRACE_PERIOD:
-        match = _find_matching_output(
-            txs, invoice.btc_address, invoice.btc_amount_sats
+        exact = _find_matching_output(
+            txs, invoice.btc_address, amount_sats, started_at, first_seen
         )
-        if match is not None:
-            invoice.btc_txid = match["txid"]
+        if exact is not None:
+            invoice.btc_txid = exact["txid"]
             _settle_btc_leg(
-                invoice, match.get("status", {}).get("confirmed", False)
+                invoice, exact.get("status", {}).get("confirmed", False)
             )
             return invoice
 
-    underpayment = _find_largest_output(txs, invoice.btc_address)
-    if underpayment is None:
+    best = _find_largest_output(
+        txs, invoice.btc_address, started_at, first_seen
+    )
+    if best is None:
+        return invoice
+
+    if best["paid_sats"] > amount_sats:
+        invoice.btc_txid = best["txid"]
+        _settle_btc_leg(
+            invoice, best["confirmed"], paid_sats=best["paid_sats"]
+        )
         return invoice
 
     price = get_btc_usd_price()
     if price is None:
         return invoice
 
-    credited_usd = _sats_to_usd(underpayment["paid_sats"], price)
+    credited_usd = _sats_to_usd(best["paid_sats"], price)
     usd_owed = _invoice_usd_owed(invoice)
     invoice.status = Invoice.Status.UNDERPAID
     invoice.remainder_owed_usd = max(usd_owed - credited_usd, Decimal("0"))
-    invoice.btc_credited_txid = underpayment["txid"]
+    invoice.btc_credited_txid = best["txid"]
     invoice.btc_credited_usd = credited_usd
     invoice.btc_amount_sats = None
     invoice.btc_watch_expires_at = None
@@ -597,6 +810,13 @@ def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
             "btc_amount_sats",
             "btc_watch_expires_at",
         ]
+    )
+    quoted_usd = _sats_to_usd(amount_sats, price)
+    _notify_landlord_discrepancy(
+        invoice,
+        kind="underpaid",
+        quoted_usd=quoted_usd,
+        received_usd=credited_usd,
     )
     return invoice
 
@@ -695,24 +915,48 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
     base_url = settings.MEMPOOL_API_BASE_URL
     try:
         if invoice.btc_txid:
+            # The full tx, not just /status: re-deriving paid_sats on
+            # every poll (not only the first match) is what lets an
+            # already-flagged overpayment survive the still-PARTIAL
+            # split-invoice case, where this branch is re-entered every
+            # 60s until the card leg lands too.
             response = requests.get(
-                f"{base_url}/tx/{invoice.btc_txid}/status", timeout=5
+                f"{base_url}/tx/{invoice.btc_txid}", timeout=5
             )
             response.raise_for_status()
-            if response.json().get("confirmed", False):
-                _settle_btc_leg(invoice, True)
+            tx = response.json()
+            if tx.get("status", {}).get("confirmed", False):
+                paid_sats = _paid_sats(tx, invoice.btc_address)
+                _settle_btc_leg(invoice, True, paid_sats=paid_sats)
             return invoice
 
-        txs = _fetch_address_txs(invoice.btc_address)
+        txs = _fetch_address_txs(invoice.btc_address, mempool_only=True)
         if txs is None:
             return invoice
         if invoice.btc_credited_txid:
             txs = [
                 t for t in txs if t.get("txid") != invoice.btc_credited_txid
             ]
+        started_at = _watch_started_at(invoice)
+        first_seen = _first_seen_for_candidates(txs, invoice.btc_address)
         match = _find_matching_output(
-            txs, invoice.btc_address, invoice.btc_amount_sats
+            txs,
+            invoice.btc_address,
+            invoice.btc_amount_sats,
+            started_at,
+            first_seen,
         )
+        paid_sats = None
+        if match is None:
+            best = _find_largest_output(
+                txs, invoice.btc_address, started_at, first_seen
+            )
+            if best is not None and best["paid_sats"] > invoice.btc_amount_sats:
+                match = {
+                    "txid": best["txid"],
+                    "status": {"confirmed": best["confirmed"]},
+                }
+                paid_sats = best["paid_sats"]
     except requests.RequestException:
         logger.warning(
             "mempool.space request failed for invoice %s", invoice.id
@@ -723,5 +967,9 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
         return invoice
 
     invoice.btc_txid = match["txid"]
-    _settle_btc_leg(invoice, match.get("status", {}).get("confirmed", False))
+    _settle_btc_leg(
+        invoice,
+        match.get("status", {}).get("confirmed", False),
+        paid_sats=paid_sats,
+    )
     return invoice
