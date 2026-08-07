@@ -46,6 +46,14 @@ export interface BtcSettings {
  * @property btc_watch_expires_at - When the current 15-minute "have we
  *   seen any tx yet" window closes (ISO 8601), or null if no watch is
  *   in progress.
+ * @property btc_txid - The matched transaction's id, or an empty string
+ *   if none has been seen yet. Distinguishes "tx seen, awaiting
+ *   confirmation" from "nothing arrived" once the window has lapsed.
+ * @property btc_settled_at - When the BTC leg settled (ISO 8601), or
+ *   null if it hasn't.
+ * @property remainder_owed_usd - The outstanding USD balance still
+ *   owed via BTC after a prior underpayment, or null when there's no
+ *   shortfall.
  * @property status - The invoice's current status (mirrors
  *   InvoiceStatus, kept separate since some BTC endpoints don't return
  *   a full Invoice).
@@ -54,6 +62,9 @@ export interface BtcInvoiceStatus {
   btc_address: string;
   btc_amount_sats: number | null;
   btc_watch_expires_at: string | null;
+  btc_txid: string;
+  btc_settled_at: string | null;
+  remainder_owed_usd: string | null;
   status: InvoiceStatus;
 }
 
@@ -246,6 +257,10 @@ export type InvoiceStatus =
  *   strict subset of the charges.
  * @property btc_settled_at - When the BTC leg settled (ISO 8601), or
  *   null if it hasn't.
+ * @property btc_overpaid_usd - How much more than the quote the BTC leg
+ *   received, as a decimal string, or null when it settled on- or
+ *   under-quote. An overpaid invoice is still fully paid -- this is an
+ *   additive flag, not a replacement status.
  * @property stripe_settled_at - When the card leg settled (ISO 8601),
  *   or null if it hasn't.
  */
@@ -268,6 +283,7 @@ export interface Invoice {
   stripe_portion_usd: string;
   is_split_payment: boolean;
   btc_settled_at: string | null;
+  btc_overpaid_usd: string | null;
   stripe_settled_at: string | null;
 }
 
