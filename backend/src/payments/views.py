@@ -241,6 +241,8 @@ def _btc_status_response(invoice: Invoice) -> Response:
             "btc_address": invoice.btc_address,
             "btc_amount_sats": invoice.btc_amount_sats,
             "btc_watch_expires_at": invoice.btc_watch_expires_at,
+            "btc_txid": invoice.btc_txid,
+            "btc_settled_at": invoice.btc_settled_at,
             "remainder_owed_usd": invoice.remainder_owed_usd,
             "status": invoice.status,
         }
