@@ -29,6 +29,7 @@ from billing.serializers import (
     PeriodPreviewSerializer,
     RenterLookupQuerySerializer,
 )
+from payments.services import check_btc_payment
 
 
 class LeaseViewSet(viewsets.ModelViewSet):
@@ -98,6 +99,30 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         return Invoice.objects.filter(
             Q(billing_period__landlord=user) | Q(billing_period__renter=user)
         )
+
+    def retrieve(self, request, *args, **kwargs) -> Response:
+        """Serves a single invoice, checking a pending BTC tx first.
+
+        The renter's browser is otherwise the only thing that ever
+        polls mempool.space, so a payment that confirms after the tab
+        closes would never get settled. Scoped to the one case that
+        matters -- a tx already seen but not yet confirmed -- so this
+        costs nothing on every other invoice, and never runs
+        `_reconcile_lapsed_watch` (that consumes the renter's quote and
+        belongs to the renter explicitly restarting a watch, not to a
+        landlord opening a page). Deliberately not on `list`, which
+        would otherwise fan out to one mempool.space request per
+        invoice on a dashboard page load.
+        """
+        invoice = self.get_object()
+        if (
+            invoice.btc_address
+            and invoice.btc_settled_at is None
+            and invoice.btc_txid
+        ):
+            invoice = check_btc_payment(invoice)
+        serializer = self.get_serializer(invoice)
+        return Response(serializer.data)
 
     def create(self, request, *args, **kwargs) -> Response:
         serializer = InvoiceCreateSerializer(
