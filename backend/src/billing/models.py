@@ -300,6 +300,9 @@ class Invoice(models.Model):
         'InvoiceLineItem', blank=True, related_name='+'
     )
     btc_settled_at = models.DateTimeField(null=True, blank=True)
+    btc_overpaid_usd = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
     stripe_settled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
