@@ -280,6 +280,7 @@ export function InvoiceDetail() {
               status={invoice.status}
               isLate={invoice.is_late}
               remainderOwedUsd={invoice.remainder_owed_usd}
+              overpaidUsd={invoice.btc_overpaid_usd}
             />
           </span>
         </div>

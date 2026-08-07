@@ -152,6 +152,7 @@ export function RenterDashboard() {
                         status={invoice.status}
                         isLate={invoice.is_late}
                         remainderOwedUsd={invoice.remainder_owed_usd}
+                        overpaidUsd={invoice.btc_overpaid_usd}
                       />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
                       {invoice.status !== 'paid' && (
