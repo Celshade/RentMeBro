@@ -29,7 +29,9 @@ const LOCKED_STATUSES = new Set(['paid', 'void', 'pending']);
  * an invoice as a payment option, or remove one already attached,
  * shown only once BTC payments are enabled and the invoice isn't
  * already locked (paid/void/pending). Removing clears any line items
- * marked as BTC-billed along with the address.
+ * marked as BTC-billed along with the address. Surfaces the same
+ * one-address-per-renter disclaimer shown when enabling BTC payments,
+ * since a shared address makes tx matching ambiguous.
  * @param props.invoice - The invoice to attach or remove BTC payment
  *   info on.
  * @param props.onAttached - Called with the updated invoice once an
@@ -103,6 +105,11 @@ function AttachBtcPaymentForm({
 
   return (
     <form onSubmit={handleSubmit} className="btc-address-form">
+      <p className="btc-address-disclaimer">
+        Use a separate BTC address for each renter -- a shared address
+        makes payments ambiguous to match and can misattribute one
+        renter's payment to another's invoice.
+      </p>
       <div className="btc-address-row">
         <label className="btc-address-row__field">
           BTC address

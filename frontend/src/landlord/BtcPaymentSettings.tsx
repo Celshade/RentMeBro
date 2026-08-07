@@ -6,7 +6,9 @@ import type { BtcSettings } from '../api/types';
 /**
  * Landlord account settings for enabling Bitcoin as an invoice payment
  * option alongside Stripe Cash App Pay. Enabling requires confirming a
- * one-time dialogue; the platform never custodies funds.
+ * one-time dialogue -- including a disclaimer to use a separate BTC
+ * address per renter, since a shared address makes tx matching
+ * ambiguous; the platform never custodies funds.
  * @param props.onClose - Called when the landlord dismisses this view.
  */
 export function BtcPaymentSettings({ onClose }: { onClose: () => void }) {
@@ -57,6 +59,11 @@ export function BtcPaymentSettings({ onClose }: { onClose: () => void }) {
 
       {settings !== null && !settings.enabled && (
         <form onSubmit={(e) => e.preventDefault()}>
+          <p className="btc-address-disclaimer">
+            Use a <strong>separate BTC address for each renter</strong>. A
+            shared address makes payments ambiguous to match and can
+            misattribute one renter's payment to another's invoice.
+          </p>
           <label>
             <input
               type="checkbox"
