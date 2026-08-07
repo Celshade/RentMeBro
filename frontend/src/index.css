@@ -339,6 +339,19 @@ body {
   word-break: break-all;
 }
 
+.pay-invoice-btc__countdown {
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.pay-invoice-btc__expiry {
+  font-size: 12px;
+  color: var(--text);
+  margin-top: -4px;
+}
+
 .dashboard-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -589,6 +602,14 @@ button[type='submit'].button--btc:hover {
 .btc-address-row__actions {
   display: flex;
   gap: 8px;
+}
+
+.btc-address-disclaimer {
+  font-size: 13px;
+  color: var(--text);
+  border-left: 3px solid var(--btc-orange);
+  padding-left: 10px;
+  margin-bottom: 12px;
 }
 
 .btc-price-hint {
@@ -860,6 +881,15 @@ code {
   cursor: help;
 }
 
+/* An overpayment is additive to "Paid," not a replacement -- blue
+   keeps it read as informational rather than alarming like the amber
+   underpaid pill. */
+.status-badge--overpaid {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+  cursor: help;
+}
+
 @media (prefers-color-scheme: dark) {
   .status-badge--paid {
     color: #4ade80;
@@ -884,6 +914,11 @@ code {
   .status-badge--underpaid {
     color: #fbbf24;
     background: rgba(251, 191, 36, 0.15);
+  }
+
+  .status-badge--overpaid {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.15);
   }
 
   .driven-days-calendar__week-price-btn--priced {
