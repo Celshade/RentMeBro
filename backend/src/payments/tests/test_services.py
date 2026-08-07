@@ -367,6 +367,40 @@ def _two_line_item_invoice(**kwargs) -> tuple[Invoice, InvoiceLineItem]:
     return invoice, gas
 
 
+def _mock_mempool_requests(
+    mocker,
+    *,
+    address_txs: list[dict] | None = None,
+    first_seen: dict[str, int] | None = None,
+    tx_detail: dict | None = None,
+):
+    """Routes `payments.services.requests.get` by mempool.space endpoint.
+
+    Real code hits three differently-shaped endpoints (an address's
+    txs, `/v1/transaction-times`, and a single tx by txid), so a
+    single blanket `return_value` mock can't serve all of them the way
+    it could before the time-bound match landed.
+    """
+    first_seen = first_seen or {}
+
+    def fake_get(url, *args, **kwargs):
+        response = MagicMock()
+        if "transaction-times" in url:
+            txids = [v for _, v in kwargs.get("params", [])]
+            response.json.return_value = [
+                first_seen.get(txid, 0) for txid in txids
+            ]
+        elif "/tx/" in url:
+            response.json.return_value = tx_detail
+        else:
+            response.json.return_value = address_txs or []
+        return response
+
+    return mocker.patch(
+        "payments.services.requests.get", side_effect=fake_get
+    )
+
+
 class TestAttachBtcPayment:
     def test_attaches_address(self):
         invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
@@ -747,21 +781,21 @@ class TestInitiateBtcWatch:
             btc_watch_expires_at=timezone.now()
             - timedelta(minutes=2),
         )
-        response = MagicMock()
-        response.json.return_value = [
-            {
-                "txid": "late-tx",
-                "vout": [
-                    {
-                        "scriptpubkey_address": "bc1qexample",
-                        "value": 100000,
-                    }
-                ],
-                "status": {"confirmed": False},
-            }
-        ]
-        mocker.patch(
-            "payments.services.requests.get", return_value=response
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "late-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {"confirmed": False},
+                }
+            ],
+            first_seen={"late-tx": int(timezone.now().timestamp())},
         )
 
         result = initiate_btc_watch(invoice)
@@ -778,21 +812,21 @@ class TestInitiateBtcWatch:
             - timedelta(minutes=10),
         )
         InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
-        response = MagicMock()
-        response.json.return_value = [
-            {
-                "txid": "short-tx",
-                "vout": [
-                    {
-                        "scriptpubkey_address": "bc1qexample",
-                        "value": 60000,
-                    }
-                ],
-                "status": {"confirmed": False},
-            }
-        ]
-        mocker.patch(
-            "payments.services.requests.get", return_value=response
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "short-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 60000,
+                        }
+                    ],
+                    "status": {"confirmed": False},
+                }
+            ],
+            first_seen={"short-tx": int(timezone.now().timestamp())},
         )
         mocker.patch(
             "payments.services.get_btc_usd_price", return_value=50000
@@ -888,21 +922,21 @@ class TestCheckBtcPayment:
             btc_amount_sats=100000,
             btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
         )
-        response = MagicMock()
-        response.json.return_value = [
-            {
-                "txid": "tx1",
-                "vout": [
-                    {
-                        "scriptpubkey_address": "bc1qexample",
-                        "value": 100000,
-                    }
-                ],
-                "status": {"confirmed": False},
-            }
-        ]
-        mocker.patch(
-            "payments.services.requests.get", return_value=response
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "tx1",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {"confirmed": False},
+                }
+            ],
+            first_seen={"tx1": int(timezone.now().timestamp())},
         )
 
         result = check_btc_payment(invoice)
@@ -917,21 +951,23 @@ class TestCheckBtcPayment:
             btc_amount_sats=100000,
             btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
         )
-        response = MagicMock()
-        response.json.return_value = [
-            {
-                "txid": "tx1",
-                "vout": [
-                    {
-                        "scriptpubkey_address": "bc1qexample",
-                        "value": 100000,
-                    }
-                ],
-                "status": {"confirmed": True},
-            }
-        ]
-        mocker.patch(
-            "payments.services.requests.get", return_value=response
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "tx1",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {
+                        "confirmed": True,
+                        "block_time": int(timezone.now().timestamp()),
+                    },
+                }
+            ],
         )
 
         result = check_btc_payment(invoice)
@@ -947,10 +983,18 @@ class TestCheckBtcPayment:
             btc_txid="tx1",
             btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
         )
-        response = MagicMock()
-        response.json.return_value = {"confirmed": True}
-        mocker.patch(
-            "payments.services.requests.get", return_value=response
+        _mock_mempool_requests(
+            mocker,
+            tx_detail={
+                "txid": "tx1",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 100000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            },
         )
 
         result = check_btc_payment(invoice)
@@ -1024,6 +1068,315 @@ class TestCheckBtcPayment:
         # time even though its value covers it.
         assert result.status == Invoice.Status.UNDERPAID
         assert result.btc_txid == ""
+
+    def test_confirmed_tx_before_window_is_rejected(self, mocker):
+        """The invoice-3 regression: a reused address's 9-month-old
+        confirmed tx must not match a live quote just because it paid
+        enough -- it predates the renter starting this watch.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "old-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {
+                        "confirmed": True,
+                        "block_time": int(
+                            (
+                                timezone.now() - timedelta(days=270)
+                            ).timestamp()
+                        ),
+                    },
+                }
+            ],
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.SENT
+        assert result.btc_txid == ""
+
+    def test_overquote_tx_before_window_is_rejected_on_both_counts(
+        self, mocker
+    ):
+        """Proves the time bound and the amount rule are independent
+        defenses: this tx would also fail an exact-amount check, but
+        is rejected here purely for predating the watch.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "old-big-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 500000,
+                        }
+                    ],
+                    "status": {
+                        "confirmed": True,
+                        "block_time": int(
+                            (
+                                timezone.now() - timedelta(days=270)
+                            ).timestamp()
+                        ),
+                    },
+                }
+            ],
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.SENT
+        assert result.btc_txid == ""
+        assert result.btc_overpaid_usd is None
+
+    def test_first_seen_zero_rejects_unconfirmed_candidate(self, mocker):
+        """`transaction-times` returns 0 for a mined/unknown tx, which
+        must fail closed rather than being treated as in-window.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "unknown-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {"confirmed": False},
+                }
+            ],
+            first_seen={},
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.SENT
+        assert result.btc_txid == ""
+
+    def test_overquote_in_window_tx_settles_as_overpayment(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "big-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 120000,
+                        }
+                    ],
+                    "status": {
+                        "confirmed": True,
+                        "block_time": int(timezone.now().timestamp()),
+                    },
+                }
+            ],
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PAID
+        assert result.btc_txid == "big-tx"
+        assert result.btc_overpaid_usd == Decimal("10.00")
+
+    def test_overquote_in_window_tx_on_split_invoice_stays_partial(
+        self, mocker
+    ):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=[gas.id]
+        )
+        invoice.btc_amount_sats = 400000  # $200 gas @ $50k/BTC
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=10)
+        invoice.save(
+            update_fields=["btc_amount_sats", "btc_watch_expires_at"]
+        )
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "big-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 420000,
+                        }
+                    ],
+                    "status": {
+                        "confirmed": True,
+                        "block_time": int(timezone.now().timestamp()),
+                    },
+                }
+            ],
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PARTIAL
+        assert result.btc_overpaid_usd == Decimal("10.00")
+
+
+class TestBtcDiscrepancyEmails:
+    """Fix 5b: the landlord is emailed on either kind of discrepancy,
+    exactly once, and a dead mail host must never lose a settled
+    payment.
+    """
+
+    def test_overpayment_email_fires_once_across_repeated_polls(
+        self, mocker, mailoutbox
+    ):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=[gas.id]
+        )
+        invoice.btc_amount_sats = 400000  # $200 gas @ $50k/BTC
+        invoice.btc_txid = "big-tx"
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=10)
+        invoice.save(
+            update_fields=[
+                "btc_amount_sats", "btc_txid", "btc_watch_expires_at"
+            ]
+        )
+        _mock_mempool_requests(
+            mocker,
+            tx_detail={
+                "txid": "big-tx",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 420000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            },
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = check_btc_payment(invoice)
+        assert result.status == Invoice.Status.PARTIAL
+        assert result.btc_overpaid_usd == Decimal("10.00")
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == [invoice.billing_period.landlord.email]
+
+        # The card leg is still outstanding, so this is re-entered by
+        # the renter's 60s poll -- must not resend.
+        result = check_btc_payment(result)
+        assert len(mailoutbox) == 1
+
+    def test_underpayment_sends_exactly_one_landlord_email(
+        self, mocker, mailoutbox
+    ):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() - timedelta(minutes=10),
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "short-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 60000,
+                        }
+                    ],
+                    "status": {"confirmed": False},
+                }
+            ],
+            first_seen={"short-tx": int(timezone.now().timestamp())},
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.status == Invoice.Status.UNDERPAID
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == [invoice.billing_period.landlord.email]
+
+    def test_send_mail_failure_does_not_break_settlement(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="big-tx",
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        _mock_mempool_requests(
+            mocker,
+            tx_detail={
+                "txid": "big-tx",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 120000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            },
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+        mocker.patch(
+            "payments.services.send_mail",
+            side_effect=Exception("smtp down"),
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PAID
+        assert result.btc_overpaid_usd == Decimal("10.00")
 
 
 class TestGetBtcUsdPrice:
