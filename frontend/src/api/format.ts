@@ -118,3 +118,30 @@ export function formatUserWithEmail(user: User): string {
   const name = formatUserName(user);
   return name === user.email ? name : `${name} (${user.email})`;
 }
+
+
+/**
+ * Formats a millisecond duration as a countdown clock.
+ * @param ms - The remaining duration, in milliseconds. Negative values
+ *   are clamped to zero rather than showing a negative countdown.
+ * @returns "M:SS" (e.g. "14:59").
+ */
+export function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+
+/**
+ * Formats an ISO timestamp as a local wall-clock time.
+ * @param iso - An ISO 8601 timestamp.
+ * @returns The local time (e.g. "2:45 PM").
+ */
+export function formatClockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
