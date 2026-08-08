@@ -145,3 +145,18 @@ export function formatClockTime(iso: string): string {
     minute: '2-digit',
   });
 }
+
+
+/**
+ * Middle-truncates a BTC address for compact display.
+ * @param address - A full BTC address.
+ * @returns The address with its middle replaced by an ellipsis (e.g.
+ *   "bc1qar0s...5mdq"), or the address unchanged if it is already short
+ *   enough that truncating it would not save space.
+ */
+export function formatBtcAddressShort(address: string): string {
+  const headLength = 8;
+  const tailLength = 4;
+  if (address.length <= headLength + tailLength + 3) return address;
+  return `${address.slice(0, headLength)}...${address.slice(-tailLength)}`;
+}
