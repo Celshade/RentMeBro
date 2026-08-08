@@ -263,6 +263,11 @@ export type InvoiceStatus =
  *   additive flag, not a replacement status.
  * @property stripe_settled_at - When the card leg settled (ISO 8601),
  *   or null if it hasn't.
+ * @property btc_txid - The tx that settles (or is settling) the BTC
+ *   leg, or an empty string if none has been seen yet.
+ * @property btc_credited_txid - A short payment credited toward the
+ *   invoice that leaves a remainder owed, or an empty string if there
+ *   isn't one.
  */
 export interface Invoice {
   id: number;
@@ -285,6 +290,8 @@ export interface Invoice {
   btc_settled_at: string | null;
   btc_overpaid_usd: string | null;
   stripe_settled_at: string | null;
+  btc_txid: string;
+  btc_credited_txid: string;
 }
 
 

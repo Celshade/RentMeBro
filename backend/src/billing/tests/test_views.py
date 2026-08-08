@@ -398,6 +398,7 @@ class TestInvoiceViewSetRetrieve:
         )
 
         assert response.status_code == 200
+        assert response.data["btc_txid"] == "tx1"
         mock_check.assert_called_once_with(invoice)
 
     def test_does_not_check_when_no_txid_seen(
