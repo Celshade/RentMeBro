@@ -352,6 +352,16 @@ body {
   margin-top: -4px;
 }
 
+.btc-tx-link {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.btc-tx-link--pending {
+  color: var(--pending);
+}
+
 .dashboard-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
