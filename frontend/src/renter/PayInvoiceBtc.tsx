@@ -1,10 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import { apiFetch } from '../api/client';
-import { formatClockTime, formatCountdown, formatMoney, satsToBtc } from '../api/format';
+import {
+  formatClockTime,
+  formatCountdown,
+  formatMoney,
+  satsToBtc,
+} from '../api/format';
 import type { BtcInvoiceStatus } from '../api/types';
+import { BtcBroadcastBlocks } from '../components/BtcBroadcastBlocks';
+import { BtcTxLink } from '../components/BtcTxLink';
 
+// Pre-payment the watch window is hard-capped at 15 min, so 60s buys
+// a responsive "we saw it" moment at a bounded request cost. Once a
+// tx is seen the poll is unbounded -- a low-fee tx can sit in the
+// mempool for hours, and the check-on-read path (billing/views.py)
+// means this panel isn't the only thing that will notice a
+// confirmation -- so it backs off to 90s, which trims ~33% of calls
+// in that unbounded phase for ~15s of added mean latency against a
+// ~10-minute confirmation cadence.
 const POLL_INTERVAL_MS = 60_000;
+const CONFIRM_POLL_INTERVAL_MS = 90_000;
 
 
 /**
@@ -19,15 +35,16 @@ function isWatchExpired(expiresAt: string | null, now: Date): boolean {
 }
 
 
-/** The renter-facing status line, driven by the fields that actually
- * distinguish these states -- not just `status`, which collapses
- * "tx seen, awaiting confirmation" and "nothing arrived" together once
- * the window lapses.
+/**
+ * The renter-facing status line for the pre-broadcast panel (QR,
+ * address, countdown). A tx being seen moves the panel to a separate
+ * awaiting-confirmation branch entirely, so this never has to
+ * distinguish that state.
  */
-function statusCopy(btcStatus: BtcInvoiceStatus, expired: boolean): string {
-  if (btcStatus.btc_txid) {
-    return 'Payment seen, waiting for confirmation...';
-  }
+function statusCopy(
+  btcStatus: Pick<BtcInvoiceStatus, 'status' | 'remainder_owed_usd'>,
+  expired: boolean
+): string {
   if (btcStatus.status === 'underpaid' && btcStatus.remainder_owed_usd) {
     return `Payment was short -- $${formatMoney(
       btcStatus.remainder_owed_usd
@@ -38,12 +55,14 @@ function statusCopy(btcStatus: BtcInvoiceStatus, expired: boolean): string {
 
 
 /**
- * Renter's "Pay with BTC" panel: shows the landlord's fixed address and
- * amount as a copyable address, a `bitcoin:` URI QR code, and polls
- * every 60 seconds for the payment to be seen/confirmed while the
- * panel stays open. Polling continues past the quote's expiry once a
- * tx has been seen, since a late confirmation is still worth watching
- * for.
+ * Renter's "Pay with BTC" panel. Before a tx is seen, shows the
+ * landlord's fixed address and amount as a copyable address plus a
+ * `bitcoin:` URI QR code, polling every 60 seconds. Once a tx is seen
+ * in the mempool, the panel switches to an awaiting-confirmation view
+ * (QR/address/countdown dropped, since the renter has already paid)
+ * and polling backs off to 90 seconds. Polling continues past the
+ * quote's expiry once a tx has been seen, since a late confirmation is
+ * still worth watching for.
  * @param props.invoiceId - The invoice being paid.
  * @param props.onPaid - Called once the whole invoice is paid.
  */
@@ -74,9 +93,12 @@ export function PayInvoiceBtc({
   }, [startWatch]);
 
   useEffect(() => {
+    // No countdown is shown once a tx has been seen or the leg has
+    // settled, so there's nothing for a 1s tick to drive.
+    if (btcStatus?.btc_txid || btcStatus?.btc_settled_at !== null) return;
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [btcStatus?.btc_txid, btcStatus?.btc_settled_at]);
 
   useEffect(() => {
     if (btcStatus === null) return;
@@ -92,20 +114,62 @@ export function PayInvoiceBtc({
       return;
     }
 
+    const intervalMs = btcStatus.btc_txid
+      ? CONFIRM_POLL_INTERVAL_MS
+      : POLL_INTERVAL_MS;
     const timer = setInterval(() => {
       apiFetch<BtcInvoiceStatus>(`/api/invoices/${invoiceId}/btc/check/`, {
         method: 'POST',
       })
         .then(setBtcStatus)
         .catch(() => setError('Could not check payment status.'));
-    }, POLL_INTERVAL_MS);
+    }, intervalMs);
     return () => clearInterval(timer);
   }, [btcStatus, invoiceId]);
+
+  // Hooks must run unconditionally, so this sits above the early
+  // returns and tolerates a null btcStatus -- without the memo the QR
+  // was being rebuilt every second by the countdown ticker.
+  const qrDataUrl = useMemo(() => {
+    if (!btcStatus?.btc_address || btcStatus.btc_amount_sats === null) {
+      return null;
+    }
+    const bitcoinUri = `bitcoin:${btcStatus.btc_address}?amount=${satsToBtc(
+      btcStatus.btc_amount_sats
+    )}`;
+    const qr = qrcode(0, 'M');
+    qr.addData(bitcoinUri);
+    qr.make();
+    return qr.createDataURL(6, 4);
+  }, [btcStatus?.btc_address, btcStatus?.btc_amount_sats]);
 
   if (error) return <p role="alert">{error}</p>;
   if (btcStatus === null) return <p>Preparing BTC payment...</p>;
   if (btcStatus.status === 'paid' || btcStatus.btc_settled_at !== null) {
-    return <p>BTC payment received</p>;
+    return (
+      <div className="pay-invoice-btc">
+        <BtcBroadcastBlocks confirmed />
+        <p className="pay-invoice-btc__seen">Payment confirmed</p>
+        <BtcTxLink txid={btcStatus.btc_txid} />
+      </div>
+    );
+  }
+  if (btcStatus.btc_txid) {
+    // Seen in the mempool but not yet confirmed. QR, address, and
+    // countdown are deliberately gone -- the renter has already paid,
+    // so those elements now just mislead / invite a duplicate send.
+    return (
+      <div className="pay-invoice-btc">
+        <BtcBroadcastBlocks />
+        <p className="pay-invoice-btc__seen">Payment seen on the network</p>
+        <p className="pay-invoice-btc__seen-sub">Waiting for confirmation…</p>
+        <BtcTxLink txid={btcStatus.btc_txid} pending />
+        <p className="pay-invoice-btc__seen-note">
+          You're done -- no need to send again. This usually confirms
+          within an hour, and you can close this page.
+        </p>
+      </div>
+    );
   }
   if (
     btcStatus.btc_amount_sats === null ||
@@ -122,24 +186,19 @@ export function PayInvoiceBtc({
   }
 
   const amountSats = btcStatus.btc_amount_sats;
-  const bitcoinUri = `bitcoin:${btcStatus.btc_address}?amount=${satsToBtc(
-    amountSats
-  )}`;
-  const qr = qrcode(0, 'M');
-  qr.addData(bitcoinUri);
-  qr.make();
-  const qrDataUrl = qr.createDataURL(6, 4);
   const expired = isWatchExpired(btcStatus.btc_watch_expires_at, now);
   const msRemaining =
     new Date(btcStatus.btc_watch_expires_at).getTime() - now.getTime();
 
   return (
     <div className="pay-invoice-btc">
-      <img
-        className="pay-invoice-btc__qr"
-        src={qrDataUrl}
-        alt="Bitcoin payment QR code"
-      />
+      {qrDataUrl && (
+        <img
+          className="pay-invoice-btc__qr"
+          src={qrDataUrl}
+          alt="Bitcoin payment QR code"
+        />
+      )}
       <p>Send exactly {satsToBtc(amountSats)} BTC to:</p>
       <p className="pay-invoice-btc__address">{btcStatus.btc_address}</p>
       <p className="pay-invoice-btc__countdown">
@@ -149,7 +208,7 @@ export function PayInvoiceBtc({
         (expires {formatClockTime(btcStatus.btc_watch_expires_at)})
       </p>
       <p>{statusCopy(btcStatus, expired)}</p>
-      {expired && !btcStatus.btc_txid && (
+      {expired && (
         <button type="button" onClick={startWatch}>
           Get a new quote
         </button>
