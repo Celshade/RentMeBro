@@ -29,6 +29,9 @@
   --late: rgb(var(--late-rgb));
   --late-bg: rgba(var(--late-rgb), 0.115);
   --late-border: rgba(var(--late-rgb), 0.42);
+  --paid-rgb: 21, 128, 61;
+  --paid: rgb(var(--paid-rgb));
+  --paid-bg: rgba(var(--paid-rgb), 0.12);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -84,6 +87,9 @@
     --late: rgb(var(--late-rgb));
     --late-bg: rgba(var(--late-rgb), 0.16);
     --late-border: rgba(var(--late-rgb), 0.45);
+    --paid-rgb: 74, 222, 128;
+    --paid: rgb(var(--paid-rgb));
+    --paid-bg: rgba(var(--paid-rgb), 0.15);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -352,6 +358,24 @@ body {
   margin-top: -4px;
 }
 
+.pay-invoice-btc__seen {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.pay-invoice-btc__seen-sub {
+  font-size: 14px;
+  color: var(--text);
+  margin-top: -6px;
+}
+
+.pay-invoice-btc__seen-note {
+  font-size: 13px;
+  color: var(--text);
+  max-width: 320px;
+}
+
 .btc-tx-link {
   font-family: monospace;
   font-size: 13px;
@@ -360,6 +384,121 @@ body {
 
 .btc-tx-link--pending {
   color: var(--pending);
+}
+
+.btc-blocks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btc-blocks__block {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--pending-border);
+  background: var(--pending-bg);
+  animation: btc-block-fill 2.4s ease-in-out infinite;
+}
+
+.btc-blocks__block:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.btc-blocks__block:nth-child(2) {
+  animation-delay: 0.3s;
+}
+
+.btc-blocks__block:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+.btc-blocks__block:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: 4px;
+  height: 1px;
+  background: var(--pending-border);
+  transform: translateY(-50%);
+}
+
+.btc-blocks__block--pending {
+  border-style: dashed;
+  background: transparent;
+  animation: btc-block-pulse 2.4s ease-in-out infinite;
+  animation-delay: 0.9s;
+}
+
+.btc-blocks__block--confirmed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--paid);
+  border-style: solid;
+  border-color: var(--paid);
+  background: var(--paid-bg);
+  animation: btc-block-settle 0.4s ease-out 1 forwards;
+}
+
+@keyframes btc-block-fill {
+  0%,
+  100% {
+    background: transparent;
+  }
+  40%,
+  90% {
+    background: var(--pending-bg);
+  }
+}
+
+@keyframes btc-block-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    border-color: var(--pending-border);
+  }
+  50% {
+    opacity: 1;
+    border-color: var(--pending);
+  }
+}
+
+@keyframes btc-block-settle {
+  0% {
+    transform: scale(1);
+    background: var(--pending-bg);
+    border-color: var(--pending-border);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+    background: var(--paid-bg);
+    border-color: var(--paid);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btc-blocks__block,
+  .btc-blocks__block--pending,
+  .btc-blocks__block--confirmed {
+    animation: none;
+    background: var(--pending-bg);
+  }
+
+  .btc-blocks__block--pending {
+    background: transparent;
+  }
+
+  .btc-blocks__block--confirmed {
+    background: var(--paid-bg);
+  }
 }
 
 .dashboard-columns {
@@ -847,8 +986,8 @@ code {
 }
 
 .status-badge--paid {
-  color: #15803d;
-  background: rgba(21, 128, 61, 0.12);
+  color: var(--paid);
+  background: var(--paid-bg);
 }
 
 .status-badge--sent {
@@ -902,8 +1041,8 @@ code {
 
 @media (prefers-color-scheme: dark) {
   .status-badge--paid {
-    color: #4ade80;
-    background: rgba(74, 222, 128, 0.15);
+    color: var(--paid);
+    background: var(--paid-bg);
   }
 
   .status-badge--sent {
