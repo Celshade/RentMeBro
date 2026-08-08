@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import {
   formatBillingPeriod,
+  formatBtcAddressShort,
   formatInvoiceKind,
   formatMoney,
   satsToBtc,
@@ -303,7 +304,9 @@ export function InvoiceDetail() {
             </span>
           )}
           {invoice.btc_address && (
-            <span className="stat-tile__meta">{invoice.btc_address}</span>
+            <span className="stat-tile__meta" title={invoice.btc_address}>
+              {formatBtcAddressShort(invoice.btc_address)}
+            </span>
           )}
         </div>
         <div className="stat-tile">
