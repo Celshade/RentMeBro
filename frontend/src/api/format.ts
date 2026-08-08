@@ -148,6 +148,25 @@ export function formatClockTime(iso: string): string {
 
 
 /**
+ * Middle-truncates a string, replacing its center with an ellipsis.
+ * @param value - The string to truncate.
+ * @param headLength - How many leading characters to keep.
+ * @param tailLength - How many trailing characters to keep.
+ * @returns The truncated string (e.g. "bc1qar0s...5mdq"), or the value
+ *   unchanged if it is already short enough that truncating it would
+ *   not save space.
+ */
+function truncateMiddle(
+  value: string,
+  headLength: number,
+  tailLength: number
+): string {
+  if (value.length <= headLength + tailLength + 3) return value;
+  return `${value.slice(0, headLength)}...${value.slice(-tailLength)}`;
+}
+
+
+/**
  * Middle-truncates a BTC address for compact display.
  * @param address - A full BTC address.
  * @returns The address with its middle replaced by an ellipsis (e.g.
@@ -155,8 +174,29 @@ export function formatClockTime(iso: string): string {
  *   enough that truncating it would not save space.
  */
 export function formatBtcAddressShort(address: string): string {
-  const headLength = 8;
-  const tailLength = 4;
-  if (address.length <= headLength + tailLength + 3) return address;
-  return `${address.slice(0, headLength)}...${address.slice(-tailLength)}`;
+  return truncateMiddle(address, 8, 4);
+}
+
+
+/**
+ * Middle-truncates a transaction id for compact display.
+ * @param txid - A full 64-hex-character transaction id.
+ * @returns The txid with its middle replaced by an ellipsis.
+ */
+export function formatTxidShort(txid: string): string {
+  return truncateMiddle(txid, 8, 6);
+}
+
+
+const MEMPOOL_BASE_URL =
+  (import.meta.env.VITE_MEMPOOL_BASE_URL as string | undefined) ??
+  'https://mempool.space';
+
+/**
+ * Builds a mempool.space (or configured explorer) link for a transaction.
+ * @param txid - A full transaction id.
+ * @returns The transaction's explorer URL.
+ */
+export function mempoolTxUrl(txid: string): string {
+  return `${MEMPOOL_BASE_URL}/tx/${txid}`;
 }
