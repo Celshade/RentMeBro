@@ -18,6 +18,7 @@ import type {
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { BtcAttachedGlyph } from '../components/BtcAttachedGlyph';
+import { BtcTxLink } from '../components/BtcTxLink';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
@@ -266,6 +267,8 @@ export function InvoiceDetail() {
     btcSettings?.enabled === true &&
     invoice.btc_address !== '' &&
     !LOCKED_STATUSES.has(invoice.status);
+  const btcTxid = invoice.btc_txid || invoice.btc_credited_txid;
+  const btcPending = invoice.btc_settled_at === null;
 
   return (
     <div className="invoice-detail">
@@ -328,6 +331,9 @@ export function InvoiceDetail() {
       <section className="card">
         <div className="card__header">
           <h2>Line items</h2>
+          {invoice.btc_line_items.length === 0 && (
+            <BtcTxLink txid={btcTxid} pending={btcPending} />
+          )}
         </div>
         <ul className="list">
           {invoice.line_items.map((item) => {
@@ -343,6 +349,9 @@ export function InvoiceDetail() {
                 </span>
                 <span className="renter-dashboard__invoice-actions">
                   ${item.amount}
+                  {isAssigned && (
+                    <BtcTxLink txid={btcTxid} pending={btcPending} />
+                  )}
                   {canAssignBtc && (
                     <button
                       type="button"
