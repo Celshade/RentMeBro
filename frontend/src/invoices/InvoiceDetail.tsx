@@ -9,6 +9,7 @@ import {
   satsToBtc,
   usdToBtc,
 } from '../api/format';
+import { isLineItemPaid, lineItemLeg } from '../api/invoice';
 import type {
   BtcSettings,
   DrivenDayLog,
@@ -338,6 +339,8 @@ export function InvoiceDetail() {
         <ul className="list">
           {invoice.line_items.map((item) => {
             const isAssigned = invoice.btc_line_items.includes(item.id);
+            const paid = isLineItemPaid(invoice, item.id);
+            const leg = lineItemLeg(invoice, item.id);
             return (
               <li key={item.id} className="list-row">
                 <span>
@@ -349,6 +352,16 @@ export function InvoiceDetail() {
                 </span>
                 <span className="renter-dashboard__invoice-actions">
                   ${item.amount}
+                  {paid && (
+                    <span className="status-badge status-badge--paid">
+                      Paid
+                    </span>
+                  )}
+                  {!paid && leg !== 'either' && (
+                    <span className="status-badge status-badge--pending">
+                      {leg === 'btc' ? 'Due in BTC' : 'Due by card'}
+                    </span>
+                  )}
                   {isAssigned && (
                     <BtcTxLink txid={btcTxid} pending={btcPending} />
                   )}
