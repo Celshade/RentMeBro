@@ -8,6 +8,7 @@ import {
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { formatMoney } from '../api/format';
+import { isLineItemPaid, lineItemLeg } from '../api/invoice';
 import type { Invoice } from '../api/types';
 import { PayInvoiceBtc } from './PayInvoiceBtc';
 
@@ -166,6 +167,30 @@ export function PayInvoice({
 
   return (
     <div>
+      <ul className="list">
+        {invoice.line_items.map((item) => {
+          const paid = isLineItemPaid(invoice, item.id);
+          const leg = lineItemLeg(invoice, item.id);
+          return (
+            <li key={item.id} className="list-row">
+              <span>{item.description}</span>
+              <span className="renter-dashboard__invoice-actions">
+                ${item.amount}
+                {paid && (
+                  <span className="status-badge status-badge--paid">
+                    Paid
+                  </span>
+                )}
+                {!paid && leg !== 'either' && (
+                  <span className="status-badge status-badge--pending">
+                    {leg === 'btc' ? 'Due in BTC' : 'Due by card'}
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
       {invoice.is_split_payment && (
         <p className="pay-invoice__split-notice">
           This invoice is split across two payments:{' '}
