@@ -8,8 +8,9 @@ import {
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { formatMoney } from '../api/format';
-import { isLineItemPaid } from '../api/invoice';
+import { isLineItemPaid, lineItemRails } from '../api/invoice';
 import type { Invoice } from '../api/types';
+import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
 import { PayInvoiceBtc } from './PayInvoiceBtc';
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string;
@@ -161,7 +162,8 @@ export function PayInvoice({
   invoice: Invoice;
   onPaid: () => void;
 }) {
-  const hasBtcOption = invoice.btc_address !== '';
+  const hasBtcOption =
+    invoice.btc_address !== '' && Number(invoice.btc_owed_usd) > 0;
   const [mode, setMode] = useState<'cashapp' | 'btc'>(
     Number(invoice.btc_owed_usd) > 0 &&
       Number(invoice.stripe_portion_usd) === 0
@@ -182,6 +184,7 @@ export function PayInvoice({
       <ul className="list">
         {invoice.line_items.map((item) => {
           const paid = isLineItemPaid(invoice, item.id);
+          const itemRails = lineItemRails(invoice, item);
           const lockLabel =
             item.payment_lock === 'btc'
               ? 'BTC only'
@@ -190,7 +193,13 @@ export function PayInvoice({
                 : null;
           return (
             <li key={item.id} className="list-row">
-              <span>{item.description}</span>
+              <span>
+                <span className="list-row__rails">
+                  {itemRails.btc && <PaymentRailGlyph rail="btc" />}
+                  {itemRails.card && <PaymentRailGlyph rail="card" />}
+                </span>
+                {item.description}
+              </span>
               <span className="renter-dashboard__invoice-actions">
                 ${item.amount}
                 {paid && (
