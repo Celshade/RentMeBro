@@ -301,6 +301,14 @@ body {
   color: var(--text);
 }
 
+/* For the Payment options tile's rail glyphs, which want more
+   breathing room than a row of pills. */
+.stat-tile__value--rails {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .stat-tile__meta {
   font-size: 13px;
   color: var(--text);
@@ -592,6 +600,23 @@ body {
   font-weight: 700;
   cursor: help;
   margin-right: 4px;
+}
+
+/* Payment-rail symbols for the Payment options stat tile -- see
+   PaymentRailGlyph.tsx. */
+.rail-glyph {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  cursor: help;
+}
+
+.rail-glyph--btc {
+  color: var(--btc-orange);
+}
+
+.rail-glyph--card {
+  color: var(--stripe-purple);
 }
 
 .empty-state {
