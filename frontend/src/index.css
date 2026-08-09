@@ -619,6 +619,14 @@ body {
   color: var(--stripe-purple);
 }
 
+/* Fixed-width gutter so a line-item description stays aligned whether
+   its row shows one glyph or two. */
+.list-row__rails {
+  display: inline-flex;
+  gap: 4px;
+  min-width: 34px;
+}
+
 .empty-state {
   color: var(--text);
   font-size: 14px;
@@ -812,6 +820,35 @@ button[type='submit'].button--btc:hover {
 .btc-price-hint__info {
   cursor: help;
   color: var(--btc-orange);
+}
+
+.btc-address-nudge-hint {
+  font-size: 13px;
+  color: var(--btc-orange);
+  margin: -4px 0 12px;
+}
+
+/* Draws attention to the Attach button when the landlord tried to
+   lock a charge to BTC with no address attached yet. */
+@keyframes attach-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--btc-orange-border);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--btc-orange-border);
+  }
+}
+
+.attach-nudge {
+  animation: attach-pulse 1s ease-in-out 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attach-nudge {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--btc-orange-border);
+  }
 }
 
 .driven-days-calendar {
