@@ -98,6 +98,12 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         return Invoice.objects.filter(
             Q(billing_period__landlord=user) | Q(billing_period__renter=user)
+        ).prefetch_related(
+            'line_items',
+            'btc_line_items',
+            'btc_round_line_items',
+            'stripe_round_line_items',
+            'settlements__line_items',
         )
 
     def retrieve(self, request, *args, **kwargs) -> Response:

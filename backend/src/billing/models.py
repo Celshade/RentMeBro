@@ -300,10 +300,14 @@ class Invoice(models.Model):
         'InvoiceLineItem', blank=True, related_name='+'
     )
     btc_settled_at = models.DateTimeField(null=True, blank=True)
-    btc_overpaid_usd = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
-    )
     stripe_settled_at = models.DateTimeField(null=True, blank=True)
+    btc_round_line_items = models.ManyToManyField(
+        'InvoiceLineItem', blank=True, related_name='+'
+    )
+    stripe_round_line_items = models.ManyToManyField(
+        'InvoiceLineItem', blank=True, related_name='+'
+    )
+    stripe_intent_status = models.CharField(max_length=32, blank=True)
 
     class Meta:
         unique_together = ('billing_period', 'kind')
@@ -330,56 +334,178 @@ class Invoice(models.Model):
         return timezone.now().date() > self.due_date
 
     @property
-    def _btc_covers_everything(self) -> bool:
-        """Whether the BTC scope is empty or spans every line item.
+    def paid_line_item_ids(self) -> set[int]:
+        """IDs of line items covered by a settled `InvoiceSettlement`.
 
-        Both ends of that range mean the same thing for the card leg:
-        nothing has been carved out for it, so it can still bill the
-        full total rather than being left with a strict subset.
+        The single authority for per-item paid state -- do not derive
+        this from `btc_line_items` or any other scope field. Iterates
+        `.all()` deliberately: a `.filter()` would re-query and defeat
+        prefetching.
         """
-        assigned = self.btc_line_items.count()
-        return assigned == 0 or assigned == self.line_items.count()
+        ids: set[int] = set()
+        for settlement in self.settlements.all():
+            ids.update(item.id for item in settlement.line_items.all())
+        return ids
+
+    @property
+    def unpaid_line_items(self) -> list['InvoiceLineItem']:
+        paid = self.paid_line_item_ids
+        return [item for item in self.line_items.all() if item.id not in paid]
+
+    @property
+    def btc_round_is_live(self) -> bool:
+        """Whether a BTC round is currently in flight.
+
+        True for a live quote window or a seen-but-unconfirmed tx.
+        """
+        now = timezone.now()
+        live_quote = (
+            self.btc_watch_expires_at is not None
+            and self.btc_watch_expires_at > now
+        )
+        return live_quote or bool(self.btc_txid)
+
+    @property
+    def card_round_is_live(self) -> bool:
+        """Whether a card round is currently in flight.
+
+        Only `processing`/`requires_action` count -- a PaymentIntent
+        merely sitting at `requires_payment_method` (the renter opened
+        the tab and walked away) blocks nothing.
+        """
+        return self.stripe_intent_status in (
+            'processing', 'requires_action'
+        )
+
+    @property
+    def _btc_in_flight_line_item_ids(self) -> set[int]:
+        if not self.btc_round_is_live:
+            return set()
+        return {item.id for item in self.btc_round_line_items.all()}
+
+    @property
+    def _card_in_flight_line_item_ids(self) -> set[int]:
+        if not self.card_round_is_live:
+            return set()
+        return {item.id for item in self.stripe_round_line_items.all()}
+
+    @property
+    def in_flight_line_item_ids(self) -> set[int]:
+        return (
+            self._btc_in_flight_line_item_ids
+            | self._card_in_flight_line_item_ids
+        )
+
+    @property
+    def frozen_line_item_ids(self) -> set[int]:
+        """Items the landlord may no longer re-scope or re-lock.
+
+        Paid union in-flight, minus the underpaid exception: a BTC
+        round that came up short falls back to open, since money came
+        up short and the landlord may legitimately need to re-scope or
+        re-address it.
+        """
+        frozen = self.paid_line_item_ids | self.in_flight_line_item_ids
+        if self.remainder_owed_usd:
+            frozen -= {item.id for item in self.btc_round_line_items.all()}
+        return frozen
+
+    @property
+    def _btc_candidates(self) -> list['InvoiceLineItem']:
+        return [
+            item for item in self.unpaid_line_items
+            if item.payment_lock != InvoiceLineItem.Lock.CARD
+            and item.id not in self._card_in_flight_line_item_ids
+        ]
+
+    @property
+    def _card_candidates(self) -> list['InvoiceLineItem']:
+        return [
+            item for item in self.unpaid_line_items
+            if item.payment_lock != InvoiceLineItem.Lock.BTC
+            and item.id not in self._btc_in_flight_line_item_ids
+        ]
+
+    @property
+    def btc_scope_line_items(self) -> list['InvoiceLineItem']:
+        """What a fresh BTC quote would cover right now.
+
+        The landlord's expectation (`btc_line_items`) intersected with
+        what's actually still payable by BTC, falling back to every
+        BTC-payable item when that intersection is empty -- this is
+        what lets a second BTC round quote the remaining unpaid rent
+        after a first round scoped to gas alone has settled.
+        """
+        candidates = self._btc_candidates
+        expected_ids = {item.id for item in self.btc_line_items.all()}
+        scoped = [item for item in candidates if item.id in expected_ids]
+        return scoped or candidates
+
+    @property
+    def stripe_scope_line_items(self) -> list['InvoiceLineItem']:
+        """What the card leg bills by default: card-payable items the
+        landlord hasn't expressed a BTC preference for.
+        """
+        candidates = self._card_candidates
+        expected_ids = {item.id for item in self.btc_line_items.all()}
+        remaining = [
+            item for item in candidates if item.id not in expected_ids
+        ]
+        return remaining or candidates
 
     @property
     def btc_portion_usd(self) -> Decimal:
-        """The USD the BTC address covers: the assigned charges, or everything.
-
-        A landlord can scope BTC to any subset of the charges -- say gas
-        only, or gas and rent both -- and leave the rest on card, so the
-        amount quoted to the renter isn't always the invoice total.
-        Assigning nothing quotes the whole invoice, since that's the
-        amount BTC would need to cover if the renter paid entirely in
-        BTC without anything marked yet.
-        """
-        amounts = [item.amount for item in self.btc_line_items.all()]
-        if not amounts:
-            return self.total
-        return sum(amounts, start=Decimal(0))
+        return sum(
+            (item.amount for item in self.btc_scope_line_items),
+            start=Decimal(0),
+        )
 
     @property
     def stripe_portion_usd(self) -> Decimal:
-        """The USD left for the card/Cash App leg to cover.
+        return sum(
+            (item.amount for item in self.stripe_scope_line_items),
+            start=Decimal(0),
+        )
 
-        A landlord scoping BTC to every charge (or leaving it
-        unscoped) doesn't take the card leg off the table -- the
-        renter can still pay the full total by card instead. Only a
-        strict subset actually reduces what the card leg owes.
+    @property
+    def card_full_owed_usd(self) -> Decimal:
+        """Every card-payable item's total -- the opt-in "pay it all by
+        card instead" figure, ignoring the BTC expectation.
         """
-        if self._btc_covers_everything:
-            return self.total
-        return self.total - self.btc_portion_usd
+        return sum(
+            (item.amount for item in self._card_candidates),
+            start=Decimal(0),
+        )
 
     @property
     def is_split_payment(self) -> bool:
-        """Whether this invoice needs both a BTC and a card payment.
+        """Informational: whether BTC is scoped to some, but not all, of
+        the unpaid charges.
 
-        Only true once BTC is scoped to a strict subset of the
-        charges -- some assigned, some not -- so each leg has
-        something of its own to bill. Scoping to everything (or
-        nothing) leaves either rail able to cover the full total on
-        its own.
+        Drives the split-notice copy only -- `resolve_settled_status`
+        no longer consults this.
         """
-        return bool(self.btc_address) and not self._btc_covers_everything
+        if not self.btc_address:
+            return False
+        unpaid_ids = {item.id for item in self.unpaid_line_items}
+        expected_ids = {
+            item.id for item in self.btc_line_items.all()
+        } & unpaid_ids
+        return bool(expected_ids) and expected_ids != unpaid_ids
+
+    @property
+    def is_fully_paid(self) -> bool:
+        return not self.unpaid_line_items
+
+    @property
+    def btc_overpaid_usd(self) -> Decimal | None:
+        amounts = [
+            settlement.overpaid_usd for settlement in self.settlements.all()
+            if settlement.overpaid_usd is not None
+        ]
+        if not amounts:
+            return None
+        return sum(amounts, start=Decimal(0))
 
 
 class InvoiceLineItem(models.Model):
@@ -387,12 +513,19 @@ class InvoiceLineItem(models.Model):
         RENT = 'rent', 'Rent'
         GAS = 'gas', 'Gas'
 
+    class Lock(models.TextChoices):
+        BTC = 'btc', 'BTC only'
+        CARD = 'card', 'Card only'
+
     invoice = models.ForeignKey(
         Invoice, on_delete=models.CASCADE, related_name='line_items'
     )
     description = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     kind = models.CharField(max_length=16, choices=Kind.choices)
+    payment_lock = models.CharField(
+        max_length=8, blank=True, choices=Lock.choices, default=''
+    )
 
     def __str__(self) -> str:
         return f'InvoiceLineItem({self.kind}, ${self.amount})'
