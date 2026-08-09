@@ -8,7 +8,7 @@ import {
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { formatMoney } from '../api/format';
-import { isLineItemPaid, lineItemLeg } from '../api/invoice';
+import { isLineItemPaid } from '../api/invoice';
 import type { Invoice } from '../api/types';
 import { PayInvoiceBtc } from './PayInvoiceBtc';
 
@@ -182,17 +182,12 @@ export function PayInvoice({
       <ul className="list">
         {invoice.line_items.map((item) => {
           const paid = isLineItemPaid(invoice, item.id);
-          const leg = lineItemLeg(invoice, item.id);
           const lockLabel =
             item.payment_lock === 'btc'
               ? 'BTC only'
               : item.payment_lock === 'card'
                 ? 'Card only'
-                : leg === 'btc'
-                  ? 'Due in BTC'
-                  : leg === 'card'
-                    ? 'Due by card'
-                    : null;
+                : null;
           return (
             <li key={item.id} className="list-row">
               <span>{item.description}</span>

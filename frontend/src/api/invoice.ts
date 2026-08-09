@@ -1,16 +1,5 @@
 import type { Invoice, InvoiceSettlement } from './types';
 
-/** Which rail a line item is billed through.
- * - 'btc'/'card' from a `payment_lock` is *binding*: the other rail
- *   won't bill it.
- * - 'btc' from the BTC assignment alone is only an *expectation*: the
- *   card leg can still bill it if the renter pays by card instead.
- *   Both render the same "Due in BTC" copy to the renter, but the
- *   landlord's per-item lock control needs to tell them apart.
- * - 'either' means neither leg has been earmarked for it.
- */
-export type LineItemLeg = 'btc' | 'card' | 'either';
-
 
 /**
  * Whether a line item has been paid.
@@ -33,25 +22,6 @@ export function isLineItemPaid(invoice: Invoice, itemId: number): boolean {
  */
 export function isLineItemFrozen(invoice: Invoice, itemId: number): boolean {
   return invoice.frozen_line_items.includes(itemId);
-}
-
-
-/**
- * Which rail a line item is billed through.
- * @param invoice - The invoice the item belongs to.
- * @param itemId - The line item's id.
- * @returns The settling rail if paid; the binding lock if one's set;
- *   'btc' if merely assigned to the BTC expectation; otherwise
- *   'either'.
- */
-export function lineItemLeg(invoice: Invoice, itemId: number): LineItemLeg {
-  const settlement = settlementForLineItem(invoice, itemId);
-  if (settlement) return settlement.rail;
-
-  const item = invoice.line_items.find((i) => i.id === itemId);
-  if (item?.payment_lock) return item.payment_lock;
-
-  return invoice.btc_line_items.includes(itemId) ? 'btc' : 'either';
 }
 
 
