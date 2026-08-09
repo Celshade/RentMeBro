@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import {
   formatBillingPeriod,
-  formatBtcAddressShort,
   formatInvoiceKind,
   formatMoney,
   satsToBtc,
@@ -12,6 +11,7 @@ import {
 import {
   isLineItemFrozen,
   isLineItemPaid,
+  paymentRails,
   settlementForLineItem,
 } from '../api/invoice';
 import type {
@@ -27,6 +27,7 @@ import { BtcAttachedGlyph } from '../components/BtcAttachedGlyph';
 import { BtcTxLink } from '../components/BtcTxLink';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
 
 // Only a whole-invoice settle/void locks everything; a not-yet-fully
@@ -323,6 +324,7 @@ export function InvoiceDetail() {
   // A non-empty btc_txid only ever means an in-flight, unconfirmed
   // round -- once it settles the tx lives on the settlement row.
   const btcPending = invoice.btc_txid !== '';
+  const rails = paymentRails(invoice);
 
   return (
     <div className="invoice-detail">
@@ -351,18 +353,19 @@ export function InvoiceDetail() {
         </div>
         <div className="stat-tile">
           <span className="stat-tile__label">Payment options</span>
-          <span className="stat-tile__value">
-            {invoice.btc_address ? '₿ BTC + Cash App' : 'Cash App'}
+          <span className="stat-tile__value stat-tile__value--rails">
+            {rails.btc && <PaymentRailGlyph rail="btc" />}
+            {rails.card && <PaymentRailGlyph rail="card" />}
+            {!rails.btc && !rails.card && (
+              <span className="stat-tile__value--muted">—</span>
+            )}
           </span>
           {invoice.is_split_payment && (
             <span className="stat-tile__meta">
-              ${formatMoney(invoice.btc_portion_usd)} in BTC ·{' '}
-              ${formatMoney(invoice.stripe_portion_usd)} by card
-            </span>
-          )}
-          {invoice.btc_address && (
-            <span className="stat-tile__meta" title={invoice.btc_address}>
-              {formatBtcAddressShort(invoice.btc_address)}
+              <PaymentRailGlyph rail="btc" /> $
+              {formatMoney(invoice.btc_portion_usd)} ·{' '}
+              <PaymentRailGlyph rail="card" /> $
+              {formatMoney(invoice.stripe_portion_usd)}
             </span>
           )}
         </div>
