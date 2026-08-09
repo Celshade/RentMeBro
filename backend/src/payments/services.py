@@ -566,7 +566,9 @@ def set_line_item_payment_lock(
     explicit landlord action. Locking to 'card' also drops the item
     from `invoice.btc_line_items`, since leaving it there would show
     the item as BTC-assigned while no rail is actually free to bill it
-    in BTC.
+    in BTC. Locking to 'btc' is the mirror: it adds the item to
+    `invoice.btc_line_items`, since locking a charge to BTC-only
+    implies BTC should quote it.
 
     Args:
         invoice: The invoice the line item belongs to.
@@ -601,6 +603,8 @@ def set_line_item_payment_lock(
     line_item.save(update_fields=["payment_lock"])
     if lock == InvoiceLineItem.Lock.CARD:
         invoice.btc_line_items.remove(line_item)
+    elif lock == InvoiceLineItem.Lock.BTC:
+        invoice.btc_line_items.add(line_item)
     return invoice
 
 
@@ -616,10 +620,10 @@ def attach_btc_payment(
 
     Optionally scopes BTC to a subset of the line items, so a landlord
     can take (say) gas in BTC and leave rent on card, or take both in
-    BTC. Scoping to every line item is allowed too. This is a
-    non-binding expectation only -- it sizes the BTC quote, but never
-    by itself removes the card leg's ability to bill an item; only an
-    explicit `payment_lock` does that.
+    BTC. Scoping to every line item is allowed too. This assignment is
+    binding -- an empty scope means no BTC quote at all -- but it
+    never by itself removes the card leg's ability to bill an item;
+    only an explicit `payment_lock` does that.
 
     A line item already paid, or with a payment in flight on either
     rail, can't have its BTC scope touched -- see
