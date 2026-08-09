@@ -161,6 +161,15 @@ class TestPaymentLocks:
         assert invoice.stripe_portion_usd == Decimal("1000.00")
         assert invoice.card_full_owed_usd == Decimal("1000.00")
 
+    def test_btc_lock_adds_item_to_assignment(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(invoice, "bc1qexample")
+        assert gas not in invoice.btc_line_items.all()
+
+        invoice = set_line_item_payment_lock(invoice, gas.id, "btc")
+
+        assert gas in invoice.btc_line_items.all()
+
     def test_every_item_btc_locked_leaves_nothing_to_charge(self, mocker):
         invoice = _onboarded_invoice()
         invoice.billing_period.landlord.btc_payments_enabled = True
@@ -179,7 +188,9 @@ class TestPaymentLocks:
     def test_card_lock_excludes_item_from_btc_quote(self):
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
         rent = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
-        invoice = attach_btc_payment(invoice, "bc1qexample")
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", [rent.id, gas.id]
+        )
 
         invoice = set_line_item_payment_lock(invoice, rent.id, "card")
 
