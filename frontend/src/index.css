@@ -569,6 +569,24 @@ body {
   margin-bottom: 12px;
 }
 
+.pay-invoice__pay-full {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.payment-lock-select {
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
 .btc-glyph {
   color: var(--btc-orange);
   font-weight: 700;
