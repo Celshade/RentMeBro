@@ -13,9 +13,10 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
+import { paymentRails } from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
-import { BtcAttachedGlyph } from '../components/BtcAttachedGlyph';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
@@ -395,20 +396,14 @@ export function LeaseDashboard({
                 const isLocked =
                   invoice.status === 'paid' || invoice.status === 'void';
                 const isEditing = editingInvoiceId === invoice.id;
-                const hasBtcMarked = invoice.btc_line_items.length > 0;
+                const rails = paymentRails(invoice);
                 return (
-                  <li
-                    key={invoice.id}
-                    className={
-                      hasBtcMarked
-                        ? 'list-row invoice-row invoice-row--btc'
-                        : 'list-row invoice-row'
-                    }
-                  >
+                  <li key={invoice.id} className="list-row">
                     <span>
-                      <BtcAttachedGlyph
-                        address={hasBtcMarked ? invoice.btc_address : ''}
-                      />
+                      <span className="list-row__rails">
+                        {rails.btc && <PaymentRailGlyph rail="btc" />}
+                        {rails.card && <PaymentRailGlyph rail="card" />}
+                      </span>
                       <strong>
                         {formatBillingPeriod(
                           invoice.billing_period.month,

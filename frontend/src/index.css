@@ -557,18 +557,6 @@ body {
   border-bottom: none;
 }
 
-/* Every invoice row carries the accent slot, transparent by default, so
-   BTC and non-BTC rows stay aligned rather than the marked ones
-   indenting by the width of their border. */
-.invoice-row {
-  border-left: 3px solid transparent;
-  padding-left: 10px;
-}
-
-.invoice-row--btc {
-  border-left-color: var(--btc-orange);
-}
-
 .pay-invoice__split-notice {
   font-size: 14px;
   color: var(--text);

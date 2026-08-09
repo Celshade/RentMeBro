@@ -1,12 +1,7 @@
 /**
  * A small symbol marking one payment rail (Bitcoin or card/Cash App)
- * as available on an invoice, meant for glanceable stat tiles rather
- * than spelling the rail out in words.
- *
- * Deliberately its own component rather than a reuse of
- * `BtcAttachedGlyph`: that glyph's contract is "an address is
- * attached, and the address goes in the tooltip" -- it marks a
- * specific line item as actually billed in BTC. This one just answers
+ * as available on an invoice, meant for glanceable stat tiles and
+ * dashboard rows rather than spelling the rail out in words. Answers
  * "can this rail still be used at all", with no address involved.
  * @param props.rail - Which rail to render: 'btc' for the ₿ glyph,
  *   'card' for an inline card icon representing Cash App.
