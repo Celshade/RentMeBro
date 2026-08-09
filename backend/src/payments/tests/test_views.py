@@ -548,13 +548,14 @@ class TestInvoiceBtcWatchView:
     ):
         from billing.tests.factories import InvoiceLineItemFactory
 
-        InvoiceLineItemFactory(invoice=invoice)
+        item = InvoiceLineItemFactory(invoice=invoice)
         mocker.patch(
             "payments.services.get_btc_usd_price", return_value=50000
         )
         invoice.status = Invoice.Status.SENT
         invoice.btc_address = "bc1qexample"
         invoice.save()
+        invoice.btc_line_items.set([item])
         api_client.force_authenticate(user=renter)
 
         response = api_client.post(
