@@ -690,6 +690,23 @@ def attach_btc_payment(
                 "card only and can't be scoped to BTC."
             )
 
+    if address:
+        # A charge locked to BTC-only has no card fallback, so dropping
+        # it from scope while the address stays attached would strand
+        # it with no rail able to bill it -- mirrors the address='0'
+        # detach guard below, but for a single item leaving scope.
+        btc_locked_ids = set(
+            invoice.line_items.filter(
+                payment_lock=InvoiceLineItem.Lock.BTC
+            ).values_list("id", flat=True)
+        )
+        unscoped_locked_ids = btc_locked_ids - set(item_ids)
+        if unscoped_locked_ids:
+            raise BtcLineItemError(
+                f"Line item {sorted(unscoped_locked_ids)[0]} is locked "
+                "to BTC only and can't be unassigned from BTC scope."
+            )
+
     current_ids = set(
         invoice.btc_line_items.values_list("id", flat=True)
     )

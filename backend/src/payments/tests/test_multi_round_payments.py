@@ -214,6 +214,18 @@ class TestPaymentLocks:
         with pytest.raises(BtcLineItemError):
             attach_btc_payment(invoice, "bc1qexample", [gas.id])
 
+    def test_btc_scope_rejects_unassigning_btc_locked_item(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(invoice, "bc1qexample", [gas.id])
+        invoice = set_line_item_payment_lock(invoice, gas.id, "btc")
+
+        with pytest.raises(BtcLineItemError):
+            attach_btc_payment(invoice, "bc1qexample", [])
+
+        gas.refresh_from_db()
+        assert gas.payment_lock == "btc"
+        assert gas in invoice.btc_line_items.all()
+
     def test_btc_lock_rejected_without_address(self):
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
 
