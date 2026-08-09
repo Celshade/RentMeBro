@@ -78,6 +78,12 @@ export function PayInvoiceBtc({
   const [now, setNow] = useState(() => new Date());
   const onPaidRef = useRef(onPaid);
   onPaidRef.current = onPaid;
+  // A settled round's txid is cleared from btcStatus.btc_txid the
+  // moment it settles, so the confirmed views below can't read it
+  // straight off the latest status -- this remembers the last
+  // non-empty one seen.
+  const lastTxidRef = useRef('');
+  if (btcStatus?.btc_txid) lastTxidRef.current = btcStatus.btc_txid;
 
   const startWatch = useCallback(() => {
     setError(null);
@@ -93,12 +99,19 @@ export function PayInvoiceBtc({
   }, [startWatch]);
 
   useEffect(() => {
-    // No countdown is shown once a tx has been seen or the leg has
-    // settled, so there's nothing for a 1s tick to drive.
-    if (btcStatus?.btc_txid || btcStatus?.btc_settled_at !== null) return;
+    // No countdown is shown once a tx has been seen or there's
+    // nothing left owed via BTC, so there's nothing for a 1s tick to
+    // drive.
+    if (
+      !btcStatus ||
+      btcStatus.btc_txid ||
+      Number(btcStatus.btc_owed_usd) === 0
+    ) {
+      return;
+    }
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
-  }, [btcStatus?.btc_txid, btcStatus?.btc_settled_at]);
+  }, [btcStatus]);
 
   useEffect(() => {
     if (btcStatus === null) return;
@@ -106,7 +119,7 @@ export function PayInvoiceBtc({
       onPaidRef.current();
       return;
     }
-    if (btcStatus.btc_settled_at !== null) return;
+    if (Number(btcStatus.btc_owed_usd) === 0) return;
     if (
       isWatchExpired(btcStatus.btc_watch_expires_at, new Date()) &&
       !btcStatus.btc_txid
@@ -145,12 +158,30 @@ export function PayInvoiceBtc({
 
   if (error) return <p role="alert">{error}</p>;
   if (btcStatus === null) return <p>Preparing BTC payment...</p>;
-  if (btcStatus.status === 'paid' || btcStatus.btc_settled_at !== null) {
+  if (btcStatus.status === 'paid' || Number(btcStatus.btc_owed_usd) === 0) {
     return (
       <div className="pay-invoice-btc">
         <BtcBroadcastBlocks confirmed />
         <p className="pay-invoice-btc__seen">Payment confirmed</p>
-        <BtcTxLink txid={btcStatus.btc_txid} />
+        <BtcTxLink txid={lastTxidRef.current} />
+      </div>
+    );
+  }
+  if (btcStatus.btc_settled_at !== null) {
+    // A round settled but not everything owed via BTC was covered by
+    // it -- the renter must explicitly restart the watch for the
+    // remainder, since settling clears the live quote fields.
+    return (
+      <div className="pay-invoice-btc">
+        <BtcBroadcastBlocks confirmed />
+        <p className="pay-invoice-btc__seen">Payment confirmed</p>
+        <BtcTxLink txid={lastTxidRef.current} />
+        <p className="pay-invoice-btc__seen-note">
+          ${formatMoney(btcStatus.btc_owed_usd)} is still owed via BTC.
+        </p>
+        <button type="button" onClick={startWatch}>
+          Pay the rest
+        </button>
       </div>
     );
   }
