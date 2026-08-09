@@ -563,8 +563,10 @@ def set_line_item_payment_lock(
     """Sets (or clears, via '') a line item's payment-method lock.
 
     The one and only way a rail may be taken off a charge -- an
-    explicit landlord action, never an implicit side effect of scoping
-    BTC (see `attach_btc_payment`).
+    explicit landlord action. Locking to 'card' also drops the item
+    from `invoice.btc_line_items`, since leaving it there would show
+    the item as BTC-assigned while no rail is actually free to bill it
+    in BTC.
 
     Args:
         invoice: The invoice the line item belongs to.
@@ -597,6 +599,8 @@ def set_line_item_payment_lock(
         )
     line_item.payment_lock = lock
     line_item.save(update_fields=["payment_lock"])
+    if lock == InvoiceLineItem.Lock.CARD:
+        invoice.btc_line_items.remove(line_item)
     return invoice
 
 
@@ -670,6 +674,16 @@ def attach_btc_payment(
         if stray_ids:
             raise BtcLineItemError(
                 f"Line item {stray_ids[0]} isn't part of this invoice."
+            )
+        card_locked_ids = set(
+            invoice.line_items.filter(
+                id__in=item_ids, payment_lock=InvoiceLineItem.Lock.CARD
+            ).values_list("id", flat=True)
+        )
+        if card_locked_ids:
+            raise BtcLineItemError(
+                f"Line item {sorted(card_locked_ids)[0]} is locked to "
+                "card only and can't be scoped to BTC."
             )
 
     current_ids = set(

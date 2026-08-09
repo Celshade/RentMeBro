@@ -186,6 +186,23 @@ class TestPaymentLocks:
         assert rent not in invoice.btc_scope_line_items
         assert invoice.btc_portion_usd == Decimal("200.00")
 
+    def test_card_lock_unassigns_item_from_btc(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(invoice, "bc1qexample", [gas.id])
+        assert gas in invoice.btc_line_items.all()
+
+        invoice = set_line_item_payment_lock(invoice, gas.id, "card")
+
+        assert gas not in invoice.btc_line_items.all()
+
+    def test_btc_scope_rejects_card_locked_item(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(invoice, "bc1qexample")
+        invoice = set_line_item_payment_lock(invoice, gas.id, "card")
+
+        with pytest.raises(BtcLineItemError):
+            attach_btc_payment(invoice, "bc1qexample", [gas.id])
+
     def test_btc_lock_rejected_without_address(self):
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
 
