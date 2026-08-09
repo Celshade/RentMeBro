@@ -6,16 +6,18 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.tests.factories import LandlordFactory, UserFactory
-from billing.models import Invoice
+from billing.models import Invoice, InvoiceLineItem
 from billing.tests.factories import (
     BillingPeriodFactory,
     DrivenDayLogFactory,
     GasPriceEntryFactory,
     InvoiceFactory,
+    InvoiceLineItemFactory,
     LeaseFactory,
     LeaseRentRevisionFactory,
     MileageProfileFactory,
 )
+from payments.tests.factories import InvoiceSettlementFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -213,6 +215,135 @@ class TestDrivenDayLogViewSet:
         )
         assert response.status_code == 201
         assert response.data['day_fraction'] == '0.00'
+
+    def test_patch_paid_month_returns_409(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        log = DrivenDayLogFactory(
+            landlord=landlord, renter=renter, date=date(2024, 6, 5)
+        )
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        response = landlord_client.patch(
+            reverse('driven-day-detail', args=[log.id]), {'note': 'edit'}
+        )
+
+        assert response.status_code == 409
+        assert 'detail' in response.data
+
+    def test_post_paid_month_returns_409(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        response = landlord_client.post(
+            reverse('driven-day-list'),
+            {
+                'renter': renter.id,
+                'date': '2024-06-05',
+                'kind': 'driven',
+                'day_fraction': '1.00',
+            },
+        )
+
+        assert response.status_code == 409
+        assert 'detail' in response.data
+
+    def test_delete_paid_month_returns_409(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        log = DrivenDayLogFactory(
+            landlord=landlord, renter=renter, date=date(2024, 6, 5)
+        )
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        response = landlord_client.delete(
+            reverse('driven-day-detail', args=[log.id])
+        )
+
+        assert response.status_code == 409
+        assert 'detail' in response.data
+
+    def test_writes_against_unpaid_month_still_succeed(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        log = DrivenDayLogFactory(
+            landlord=landlord, renter=renter, date=date(2024, 6, 5)
+        )
+        BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+
+        patch_response = landlord_client.patch(
+            reverse('driven-day-detail', args=[log.id]), {'note': 'edit'}
+        )
+        assert patch_response.status_code == 200
+
+        delete_response = landlord_client.delete(
+            reverse('driven-day-detail', args=[log.id])
+        )
+        assert delete_response.status_code == 204
+
+    def test_moving_log_into_paid_month_returns_409(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        log = DrivenDayLogFactory(
+            landlord=landlord, renter=renter, date=date(2024, 7, 5)
+        )
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        response = landlord_client.patch(
+            reverse('driven-day-detail', args=[log.id]),
+            {'date': '2024-06-05'},
+        )
+
+        assert response.status_code == 409
+        assert 'detail' in response.data
 
 
 # --- MileageProfileViewSet / GasPriceEntryViewSet -----------------------
