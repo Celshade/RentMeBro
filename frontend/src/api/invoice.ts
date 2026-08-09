@@ -1,21 +1,38 @@
-import type { Invoice } from './types';
+import type { Invoice, InvoiceSettlement } from './types';
 
-/** Which rail a line item is billed through, or 'either' when BTC is
- * unscoped (or scoped to every item) and so either leg can cover it. */
+/** Which rail a line item is billed through.
+ * - 'btc'/'card' from a `payment_lock` is *binding*: the other rail
+ *   won't bill it.
+ * - 'btc' from the BTC assignment alone is only an *expectation*: the
+ *   card leg can still bill it if the renter pays by card instead.
+ *   Both render the same "Due in BTC" copy to the renter, but the
+ *   landlord's per-item lock control needs to tell them apart.
+ * - 'either' means neither leg has been earmarked for it.
+ */
 export type LineItemLeg = 'btc' | 'card' | 'either';
 
 
 /**
- * Whether BTC is scoped to a strict subset of an invoice's line items.
- * Mirrors `Invoice._btc_covers_everything` on the backend
- * (`billing/models.py`): an empty scope or one spanning every item
- * both mean the card leg can still bill the full total, so neither
- * counts as a split.
- * @param invoice - The invoice to check.
+ * Whether a line item has been paid.
+ * @param invoice - The invoice the item belongs to.
+ * @param itemId - The line item's id.
+ * @returns True once a settlement covers this item -- the single
+ *   authority for per-item paid state, mirroring
+ *   `Invoice.paid_line_item_ids` on the backend.
  */
-function btcCoversEverything(invoice: Invoice): boolean {
-  const assigned = invoice.btc_line_items.length;
-  return assigned === 0 || assigned === invoice.line_items.length;
+export function isLineItemPaid(invoice: Invoice, itemId: number): boolean {
+  return invoice.paid_line_items.includes(itemId);
+}
+
+
+/**
+ * Whether a line item may no longer be re-scoped or re-locked: paid,
+ * or with a payment in flight on either rail.
+ * @param invoice - The invoice the item belongs to.
+ * @param itemId - The line item's id.
+ */
+export function isLineItemFrozen(invoice: Invoice, itemId: number): boolean {
+  return invoice.frozen_line_items.includes(itemId);
 }
 
 
@@ -23,30 +40,31 @@ function btcCoversEverything(invoice: Invoice): boolean {
  * Which rail a line item is billed through.
  * @param invoice - The invoice the item belongs to.
  * @param itemId - The line item's id.
- * @returns 'either' when BTC is unscoped or covers every item, since
- *   either leg can settle it; otherwise 'btc' for assigned items and
- *   'card' for the rest.
+ * @returns The settling rail if paid; the binding lock if one's set;
+ *   'btc' if merely assigned to the BTC expectation; otherwise
+ *   'either'.
  */
 export function lineItemLeg(invoice: Invoice, itemId: number): LineItemLeg {
-  if (btcCoversEverything(invoice)) return 'either';
-  return invoice.btc_line_items.includes(itemId) ? 'btc' : 'card';
+  const settlement = settlementForLineItem(invoice, itemId);
+  if (settlement) return settlement.rail;
+
+  const item = invoice.line_items.find((i) => i.id === itemId);
+  if (item?.payment_lock) return item.payment_lock;
+
+  return invoice.btc_line_items.includes(itemId) ? 'btc' : 'either';
 }
 
 
 /**
- * Whether a line item has been paid.
+ * The settlement that paid a given line item, if any.
  * @param invoice - The invoice the item belongs to.
  * @param itemId - The line item's id.
- * @returns True once the leg billing this item has settled. For an
- *   'either' item, either leg settling is enough.
+ * @returns The covering `InvoiceSettlement`, powering per-item tx
+ *   links, or undefined if the item isn't paid.
  */
-export function isLineItemPaid(invoice: Invoice, itemId: number): boolean {
-  const leg = lineItemLeg(invoice, itemId);
-  if (leg === 'either') {
-    return (
-      invoice.btc_settled_at !== null || invoice.stripe_settled_at !== null
-    );
-  }
-  if (leg === 'btc') return invoice.btc_settled_at !== null;
-  return invoice.stripe_settled_at !== null;
+export function settlementForLineItem(
+  invoice: Invoice,
+  itemId: number
+): InvoiceSettlement | undefined {
+  return invoice.settlements.find((s) => s.line_items.includes(itemId));
 }
