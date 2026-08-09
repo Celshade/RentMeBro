@@ -296,6 +296,10 @@ class Invoice(models.Model):
     btc_credited_usd = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
+    # The landlord's BTC assignment: which line items a BTC quote
+    # should cover. Binding -- an empty set means no BTC quote at all.
+    # It sizes and gates the BTC leg, but still doesn't remove the
+    # card rail from an item; only `payment_lock` does that.
     btc_line_items = models.ManyToManyField(
         'InvoiceLineItem', blank=True, related_name='+'
     )
@@ -431,13 +435,17 @@ class Invoice(models.Model):
         """What a fresh BTC quote would cover right now.
 
         The landlord's expectation (`btc_line_items`) intersected with
-        what's actually still payable by BTC, falling back to every
-        BTC-payable item when that intersection is empty -- this is
-        what lets a second BTC round quote the remaining unpaid rent
-        after a first round scoped to gas alone has settled.
+        what's actually still payable by BTC. An empty assignment means
+        no BTC quote at all -- assignment is binding, not a hint. Once
+        something has been assigned, an empty intersection instead
+        falls back to every BTC-payable item -- this is what lets a
+        second BTC round quote the remaining unpaid rent after a first
+        round scoped to gas alone has settled.
         """
         candidates = self._btc_candidates
         expected_ids = {item.id for item in self.btc_line_items.all()}
+        if not expected_ids:
+            return []
         scoped = [item for item in candidates if item.id in expected_ids]
         return scoped or candidates
 
