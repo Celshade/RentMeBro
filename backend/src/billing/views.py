@@ -121,11 +121,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         invoice on a dashboard page load.
         """
         invoice = self.get_object()
-        if (
-            invoice.btc_address
-            and invoice.btc_settled_at is None
-            and invoice.btc_txid
-        ):
+        if invoice.btc_address and invoice.btc_txid:
             invoice = check_btc_payment(invoice)
         serializer = self.get_serializer(invoice)
         return Response(serializer.data)

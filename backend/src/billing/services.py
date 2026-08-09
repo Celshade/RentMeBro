@@ -346,25 +346,30 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
 
     Lets a landlord correct mileage logs for an already-generated
     invoice's billing month and pull the correction into the invoice
-    total, up until the renter pays it.
+    total, up until the renter pays it. Refreshes payment state first
+    (see `payments.services.refresh_payment_state`) so a payment that
+    landed since the page loaded is caught before the gas line item --
+    and its now-stale BTC quote -- gets rewritten out from under it.
 
     Args:
-        invoice: The invoice to recompute. Must not yet be paid or void.
+        invoice: The invoice to recompute. Must not yet be paid or void,
+            and its gas line item must not be frozen (paid or with a
+            payment in flight).
 
     Returns:
         The updated invoice.
 
     Raises:
-        InvoiceLockedError: If the invoice is already pending a BTC
-            payment, has an outstanding BTC remainder, paid, or void.
+        InvoiceLockedError: If the invoice is paid or void, or its gas
+            line item is frozen.
     """
-    if invoice.status in (
-        Invoice.Status.PENDING,
-        Invoice.Status.PARTIAL,
-        Invoice.Status.UNDERPAID,
-        Invoice.Status.PAID,
-        Invoice.Status.VOID,
-    ):
+    # Imported here, not at module scope, to avoid a circular import:
+    # payments.services imports InvoiceLockedError from this module.
+    from payments.services import refresh_payment_state
+
+    invoice = refresh_payment_state(invoice)
+
+    if invoice.status in (Invoice.Status.PAID, Invoice.Status.VOID):
         raise InvoiceLockedError(
             f'Invoice {invoice.id} is {invoice.status} and can no longer '
             'be edited.'
@@ -375,6 +380,11 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
     ).first()
     if gas_line_item is None:
         return invoice
+    if gas_line_item.id in invoice.frozen_line_item_ids:
+        raise InvoiceLockedError(
+            f'Invoice {invoice.id}\'s gas charge is already settled or '
+            'has a payment in flight and can no longer be recomputed.'
+        )
 
     period = invoice.billing_period
     new_amount = compute_period_gas_total(
@@ -403,5 +413,9 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
             "btc_credited_txid",
             "btc_credited_usd",
         ]
+    )
+    invoice.btc_line_items.clear()
+    invoice.line_items.filter(payment_lock=InvoiceLineItem.Lock.BTC).update(
+        payment_lock=''
     )
     return invoice
