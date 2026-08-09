@@ -9,6 +9,7 @@ from payments.views import (
     InvoiceBtcAttachView,
     InvoiceBtcCheckView,
     InvoiceBtcWatchView,
+    InvoiceLineItemPaymentLockView,
     InvoicePaymentIntentView,
     StripeWebhookView,
 )
@@ -61,5 +62,11 @@ urlpatterns = [
         "invoices/<int:invoice_id>/btc/check/",
         InvoiceBtcCheckView.as_view(),
         name="invoice-btc-check",
+    ),
+    path(
+        "invoices/<int:invoice_id>/line-items/<int:line_item_id>/"
+        "payment-lock/",
+        InvoiceLineItemPaymentLockView.as_view(),
+        name="invoice-line-item-payment-lock",
     ),
 ]

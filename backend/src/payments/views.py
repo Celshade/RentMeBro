@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from billing.models import Invoice
 from billing.permissions import IsLandlord
+from billing.serializers import InvoiceSerializer
 from billing.services import InvoiceLockedError
 from payments.services import (
     BtcLineItemError,
@@ -15,6 +16,8 @@ from payments.services import (
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
     NothingLeftToChargeError,
+    PaymentLockError,
+    _invoice_usd_owed,
     attach_btc_payment,
     check_btc_payment,
     create_payment_intent_for_invoice,
@@ -24,6 +27,7 @@ from payments.services import (
     handle_payment_intent_succeeded,
     initiate_btc_watch,
     refresh_connect_status,
+    set_line_item_payment_lock,
     start_connect_onboarding,
 )
 
@@ -43,8 +47,11 @@ class InvoicePaymentIntentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        pay_full = bool(request.data.get('pay_full', False))
         try:
-            intent = create_payment_intent_for_invoice(invoice)
+            intent = create_payment_intent_for_invoice(
+                invoice, pay_full=pay_full
+            )
         except LandlordNotOnboardedError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
@@ -55,7 +62,7 @@ class InvoicePaymentIntentView(APIView):
             )
         except NothingLeftToChargeError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
             )
         landlord = invoice.billing_period.landlord
         return Response(
@@ -235,6 +242,36 @@ class InvoiceBtcAttachView(APIView):
         )
 
 
+class InvoiceLineItemPaymentLockView(APIView):
+    """Sets (or clears) a line item's payment-method lock as a landlord.
+
+    The only way a rail may be taken off a charge -- see
+    `payments.services.set_line_item_payment_lock`.
+    """
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def post(self, request, invoice_id: int, line_item_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice,
+            id=invoice_id,
+            billing_period__landlord=request.user,
+        )
+        try:
+            invoice = set_line_item_payment_lock(
+                invoice, line_item_id, request.data.get("payment_lock", "")
+            )
+        except BtcLineItemError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
+            )
+        except PaymentLockError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
+            )
+        return Response(InvoiceSerializer(invoice).data)
+
+
 def _btc_status_response(invoice: Invoice) -> Response:
     return Response(
         {
@@ -244,6 +281,7 @@ def _btc_status_response(invoice: Invoice) -> Response:
             "btc_txid": invoice.btc_txid,
             "btc_settled_at": invoice.btc_settled_at,
             "remainder_owed_usd": invoice.remainder_owed_usd,
+            "btc_owed_usd": _invoice_usd_owed(invoice),
             "status": invoice.status,
         }
     )
