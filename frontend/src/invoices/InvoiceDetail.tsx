@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import {
@@ -11,6 +11,7 @@ import {
 import {
   isLineItemFrozen,
   isLineItemPaid,
+  lineItemRails,
   paymentRails,
   settlementForLineItem,
 } from '../api/invoice';
@@ -23,7 +24,6 @@ import type {
   PaymentLock,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import { BtcAttachedGlyph } from '../components/BtcAttachedGlyph';
 import { BtcTxLink } from '../components/BtcTxLink';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
@@ -53,13 +53,22 @@ function errorMessage(err: unknown, fallback: string): string {
  *   info on.
  * @param props.onAttached - Called with the updated invoice once an
  *   attach or a removal succeeds.
+ * @param props.nudge - When true, pulses the Attach button and shows
+ *   an inline hint -- the landlord just tried to lock a charge to BTC
+ *   with no address attached.
+ * @param props.formRef - Forwarded to the underlying `<form>` so a
+ *   caller can scroll it into view.
  */
 function AttachBtcPaymentForm({
   invoice,
   onAttached,
+  nudge = false,
+  formRef,
 }: {
   invoice: Invoice;
   onAttached: (invoice: Invoice) => void;
+  nudge?: boolean;
+  formRef?: React.RefObject<HTMLFormElement | null>;
 }) {
   const [address, setAddress] = useState(invoice.btc_address);
   const [submitting, setSubmitting] = useState(false);
@@ -130,7 +139,7 @@ function AttachBtcPaymentForm({
       : null;
 
   return (
-    <form onSubmit={handleSubmit} className="btc-address-form">
+    <form onSubmit={handleSubmit} className="btc-address-form" ref={formRef}>
       <p className="btc-address-disclaimer">
         Use a separate BTC address for each renter -- a shared address
         makes payments ambiguous to match and can misattribute one
@@ -147,7 +156,13 @@ function AttachBtcPaymentForm({
           />
         </label>
         <div className="btc-address-row__actions">
-          <button type="submit" className="button--btc" disabled={submitting}>
+          <button
+            type="submit"
+            className={
+              nudge ? 'button--btc attach-nudge' : 'button--btc'
+            }
+            disabled={submitting}
+          >
             {submitting ? 'Saving...' : 'Attach'}
           </button>
           {invoice.btc_address !== '' && canRemove && (
@@ -162,6 +177,11 @@ function AttachBtcPaymentForm({
           )}
         </div>
       </div>
+      {nudge && (
+        <p className="btc-address-nudge-hint">
+          Attach a BTC address before locking a charge to BTC.
+        </p>
+      )}
       {usdPerBtc !== null && (
         <p className="btc-price-hint">
           1 BTC ≈ ${usdPerBtc.toLocaleString()}
@@ -228,6 +248,14 @@ export function InvoiceDetail() {
   const [assignError, setAssignError] = useState<string | null>(null);
   const [lockingItemId, setLockingItemId] = useState<number | null>(null);
   const [lockError, setLockError] = useState<string | null>(null);
+  const [nudgeAttach, setNudgeAttach] = useState(false);
+  const attachRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (!nudgeAttach) return;
+    const timer = setTimeout(() => setNudgeAttach(false), 4000);
+    return () => clearTimeout(timer);
+  }, [nudgeAttach]);
 
   useEffect(() => {
     setLoading(true);
@@ -284,12 +312,23 @@ export function InvoiceDetail() {
 
   /**
    * Sets (or clears, via '') a line item's payment-method lock -- the
-   * one and only way a rail is actually taken off a charge.
+   * one and only way a rail is actually taken off a charge. Picking
+   * 'btc' with no address attached instead nudges the landlord toward
+   * the Attach form, since the select would otherwise snap back to
+   * the item's current lock the moment the invoice re-fetches.
    * @param lineItemId - The line item to lock.
    * @param lock - '' (either rail), 'btc', or 'card'.
    */
   async function handleSetPaymentLock(lineItemId: number, lock: PaymentLock) {
     if (!invoice) return;
+    if (lock === 'btc' && invoice.btc_address === '') {
+      setNudgeAttach(true);
+      attachRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+      return;
+    }
     setLockingItemId(lineItemId);
     setLockError(null);
     try {
@@ -315,12 +354,11 @@ export function InvoiceDetail() {
   // Needs an address to point somewhere and the whole invoice not yet
   // settled/void -- a not-fully-paid invoice can still have individual
   // items frozen, which is checked per-row below.
-  const canAssignBtc =
+  const canLockPayments =
     user?.role === 'landlord' &&
     btcSettings?.enabled === true &&
-    invoice.btc_address !== '' &&
     !LOCKED_STATUSES.has(invoice.status);
-  const canLockPayments = canAssignBtc;
+  const canAssignBtc = canLockPayments && invoice.btc_address !== '';
   // A non-empty btc_txid only ever means an in-flight, unconfirmed
   // round -- once it settles the tx lives on the settlement row.
   const btcPending = invoice.btc_txid !== '';
@@ -398,6 +436,7 @@ export function InvoiceDetail() {
             const paid = isLineItemPaid(invoice, item.id);
             const frozen = isLineItemFrozen(invoice, item.id);
             const cardLocked = item.payment_lock === 'card';
+            const itemRails = lineItemRails(invoice, item);
             const settlement = settlementForLineItem(invoice, item.id);
             // Paid: the settling tx. Assigned + still pending: the
             // in-flight round's tx, if this item is part of it.
@@ -415,12 +454,10 @@ export function InvoiceDetail() {
             return (
               <li key={item.id} className="list-row">
                 <span>
-                  <BtcAttachedGlyph
-                    address={
-                      isAssigned && !cardLocked ? invoice.btc_address : ''
-                    }
-                    label="Paid in BTC"
-                  />
+                  <span className="list-row__rails">
+                    {itemRails.btc && <PaymentRailGlyph rail="btc" />}
+                    {itemRails.card && <PaymentRailGlyph rail="card" />}
+                  </span>
                   {item.description}
                 </span>
                 <span className="renter-dashboard__invoice-actions">
@@ -454,34 +491,21 @@ export function InvoiceDetail() {
                     </button>
                   )}
                   {canLockPayments && !frozen && (
-                    <span
-                      title={
-                        invoice.btc_address === ''
-                          ? 'Attach a BTC address to lock a charge to BTC'
-                          : undefined
+                    <select
+                      className="payment-lock-select"
+                      value={item.payment_lock}
+                      disabled={lockingItemId !== null}
+                      onChange={(e) =>
+                        handleSetPaymentLock(
+                          item.id,
+                          e.target.value as PaymentLock
+                        )
                       }
                     >
-                      <select
-                        className="payment-lock-select"
-                        value={item.payment_lock}
-                        disabled={lockingItemId !== null}
-                        onChange={(e) =>
-                          handleSetPaymentLock(
-                            item.id,
-                            e.target.value as PaymentLock
-                          )
-                        }
-                      >
-                        <option value="">Any method</option>
-                        <option
-                          value="btc"
-                          disabled={invoice.btc_address === ''}
-                        >
-                          BTC only
-                        </option>
-                        <option value="card">Card only</option>
-                      </select>
-                    </span>
+                      <option value="">Any method</option>
+                      <option value="btc">BTC only</option>
+                      <option value="card">Card only</option>
+                    </select>
                   )}
                 </span>
               </li>
@@ -507,7 +531,15 @@ export function InvoiceDetail() {
 this invoice`}
               </p>
             )}
-            <AttachBtcPaymentForm invoice={invoice} onAttached={setInvoice} />
+            <AttachBtcPaymentForm
+              invoice={invoice}
+              onAttached={(updated) => {
+                setNudgeAttach(false);
+                setInvoice(updated);
+              }}
+              nudge={nudgeAttach}
+              formRef={attachRef}
+            />
           </section>
         )}
 
