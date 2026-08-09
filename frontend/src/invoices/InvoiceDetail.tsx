@@ -12,7 +12,6 @@ import {
 import {
   isLineItemFrozen,
   isLineItemPaid,
-  lineItemLeg,
   settlementForLineItem,
 } from '../api/invoice';
 import type {
@@ -395,7 +394,7 @@ export function InvoiceDetail() {
             const isAssigned = invoice.btc_line_items.includes(item.id);
             const paid = isLineItemPaid(invoice, item.id);
             const frozen = isLineItemFrozen(invoice, item.id);
-            const leg = lineItemLeg(invoice, item.id);
+            const cardLocked = item.payment_lock === 'card';
             const settlement = settlementForLineItem(invoice, item.id);
             // Paid: the settling tx. Assigned + still pending: the
             // in-flight round's tx, if this item is part of it.
@@ -409,16 +408,14 @@ export function InvoiceDetail() {
                 ? 'BTC only'
                 : item.payment_lock === 'card'
                   ? 'Card only'
-                  : leg === 'btc'
-                    ? 'Due in BTC'
-                    : leg === 'card'
-                      ? 'Due by card'
-                      : null;
+                  : null;
             return (
               <li key={item.id} className="list-row">
                 <span>
                   <BtcAttachedGlyph
-                    address={isAssigned ? invoice.btc_address : ''}
+                    address={
+                      isAssigned && !cardLocked ? invoice.btc_address : ''
+                    }
                     label="Paid in BTC"
                   />
                   {item.description}
@@ -442,7 +439,12 @@ export function InvoiceDetail() {
                     <button
                       type="button"
                       className="button--btc"
-                      disabled={assigningItemId !== null}
+                      disabled={assigningItemId !== null || cardLocked}
+                      title={
+                        cardLocked
+                          ? 'This charge is locked to card only'
+                          : undefined
+                      }
                       onClick={() => handleAssignBtc(item.id)}
                     >
                       {isAssigned ? 'Unassign BTC' : 'Assign BTC'}
