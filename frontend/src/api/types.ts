@@ -46,14 +46,20 @@ export interface BtcSettings {
  * @property btc_watch_expires_at - When the current 15-minute "have we
  *   seen any tx yet" window closes (ISO 8601), or null if no watch is
  *   in progress.
- * @property btc_txid - The matched transaction's id, or an empty string
- *   if none has been seen yet. Distinguishes "tx seen, awaiting
- *   confirmation" from "nothing arrived" once the window has lapsed.
- * @property btc_settled_at - When the BTC leg settled (ISO 8601), or
- *   null if it hasn't.
+ * @property btc_txid - The in-flight round's matched transaction id,
+ *   or an empty string if none has been seen yet, or once that round
+ *   has settled. Distinguishes "tx seen, awaiting confirmation" from
+ *   "nothing arrived" once the window has lapsed.
+ * @property btc_settled_at - When the most recent BTC round settled
+ *   (ISO 8601), or null if none has.
  * @property remainder_owed_usd - The outstanding USD balance still
  *   owed via BTC after a prior underpayment, or null when there's no
  *   shortfall.
+ * @property btc_owed_usd - The USD still owed via BTC right now, as a
+ *   decimal string: the remainder if one's outstanding, otherwise the
+ *   current BTC portion. "0.00" once every BTC-payable item is paid --
+ *   this is what distinguishes "this round settled, more is owed" from
+ *   "the invoice is done" for a second BTC round.
  * @property status - The invoice's current status (mirrors
  *   InvoiceStatus, kept separate since some BTC endpoints don't return
  *   a full Invoice).
@@ -65,6 +71,7 @@ export interface BtcInvoiceStatus {
   btc_txid: string;
   btc_settled_at: string | null;
   remainder_owed_usd: string | null;
+  btc_owed_usd: string;
   status: InvoiceStatus;
 }
 
@@ -178,17 +185,50 @@ export interface GasPriceEntry {
 }
 
 
+/** Which rail a line item is locked to, or '' for either. Set by the
+ * landlord explicitly -- see `payment_lock` below. */
+export type PaymentLock = '' | 'btc' | 'card';
+
+
 /**
  * @property id - Primary key.
  * @property description - Human-readable line description.
  * @property amount - Line amount, as a decimal string.
  * @property kind - Whether this line is a rent or gas charge.
+ * @property payment_lock - Which rail may pay this charge: '' (either),
+ *   'btc', or 'card'. The only thing that restricts a rail -- unlike
+ *   `Invoice.btc_line_items`, which is a non-binding expectation.
  */
 export interface InvoiceLineItem {
   id: number;
   description: string;
   amount: string;
   kind: 'rent' | 'gas';
+  payment_lock: PaymentLock;
+}
+
+
+/**
+ * One completed payment round against an invoice, and what it bought.
+ * @property id - Primary key.
+ * @property rail - Which payment rail settled this round.
+ * @property txid - The settling BTC transaction id, or '' for a card
+ *   settlement.
+ * @property line_items - Ids of the line items this round covered.
+ * @property amount_usd - USD this round settled, as a decimal string.
+ * @property overpaid_usd - How much more than quoted a BTC round
+ *   received, as a decimal string, or null if it settled on- or
+ *   under-quote (always null for a card settlement).
+ * @property settled_at - When this round settled (ISO 8601).
+ */
+export interface InvoiceSettlement {
+  id: number;
+  rail: 'btc' | 'card';
+  txid: string;
+  line_items: number[];
+  amount_usd: string;
+  overpaid_usd: string | null;
+  settled_at: string;
 }
 
 
@@ -242,32 +282,53 @@ export type InvoiceStatus =
  *   shortfall. This is what distinguishes an underpaid invoice from
  *   one merely split across two payment methods, since both sit at
  *   'partial'.
- * @property btc_line_items - The ids of the line items marked as
- *   BTC-billed, empty when nothing's marked yet even if a BTC address
- *   is attached. Any subset can be assigned -- one charge, several,
- *   or all of them.
- * @property btc_portion_usd - The USD the BTC leg owes, as a decimal
- *   string: the marked line items' amounts, or the full total when
- *   nothing's marked.
- * @property stripe_portion_usd - The USD left for the card leg, as a
- *   decimal string. The full total unless BTC is marked on a strict
- *   subset of the charges.
- * @property is_split_payment - Whether this invoice needs both a BTC
- *   and a card payment to settle. False unless BTC is marked on a
- *   strict subset of the charges.
- * @property btc_settled_at - When the BTC leg settled (ISO 8601), or
- *   null if it hasn't.
- * @property btc_overpaid_usd - How much more than the quote the BTC leg
- *   received, as a decimal string, or null when it settled on- or
- *   under-quote. An overpaid invoice is still fully paid -- this is an
+ * @property btc_line_items - The landlord's non-binding expectation of
+ *   what BTC covers: ids of the line items marked as BTC-billed, empty
+ *   when nothing's marked yet even if a BTC address is attached. It
+ *   sizes the BTC quote and drives the "Due in BTC" badge, but does
+ *   *not* by itself restrict the card rail -- only `payment_lock` does.
+ *   Paid items stay in this set (it's what keeps their "Paid in BTC"
+ *   glyph); everything downstream filters to unpaid.
+ * @property btc_portion_usd - The USD a fresh BTC quote would cover
+ *   right now, as a decimal string: the landlord's expectation
+ *   intersected with what's still BTC-payable, or every BTC-payable
+ *   item if that intersection is empty.
+ * @property stripe_portion_usd - The USD the Cash App tab bills by
+ *   default, as a decimal string: card-payable items the landlord
+ *   hasn't earmarked for BTC.
+ * @property card_full_owed_usd - Every card-payable item's total, as a
+ *   decimal string, ignoring the BTC expectation -- the opt-in "pay it
+ *   all by card instead" figure. Only a `payment_lock: 'btc'` item is
+ *   ever excluded from this.
+ * @property btc_owed_usd - The USD still owed via BTC right now, as a
+ *   decimal string: the remainder if one's outstanding, otherwise
+ *   `btc_portion_usd`.
+ * @property is_split_payment - Informational: whether BTC is scoped to
+ *   some, but not all, of the unpaid charges. Drives the split-notice
+ *   copy only; the invoice's paid status no longer depends on it.
+ * @property btc_settled_at - When the most recent BTC round settled
+ *   (ISO 8601), or null if none has.
+ * @property btc_overpaid_usd - Total USD received beyond quote across
+ *   every BTC round, as a decimal string, or null if none has been
+ *   overpaid. An overpaid invoice is still fully paid -- this is an
  *   additive flag, not a replacement status.
- * @property stripe_settled_at - When the card leg settled (ISO 8601),
- *   or null if it hasn't.
- * @property btc_txid - The tx that settles (or is settling) the BTC
- *   leg, or an empty string if none has been seen yet.
+ * @property stripe_settled_at - When the card leg most recently
+ *   settled (ISO 8601), or null if it hasn't.
+ * @property btc_txid - The in-flight round's matched tx, cleared once
+ *   that round settles -- the settled tx lives on its `settlements`
+ *   row instead.
  * @property btc_credited_txid - A short payment credited toward the
  *   invoice that leaves a remainder owed, or an empty string if there
  *   isn't one.
+ * @property btc_watch_expires_at - When the current BTC quote window
+ *   closes (ISO 8601), or null if no watch is in progress.
+ * @property paid_line_items - Ids of line items covered by a settled
+ *   payment. The single authority for per-item paid state.
+ * @property frozen_line_items - Ids of line items the landlord may no
+ *   longer re-scope or re-lock: paid, or with a payment in flight on
+ *   either rail (minus the underpaid-round exception).
+ * @property settlements - Every completed payment round against this
+ *   invoice, oldest first.
  */
 export interface Invoice {
   id: number;
@@ -286,12 +347,18 @@ export interface Invoice {
   btc_line_items: number[];
   btc_portion_usd: string;
   stripe_portion_usd: string;
+  card_full_owed_usd: string;
+  btc_owed_usd: string;
   is_split_payment: boolean;
   btc_settled_at: string | null;
   btc_overpaid_usd: string | null;
   stripe_settled_at: string | null;
   btc_txid: string;
   btc_credited_txid: string;
+  btc_watch_expires_at: string | null;
+  paid_line_items: number[];
+  frozen_line_items: number[];
+  settlements: InvoiceSettlement[];
 }
 
 
