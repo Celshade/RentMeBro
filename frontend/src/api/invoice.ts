@@ -26,6 +26,21 @@ export function isLineItemFrozen(invoice: Invoice, itemId: number): boolean {
 
 
 /**
+ * Whether an invoice's gas line item is frozen: paid, or with a
+ * payment in flight on either rail. Powers the driven-day calendar's
+ * hard lock, since the backend rejects edits to a month once its gas
+ * charge is frozen regardless of the invoice's own status.
+ * @param invoice - The invoice to check.
+ * @returns True if the invoice has a gas line item and it's frozen;
+ *   false if there's no gas item at all.
+ */
+export function gasChargeIsFrozen(invoice: Invoice): boolean {
+  const gasItem = invoice.line_items.find((item) => item.kind === 'gas');
+  return gasItem !== undefined && isLineItemFrozen(invoice, gasItem.id);
+}
+
+
+/**
  * The settlement that paid a given line item, if any.
  * @param invoice - The invoice the item belongs to.
  * @param itemId - The line item's id.
