@@ -146,7 +146,8 @@ class GasPriceEntrySerializer(serializers.ModelSerializer):
 class InvoiceLineItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = InvoiceLineItem
-        fields = ['id', 'description', 'amount', 'kind']
+        fields = ['id', 'description', 'amount', 'kind', 'payment_lock']
+        read_only_fields = ['payment_lock']
 
 
 class BillingPeriodSerializer(serializers.ModelSerializer):
@@ -168,7 +169,17 @@ class InvoiceSerializer(serializers.ModelSerializer):
     stripe_portion_usd = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
     )
+    card_full_owed_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    btc_overpaid_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, allow_null=True
+    )
     is_split_payment = serializers.BooleanField(read_only=True)
+    btc_owed_usd = serializers.SerializerMethodField()
+    paid_line_items = serializers.SerializerMethodField()
+    frozen_line_items = serializers.SerializerMethodField()
+    settlements = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -177,15 +188,57 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "stripe_payment_intent_id", "created_at", "line_items", "total",
             "is_late", "btc_address", "btc_amount_sats",
             "remainder_owed_usd", "btc_line_items", "btc_portion_usd",
-            "stripe_portion_usd", "is_split_payment", "btc_settled_at",
-            "btc_overpaid_usd", "stripe_settled_at", "btc_txid",
-            "btc_credited_txid",
+            "stripe_portion_usd", "card_full_owed_usd", "btc_owed_usd",
+            "is_split_payment", "btc_settled_at", "btc_overpaid_usd",
+            "stripe_settled_at", "btc_txid", "btc_credited_txid",
+            "btc_watch_expires_at", "paid_line_items", "frozen_line_items",
+            "settlements",
         ]
         read_only_fields = [
             "status", "stripe_payment_intent_id", "created_at",
             "btc_address", "btc_amount_sats", "remainder_owed_usd",
             "btc_line_items", "btc_settled_at", "btc_overpaid_usd",
             "stripe_settled_at", "btc_txid", "btc_credited_txid",
+            "btc_watch_expires_at",
+        ]
+
+    def get_btc_owed_usd(self, obj: Invoice) -> str:
+        """The USD still owed via BTC, mirroring
+        `payments.services._invoice_usd_owed` without importing it --
+        the BTC portion, or whatever's left after a prior underpayment
+        was credited toward it.
+        """
+        owed = (
+            obj.remainder_owed_usd
+            if obj.remainder_owed_usd is not None
+            else obj.btc_portion_usd
+        )
+        return str(owed)
+
+    def get_paid_line_items(self, obj: Invoice) -> list[int]:
+        return sorted(obj.paid_line_item_ids)
+
+    def get_frozen_line_items(self, obj: Invoice) -> list[int]:
+        return sorted(obj.frozen_line_item_ids)
+
+    def get_settlements(self, obj: Invoice) -> list[dict]:
+        return [
+            {
+                "id": settlement.id,
+                "rail": settlement.rail,
+                "txid": settlement.txid,
+                "line_items": [
+                    item.id for item in settlement.line_items.all()
+                ],
+                "amount_usd": str(settlement.amount_usd),
+                "overpaid_usd": (
+                    str(settlement.overpaid_usd)
+                    if settlement.overpaid_usd is not None
+                    else None
+                ),
+                "settled_at": settlement.settled_at.isoformat(),
+            }
+            for settlement in obj.settlements.all()
         ]
 
 
