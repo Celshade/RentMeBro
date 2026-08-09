@@ -422,7 +422,7 @@ class TestInvoiceViewSetRetrieve:
         assert response.status_code == 200
         mock_check.assert_not_called()
 
-    def test_does_not_check_an_already_settled_leg(
+    def test_does_not_check_when_no_tx_seen_yet(
         self, mocker, landlord_client, landlord, renter
     ):
         billing_period = BillingPeriodFactory(
@@ -431,8 +431,7 @@ class TestInvoiceViewSetRetrieve:
         invoice = InvoiceFactory(
             billing_period=billing_period,
             btc_address="bc1qexample",
-            btc_txid="tx1",
-            btc_settled_at=timezone.now(),
+            btc_txid="",
         )
         mock_check = mocker.patch("billing.views.check_btc_payment")
 
@@ -442,6 +441,33 @@ class TestInvoiceViewSetRetrieve:
 
         assert response.status_code == 200
         mock_check.assert_not_called()
+
+    def test_checks_a_second_round_even_after_a_prior_settle(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        """A non-empty btc_txid now only ever means an in-flight,
+        unconfirmed round -- a stale btc_settled_at from a prior round
+        must not suppress the check on this one.
+        """
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            btc_address="bc1qexample",
+            btc_txid="tx2",
+            btc_settled_at=timezone.now(),
+        )
+        mock_check = mocker.patch(
+            "billing.views.check_btc_payment", side_effect=lambda inv: inv
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_check.assert_called_once()
 
 
 class TestInvoiceViewSetWeeks:

@@ -51,7 +51,10 @@ class TestCreatePaymentIntentForInvoice:
     def test_creates_new_intent_and_persists_id(self, mocker):
         invoice = _onboarded_invoice()
         InvoiceLineItemFactory(invoice=invoice, amount=Decimal('123.45'))
-        fake_intent = MagicMock(id='pi_new123', client_secret='secret')
+        fake_intent = MagicMock(
+            id='pi_new123', client_secret='secret',
+            status='requires_payment_method',
+        )
         mock_create = mocker.patch(
             'payments.services.stripe.PaymentIntent.create',
             return_value=fake_intent,
@@ -87,7 +90,10 @@ class TestCreatePaymentIntentForInvoice:
             kind=InvoiceLineItem.Kind.GAS,
         )
         invoice.btc_line_items.set([gas])
-        fake_intent = MagicMock(id='pi_split', client_secret='secret')
+        fake_intent = MagicMock(
+            id='pi_split', client_secret='secret',
+            status='requires_payment_method',
+        )
         mock_create = mocker.patch(
             'payments.services.stripe.PaymentIntent.create',
             return_value=fake_intent,
@@ -110,7 +116,10 @@ class TestCreatePaymentIntentForInvoice:
             invoice=invoice, amount=Decimal('500.00')
         )
         invoice.btc_line_items.set([only_item])
-        fake_intent = MagicMock(id='pi_full', client_secret='secret')
+        fake_intent = MagicMock(
+            id='pi_full', client_secret='secret',
+            status='requires_payment_method',
+        )
         mock_create = mocker.patch(
             'payments.services.stripe.PaymentIntent.create',
             return_value=fake_intent,
@@ -122,7 +131,9 @@ class TestCreatePaymentIntentForInvoice:
 
     def test_reuses_existing_intent(self, mocker):
         invoice = _onboarded_invoice(stripe_payment_intent_id='pi_existing')
-        fake_intent = MagicMock(id='pi_existing')
+        # 'processing' is real money in flight, so the reprice branch
+        # (which would otherwise call the unmocked .modify) never runs.
+        fake_intent = MagicMock(id='pi_existing', status='processing')
         mock_retrieve = mocker.patch(
             'payments.services.stripe.PaymentIntent.retrieve',
             return_value=fake_intent,
@@ -143,7 +154,10 @@ class TestCreatePaymentIntentForInvoice:
         invoice = _onboarded_invoice(stripe_payment_intent_id='pi_stale')
         InvoiceLineItemFactory(invoice=invoice, amount=Decimal('50.00'))
         stale_intent = MagicMock(id='pi_stale', status='canceled')
-        fresh_intent = MagicMock(id='pi_fresh123', client_secret='secret')
+        fresh_intent = MagicMock(
+            id='pi_fresh123', client_secret='secret',
+            status='requires_payment_method',
+        )
         mocker.patch(
             'payments.services.stripe.PaymentIntent.retrieve',
             return_value=stale_intent,
@@ -419,19 +433,31 @@ class TestAttachBtcPayment:
 
     @pytest.mark.parametrize(
         "locked_status",
-        [
-            Invoice.Status.PENDING,
-            Invoice.Status.PARTIAL,
-            Invoice.Status.UNDERPAID,
-            Invoice.Status.PAID,
-            Invoice.Status.VOID,
-        ],
+        [Invoice.Status.PAID, Invoice.Status.VOID],
     )
     def test_raises_for_locked_invoice(self, locked_status):
         invoice = _btc_enabled_invoice(status=locked_status)
 
         with pytest.raises(InvoiceLockedError):
             attach_btc_payment(invoice, "bc1qexample")
+
+    @pytest.mark.parametrize(
+        "open_status",
+        [
+            Invoice.Status.PENDING,
+            Invoice.Status.PARTIAL,
+            Invoice.Status.UNDERPAID,
+        ],
+    )
+    def test_allows_reassignment_while_in_progress(self, open_status):
+        """PARTIAL/UNDERPAID no longer lock the whole invoice -- only a
+        settled/void invoice or a frozen line item does.
+        """
+        invoice = _btc_enabled_invoice(status=open_status)
+
+        result = attach_btc_payment(invoice, "bc1qexample")
+
+        assert result.btc_address == "bc1qexample"
 
     def test_scopes_btc_to_a_line_item(self):
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
@@ -549,10 +575,19 @@ class TestSplitPaymentSettlement:
         assert invoice.status == Invoice.Status.PARTIAL
         assert invoice.stripe_settled_at is not None
 
-    def test_both_legs_settle_the_invoice(self):
+    def test_both_legs_settle_the_invoice(self, mocker):
         invoice = self._split_invoice()
-        invoice.btc_settled_at = timezone.now()
-        invoice.save(update_fields=["btc_settled_at"])
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        mocker.patch(
+            "payments.services._fetch_address_txs",
+            return_value=[{"txid": "abc", "status": {"confirmed": True}}],
+        )
+        mocker.patch(
+            "payments.services._find_matching_output",
+            return_value={"txid": "abc", "status": {"confirmed": True}},
+        )
+        invoice = check_btc_payment(invoice)
+        assert invoice.status == Invoice.Status.PARTIAL
         landlord = invoice.billing_period.landlord
 
         handle_payment_intent_succeeded(
@@ -598,11 +633,14 @@ class TestSplitPaymentSettlement:
         remainder mustn't drag the invoice back to UNDERPAID.
         """
         invoice = self._split_invoice()
-        invoice.remainder_owed_usd = Decimal("40.00")
-        invoice.stripe_settled_at = timezone.now()
-        invoice.save(
-            update_fields=["remainder_owed_usd", "stripe_settled_at"]
+        landlord = invoice.billing_period.landlord
+        handle_payment_intent_succeeded(
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id=landlord.stripe_account_id,
         )
+        invoice.refresh_from_db()
+        invoice.remainder_owed_usd = Decimal("40.00")
+        invoice.save(update_fields=["remainder_owed_usd"])
         invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
         mocker.patch(
             "payments.services._fetch_address_txs",
@@ -629,23 +667,35 @@ class TestSplitPaymentSettlement:
         # $200 of gas @ $50k/BTC, not the $1200 invoice total.
         assert result.btc_amount_sats == 400000
 
-    def test_watch_is_a_noop_once_the_btc_leg_settled(self, mocker):
-        """A split invoice waits at PARTIAL for its card leg, which the
-        status gate allows -- so a settled BTC leg must be caught
-        separately or the renter gets quoted for it twice.
+    def test_second_round_quotes_remaining_items_after_first_settles(
+        self, mocker
+    ):
+        """The BTC-scoped gas item settling doesn't leave the next quote
+        empty -- it correctly rolls forward to whatever's still unpaid,
+        which is what makes a second BTC round representable at all.
         """
         invoice = self._split_invoice()
-        invoice.status = Invoice.Status.PARTIAL
-        invoice.btc_settled_at = timezone.now()
-        invoice.save(update_fields=["status", "btc_settled_at"])
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        mocker.patch(
+            "payments.services._fetch_address_txs",
+            return_value=[{"txid": "abc", "status": {"confirmed": True}}],
+        )
+        mocker.patch(
+            "payments.services._find_matching_output",
+            return_value={"txid": "abc", "status": {"confirmed": True}},
+        )
+        invoice = check_btc_payment(invoice)
+        assert invoice.status == Invoice.Status.PARTIAL
+        assert invoice.btc_txid == ""
+
         mocker.patch(
             "payments.services.get_btc_usd_price", return_value=50000
         )
-
         result = initiate_btc_watch(invoice)
 
-        assert result.btc_amount_sats is None
-        assert result.btc_watch_expires_at is None
+        # $1000 of rent remaining, not zero and not the $1200 total.
+        assert result.btc_amount_sats == 2000000
+        assert result.btc_watch_expires_at is not None
 
 
 class TestInitiateBtcWatch:
@@ -781,6 +831,7 @@ class TestInitiateBtcWatch:
             btc_watch_expires_at=timezone.now()
             - timedelta(minutes=2),
         )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("40.00"))
         _mock_mempool_requests(
             mocker,
             address_txs=[
@@ -973,7 +1024,11 @@ class TestCheckBtcPayment:
         result = check_btc_payment(invoice)
 
         assert result.status == Invoice.Status.PAID
-        assert result.btc_txid == "tx1"
+        # A confirmed round clears btc_txid -- the settled txid lives
+        # on the InvoiceSettlement row instead.
+        assert result.btc_txid == ""
+        settlement = result.settlements.get()
+        assert settlement.txid == "tx1"
 
     def test_confirms_via_known_txid(self, mocker):
         invoice = _btc_enabled_invoice(
@@ -1215,7 +1270,8 @@ class TestCheckBtcPayment:
         result = check_btc_payment(invoice)
 
         assert result.status == Invoice.Status.PAID
-        assert result.btc_txid == "big-tx"
+        assert result.btc_txid == ""
+        assert result.settlements.get().txid == "big-tx"
         assert result.btc_overpaid_usd == Decimal("10.00")
 
     def test_overquote_in_window_tx_on_split_invoice_stays_partial(
@@ -1264,9 +1320,15 @@ class TestBtcDiscrepancyEmails:
     payment.
     """
 
-    def test_overpayment_email_fires_once_across_repeated_polls(
+    def test_overpayment_email_fires_once_per_settlement(
         self, mocker, mailoutbox
     ):
+        """A confirmed round clears btc_txid, so it can no longer be
+        re-polled the way an old, still-PARTIAL split invoice could --
+        instead, a duplicate settle attempt for the same txid must
+        collapse onto the one already-created row and send no second
+        email.
+        """
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
         invoice = attach_btc_payment(
             invoice, "bc1qexample", line_item_ids=[gas.id]
@@ -1301,11 +1363,17 @@ class TestBtcDiscrepancyEmails:
         assert result.btc_overpaid_usd == Decimal("10.00")
         assert len(mailoutbox) == 1
         assert mailoutbox[0].to == [invoice.billing_period.landlord.email]
+        assert result.settlements.count() == 1
 
-        # The card leg is still outstanding, so this is re-entered by
-        # the renter's 60s poll -- must not resend.
-        result = check_btc_payment(result)
+        # A second _settle_btc_leg call for the same txid (e.g. a
+        # concurrent poll racing the first) must collapse onto the
+        # same row via get_or_create, not send a second email.
+        from payments.services import _settle_btc_leg
+
+        result.btc_txid = "big-tx"
+        _settle_btc_leg(result, True, paid_sats=420000)
         assert len(mailoutbox) == 1
+        assert result.settlements.count() == 1
 
     def test_underpayment_sends_exactly_one_landlord_email(
         self, mocker, mailoutbox

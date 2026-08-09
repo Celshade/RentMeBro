@@ -147,7 +147,13 @@ def _settle_btc_leg(
 
     txid = invoice.btc_txid
     amount_sats = invoice.btc_amount_sats
-    covered_items = list(invoice.btc_round_line_items.all())
+    # Falls back to the current scope if the round was never snapshotted
+    # (e.g. a pre-snapshot invoice, or a test driving the tx-matching
+    # state machine directly without going through initiate_btc_watch).
+    covered_items = (
+        list(invoice.btc_round_line_items.all())
+        or invoice.btc_scope_line_items
+    )
 
     overpaid_usd = None
     quoted_usd = None
@@ -162,9 +168,9 @@ def _settle_btc_leg(
     with transaction.atomic():
         settlement, created = InvoiceSettlement.objects.get_or_create(
             invoice=invoice,
+            rail=InvoiceSettlement.Rail.BTC,
             txid=txid,
             defaults={
-                "rail": InvoiceSettlement.Rail.BTC,
                 "amount_usd": sum(
                     (item.amount for item in covered_items), Decimal(0)
                 ),
@@ -398,9 +404,9 @@ def handle_payment_intent_succeeded(
 
         settlement, created = InvoiceSettlement.objects.get_or_create(
             invoice=invoice,
+            rail=InvoiceSettlement.Rail.CARD,
             stripe_payment_intent_id=intent_id,
             defaults={
-                "rail": InvoiceSettlement.Rail.CARD,
                 "amount_usd": sum(
                     (item.amount for item in billed_items), Decimal(0)
                 ),

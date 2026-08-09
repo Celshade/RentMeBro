@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 from django.db import transaction
+from django.utils import timezone
 
 from accounts.tests.factories import LandlordFactory, UserFactory
 from billing import services
@@ -478,17 +479,38 @@ class TestRecomputeInvoiceGas:
         with pytest.raises(services.InvoiceLockedError):
             services.recompute_invoice_gas(invoice)
 
-    def test_raises_for_pending_invoice(self):
+    def test_allows_pending_invoice_with_unfrozen_gas_item(self):
         invoice = InvoiceFactory(status=Invoice.Status.PENDING)
-        with pytest.raises(services.InvoiceLockedError):
-            services.recompute_invoice_gas(invoice)
+        InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
+            amount=Decimal('0.00'),
+        )
+        result = services.recompute_invoice_gas(invoice)
+        assert result.status == Invoice.Status.PENDING
 
-    def test_raises_for_partial_invoice(self):
+    def test_raises_for_frozen_gas_item(self):
+        """A PENDING/PARTIAL status no longer locks the whole invoice --
+        only a frozen (paid or in-flight) gas item does.
+        """
         invoice = InvoiceFactory(status=Invoice.Status.PARTIAL)
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
+            amount=Decimal('0.00'),
+        )
+        invoice.btc_address = 'bc1qexample'
+        invoice.btc_amount_sats = 1000
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        invoice.save()
+        invoice.btc_round_line_items.set([gas_item])
+
         with pytest.raises(services.InvoiceLockedError):
             services.recompute_invoice_gas(invoice)
 
-    def test_clears_btc_fields_when_total_changes(self):
+    def test_clears_btc_fields_when_total_changes(self, mocker):
+        mocker.patch(
+            "payments.services.refresh_payment_state",
+            side_effect=lambda invoice: invoice,
+        )
         landlord, renter = LandlordFactory(), UserFactory()
         MileageProfileFactory(
             landlord=landlord,
@@ -530,7 +552,11 @@ class TestRecomputeInvoiceGas:
         assert updated.btc_amount_sats is None
         assert updated.btc_txid == ""
 
-    def test_keeps_btc_fields_when_total_unchanged(self):
+    def test_keeps_btc_fields_when_total_unchanged(self, mocker):
+        mocker.patch(
+            "payments.services.refresh_payment_state",
+            side_effect=lambda invoice: invoice,
+        )
         invoice = InvoiceFactory(
             kind=Invoice.Kind.GAS_ONLY,
             btc_address="bc1qexample",

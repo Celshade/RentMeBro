@@ -546,6 +546,9 @@ class TestInvoiceBtcWatchView:
     def test_starts_watch_for_own_invoice(
         self, api_client, renter, invoice, mocker
     ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        InvoiceLineItemFactory(invoice=invoice)
         mocker.patch(
             "payments.services.get_btc_usd_price", return_value=50000
         )
