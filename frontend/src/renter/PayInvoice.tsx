@@ -108,9 +108,11 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
  */
 function PayInvoiceCashApp({
   invoiceId,
+  payFull,
   onPaid,
 }: {
   invoiceId: number;
+  payFull: boolean;
   onPaid: () => void;
 }) {
   const [payIntent, setPayIntent] = useState<PayIntentResponse | null>(null);
@@ -121,10 +123,11 @@ function PayInvoiceCashApp({
     setError(null);
     apiFetch<PayIntentResponse>(`/api/invoices/${invoiceId}/pay/`, {
       method: 'POST',
+      body: { pay_full: payFull },
     })
       .then(setPayIntent)
       .catch((err: Error) => setError(err.message));
-  }, [invoiceId]);
+  }, [invoiceId, payFull]);
 
   if (error) return <p role="alert">{error}</p>;
   if (!payIntent) return <p>Preparing payment...</p>;
@@ -160,10 +163,19 @@ export function PayInvoice({
 }) {
   const hasBtcOption = invoice.btc_address !== '';
   const [mode, setMode] = useState<'cashapp' | 'btc'>(
-    invoice.is_split_payment && invoice.stripe_settled_at !== null
+    Number(invoice.btc_owed_usd) > 0 &&
+      Number(invoice.stripe_portion_usd) === 0
       ? 'btc'
       : 'cashapp'
   );
+  const [payFull, setPayFull] = useState(false);
+
+  // The card leg only genuinely has nothing to bill when every unpaid
+  // item is BTC-locked -- a merely BTC-*assigned* invoice still owes
+  // the full total by card, so the tab stays up.
+  const cardOwesNothing = Number(invoice.card_full_owed_usd) === 0;
+  const canPayFullByCard =
+    Number(invoice.card_full_owed_usd) > Number(invoice.stripe_portion_usd);
 
   return (
     <div>
@@ -171,6 +183,16 @@ export function PayInvoice({
         {invoice.line_items.map((item) => {
           const paid = isLineItemPaid(invoice, item.id);
           const leg = lineItemLeg(invoice, item.id);
+          const lockLabel =
+            item.payment_lock === 'btc'
+              ? 'BTC only'
+              : item.payment_lock === 'card'
+                ? 'Card only'
+                : leg === 'btc'
+                  ? 'Due in BTC'
+                  : leg === 'card'
+                    ? 'Due by card'
+                    : null;
           return (
             <li key={item.id} className="list-row">
               <span>{item.description}</span>
@@ -181,9 +203,9 @@ export function PayInvoice({
                     Paid
                   </span>
                 )}
-                {!paid && leg !== 'either' && (
+                {!paid && lockLabel && (
                   <span className="status-badge status-badge--pending">
-                    {leg === 'btc' ? 'Due in BTC' : 'Due by card'}
+                    {lockLabel}
                   </span>
                 )}
               </span>
@@ -195,21 +217,28 @@ export function PayInvoice({
         <p className="pay-invoice__split-notice">
           This invoice is split across two payments:{' '}
           <strong>${formatMoney(invoice.btc_portion_usd)} in BTC</strong>{' '}
-          {invoice.btc_settled_at !== null ? '(paid)' : '(due)'} and{' '}
+          {Number(invoice.btc_owed_usd) === 0 ? '(paid)' : '(due)'} and{' '}
           <strong>${formatMoney(invoice.stripe_portion_usd)} by card</strong>{' '}
           {invoice.stripe_settled_at !== null ? '(paid)' : '(due)'}. Both
           are needed to settle it.
         </p>
       )}
+      {cardOwesNothing && (
+        <p className="pay-invoice__split-notice">
+          The landlord has set these charges to be paid in BTC.
+        </p>
+      )}
       {hasBtcOption && (
         <div className="pay-invoice__mode-toggle">
-          <button
-            type="button"
-            onClick={() => setMode('cashapp')}
-            disabled={mode === 'cashapp'}
-          >
-            Pay with Cash App
-          </button>
+          {!cardOwesNothing && (
+            <button
+              type="button"
+              onClick={() => setMode('cashapp')}
+              disabled={mode === 'cashapp'}
+            >
+              Pay with Cash App
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setMode('btc')}
@@ -219,8 +248,25 @@ export function PayInvoice({
           </button>
         </div>
       )}
-      {mode === 'cashapp' ? (
-        <PayInvoiceCashApp invoiceId={invoice.id} onPaid={onPaid} />
+      {mode === 'cashapp' && !cardOwesNothing ? (
+        <>
+          {canPayFullByCard && (
+            <label className="pay-invoice__pay-full">
+              <input
+                type="checkbox"
+                checked={payFull}
+                onChange={(e) => setPayFull(e.target.checked)}
+              />
+              Pay full balance by card instead -- $
+              {formatMoney(invoice.card_full_owed_usd)}
+            </label>
+          )}
+          <PayInvoiceCashApp
+            invoiceId={invoice.id}
+            payFull={payFull}
+            onPaid={onPaid}
+          />
+        </>
       ) : (
         <PayInvoiceBtc invoiceId={invoice.id} onPaid={onPaid} />
       )}
