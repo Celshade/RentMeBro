@@ -419,3 +419,72 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
         payment_lock=''
     )
     return invoice
+
+
+def gas_period_is_locked(
+    landlord: User, renter: User, year: int, month: int
+) -> bool:
+    """Checks whether a pair's gas charge for a month is already frozen.
+
+    Args:
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
+        year: The billing period's year.
+        month: The billing period's month (1-12).
+
+    Returns:
+        True if a billing period exists for the month and any of its
+        invoices has a gas line item that's paid or has a payment in
+        flight (see `Invoice.frozen_line_item_ids`).
+    """
+    # Imported here, not at module scope, to avoid a circular import:
+    # payments.services imports InvoiceLockedError from this module.
+    from payments.services import refresh_payment_state
+
+    billing_period = BillingPeriod.objects.filter(
+        landlord=landlord, renter=renter, year=year, month=month
+    ).first()
+    if billing_period is None:
+        return False
+
+    invoices = billing_period.invoices.filter(
+        line_items__kind=InvoiceLineItem.Kind.GAS
+    ).distinct().prefetch_related(
+        "line_items",
+        "settlements__line_items",
+        "btc_round_line_items",
+        "stripe_round_line_items",
+    )
+    for invoice in invoices:
+        invoice = refresh_payment_state(invoice)
+        gas_line_item = invoice.line_items.filter(
+            kind=InvoiceLineItem.Kind.GAS
+        ).first()
+        if gas_line_item is not None:
+            if gas_line_item.id in invoice.frozen_line_item_ids:
+                return True
+    return False
+
+
+def assert_gas_period_editable(
+    landlord: User, renter: User, on_date: date
+) -> None:
+    """Raises if a pair's gas charge for `on_date`'s month is frozen.
+
+    Args:
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
+        on_date: Any date within the month to check.
+
+    Raises:
+        InvoiceLockedError: If that month's gas charge is already
+            settled or has a payment in flight.
+    """
+    if gas_period_is_locked(
+        landlord, renter, on_date.year, on_date.month
+    ):
+        raise InvoiceLockedError(
+            f"The gas charge for {on_date.year}-{on_date.month:02d} is "
+            "already settled or has a payment in flight and its driven "
+            "days can no longer be edited."
+        )
