@@ -9,13 +9,19 @@ import {
   satsToBtc,
   usdToBtc,
 } from '../api/format';
-import { isLineItemPaid, lineItemLeg } from '../api/invoice';
+import {
+  isLineItemFrozen,
+  isLineItemPaid,
+  lineItemLeg,
+  settlementForLineItem,
+} from '../api/invoice';
 import type {
   BtcSettings,
   DrivenDayLog,
   Invoice,
   InvoiceWeek,
   InvoiceWeekDay,
+  PaymentLock,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { BtcAttachedGlyph } from '../components/BtcAttachedGlyph';
@@ -24,7 +30,15 @@ import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
 
-const LOCKED_STATUSES = new Set(['paid', 'void', 'pending']);
+// Only a whole-invoice settle/void locks everything; a not-yet-fully
+// paid invoice may still have individually re-scopable line items --
+// see `isLineItemFrozen` for the per-item check.
+const LOCKED_STATUSES = new Set(['paid', 'void']);
+
+/** Extracts a server-thrown Error's message, falling back to a generic one. */
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
 
 
 /**
@@ -72,8 +86,8 @@ function AttachBtcPaymentForm({
       // Re-read rather than patching locally: the split portions are
       // derived server-side, so this keeps them authoritative.
       onAttached(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
-    } catch {
-      setError('Could not attach BTC address. Try again.');
+    } catch (err) {
+      setError(errorMessage(err, 'Could not attach BTC address. Try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -94,12 +108,21 @@ function AttachBtcPaymentForm({
       });
       setAddress('');
       onAttached(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
-    } catch {
-      setError('Could not remove BTC address. Try again.');
+    } catch (err) {
+      setError(errorMessage(err, 'Could not remove BTC address. Try again.'));
     } finally {
       setSubmitting(false);
     }
   }
+
+  // A settled BTC payment can never be un-happened, and a BTC-locked
+  // item would be stranded with no rail able to pay it -- see
+  // attach_btc_payment's detach guard on the backend.
+  const hasBtcSettlement = invoice.settlements.some((s) => s.rail === 'btc');
+  const hasBtcLockedItem = invoice.line_items.some(
+    (item) => item.payment_lock === 'btc'
+  );
+  const canRemove = !hasBtcSettlement && !hasBtcLockedItem;
 
   const estimatedBtc =
     usdPerBtc !== null
@@ -127,7 +150,7 @@ function AttachBtcPaymentForm({
           <button type="submit" className="button--btc" disabled={submitting}>
             {submitting ? 'Saving...' : 'Attach'}
           </button>
-          {invoice.btc_address !== '' && (
+          {invoice.btc_address !== '' && canRemove && (
             <button
               type="button"
               className="button--btc"
@@ -203,6 +226,8 @@ export function InvoiceDetail() {
   const [error, setError] = useState<string | null>(null);
   const [assigningItemId, setAssigningItemId] = useState<number | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [lockingItemId, setLockingItemId] = useState<number | null>(null);
+  const [lockError, setLockError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -248,10 +273,37 @@ export function InvoiceDetail() {
         body: { address: invoice.btc_address, line_items: nextItemIds },
       });
       setInvoice(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
-    } catch {
-      setAssignError('Could not change what BTC covers. Try again.');
+    } catch (err) {
+      setAssignError(
+        errorMessage(err, 'Could not change what BTC covers. Try again.')
+      );
     } finally {
       setAssigningItemId(null);
+    }
+  }
+
+  /**
+   * Sets (or clears, via '') a line item's payment-method lock -- the
+   * one and only way a rail is actually taken off a charge.
+   * @param lineItemId - The line item to lock.
+   * @param lock - '' (either rail), 'btc', or 'card'.
+   */
+  async function handleSetPaymentLock(lineItemId: number, lock: PaymentLock) {
+    if (!invoice) return;
+    setLockingItemId(lineItemId);
+    setLockError(null);
+    try {
+      const updated = await apiFetch<Invoice>(
+        `/api/invoices/${invoice.id}/line-items/${lineItemId}/payment-lock/`,
+        { method: 'POST', body: { payment_lock: lock } }
+      );
+      setInvoice(updated);
+    } catch (err) {
+      setLockError(
+        errorMessage(err, 'Could not change the payment lock. Try again.')
+      );
+    } finally {
+      setLockingItemId(null);
     }
   }
 
@@ -260,16 +312,18 @@ export function InvoiceDetail() {
   if (!invoice) return <p className="empty-state">Invoice not found.</p>;
 
   const hasGasBreakdown = invoice.kind !== 'rent_only';
-  // Needs an address to point somewhere and an invoice that's still
-  // editable. Assignable even with a single charge -- that just marks
-  // the whole invoice as BTC-billed.
+  // Needs an address to point somewhere and the whole invoice not yet
+  // settled/void -- a not-fully-paid invoice can still have individual
+  // items frozen, which is checked per-row below.
   const canAssignBtc =
     user?.role === 'landlord' &&
     btcSettings?.enabled === true &&
     invoice.btc_address !== '' &&
     !LOCKED_STATUSES.has(invoice.status);
-  const btcTxid = invoice.btc_txid || invoice.btc_credited_txid;
-  const btcPending = invoice.btc_settled_at === null;
+  const canLockPayments = canAssignBtc;
+  // A non-empty btc_txid only ever means an in-flight, unconfirmed
+  // round -- once it settles the tx lives on the settlement row.
+  const btcPending = invoice.btc_txid !== '';
 
   return (
     <div className="invoice-detail">
@@ -332,15 +386,34 @@ export function InvoiceDetail() {
       <section className="card">
         <div className="card__header">
           <h2>Line items</h2>
-          {invoice.btc_line_items.length === 0 && (
-            <BtcTxLink txid={btcTxid} pending={btcPending} />
+          {invoice.btc_line_items.length === 0 && btcPending && (
+            <BtcTxLink txid={invoice.btc_txid} pending />
           )}
         </div>
         <ul className="list">
           {invoice.line_items.map((item) => {
             const isAssigned = invoice.btc_line_items.includes(item.id);
             const paid = isLineItemPaid(invoice, item.id);
+            const frozen = isLineItemFrozen(invoice, item.id);
             const leg = lineItemLeg(invoice, item.id);
+            const settlement = settlementForLineItem(invoice, item.id);
+            // Paid: the settling tx. Assigned + still pending: the
+            // in-flight round's tx, if this item is part of it.
+            const itemTxid = settlement
+              ? settlement.txid
+              : isAssigned && btcPending
+                ? invoice.btc_txid
+                : '';
+            const lockLabel =
+              item.payment_lock === 'btc'
+                ? 'BTC only'
+                : item.payment_lock === 'card'
+                  ? 'Card only'
+                  : leg === 'btc'
+                    ? 'Due in BTC'
+                    : leg === 'card'
+                      ? 'Due by card'
+                      : null;
             return (
               <li key={item.id} className="list-row">
                 <span>
@@ -357,15 +430,15 @@ export function InvoiceDetail() {
                       Paid
                     </span>
                   )}
-                  {!paid && leg !== 'either' && (
+                  {!paid && lockLabel && (
                     <span className="status-badge status-badge--pending">
-                      {leg === 'btc' ? 'Due in BTC' : 'Due by card'}
+                      {lockLabel}
                     </span>
                   )}
-                  {isAssigned && (
-                    <BtcTxLink txid={btcTxid} pending={btcPending} />
+                  {itemTxid !== '' && (
+                    <BtcTxLink txid={itemTxid} pending={!settlement} />
                   )}
-                  {canAssignBtc && (
+                  {canAssignBtc && !frozen && (
                     <button
                       type="button"
                       className="button--btc"
@@ -375,12 +448,43 @@ export function InvoiceDetail() {
                       {isAssigned ? 'Unassign BTC' : 'Assign BTC'}
                     </button>
                   )}
+                  {canLockPayments && !frozen && (
+                    <span
+                      title={
+                        invoice.btc_address === ''
+                          ? 'Attach a BTC address to lock a charge to BTC'
+                          : undefined
+                      }
+                    >
+                      <select
+                        className="payment-lock-select"
+                        value={item.payment_lock}
+                        disabled={lockingItemId !== null}
+                        onChange={(e) =>
+                          handleSetPaymentLock(
+                            item.id,
+                            e.target.value as PaymentLock
+                          )
+                        }
+                      >
+                        <option value="">Any method</option>
+                        <option
+                          value="btc"
+                          disabled={invoice.btc_address === ''}
+                        >
+                          BTC only
+                        </option>
+                        <option value="card">Card only</option>
+                      </select>
+                    </span>
+                  )}
                 </span>
               </li>
             );
           })}
         </ul>
         {assignError && <p role="alert">{assignError}</p>}
+        {lockError && <p role="alert">{lockError}</p>}
       </section>
 
       {user?.role === 'landlord' &&
