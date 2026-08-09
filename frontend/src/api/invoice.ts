@@ -38,3 +38,28 @@ export function settlementForLineItem(
 ): InvoiceSettlement | undefined {
   return invoice.settlements.find((s) => s.line_items.includes(itemId));
 }
+
+
+/**
+ * Which payment rails are actually usable on this invoice right now,
+ * for a glanceable summary rather than spelling out every line item's
+ * lock. Does not consult `btc_line_items` -- that field is a
+ * non-binding expectation of what BTC will cover, not a restriction,
+ * so it says nothing about whether a rail is usable.
+ * @param invoice - The invoice to summarize.
+ * @returns Whether BTC and/or card can still pay something on this
+ *   invoice. `card` is true when any item isn't locked to BTC-only;
+ *   `btc` is true when an address is attached and at least one item
+ *   isn't locked to card-only.
+ */
+export function paymentRails(invoice: Invoice): {
+  btc: boolean;
+  card: boolean;
+} {
+  return {
+    card: Number(invoice.card_full_owed_usd) > 0,
+    btc:
+      invoice.btc_address !== '' &&
+      invoice.line_items.some((item) => item.payment_lock !== 'card'),
+  };
+}
