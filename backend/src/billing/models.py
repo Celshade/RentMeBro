@@ -468,12 +468,22 @@ class Invoice(models.Model):
         )
 
     @property
+    def card_full_line_items(self) -> list['InvoiceLineItem']:
+        """Every card-payable item, ignoring the BTC expectation.
+
+        Public alias for `_card_candidates` -- other modules (e.g.
+        `payments.services`) need the item list, not just its total,
+        to snapshot what a full-balance card charge actually bought.
+        """
+        return self._card_candidates
+
+    @property
     def card_full_owed_usd(self) -> Decimal:
         """Every card-payable item's total -- the opt-in "pay it all by
         card instead" figure, ignoring the BTC expectation.
         """
         return sum(
-            (item.amount for item in self._card_candidates),
+            (item.amount for item in self.card_full_line_items),
             start=Decimal(0),
         )
 
