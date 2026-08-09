@@ -490,12 +490,27 @@ class TestAttachBtcPayment:
         assert result.stripe_portion_usd == Decimal("1200.00")
         assert result.is_split_payment is False
 
-    def test_defaults_to_covering_the_whole_invoice(self):
+    def test_unassigned_scope_quotes_nothing(self):
+        """Assignment is binding: attaching an address alone, with no
+        line items assigned, must not imply the whole invoice.
+        """
         invoice, _ = _two_line_item_invoice(status=Invoice.Status.SENT)
 
         result = attach_btc_payment(invoice, "bc1qexample")
 
         assert result.btc_line_items.exists() is False
+        assert result.btc_scope_line_items == []
+        assert result.btc_portion_usd == Decimal("0.00")
+        assert result.is_split_payment is False
+
+    def test_assigning_every_item_covers_the_whole_invoice(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        rent = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
+
+        result = attach_btc_payment(
+            invoice, "bc1qexample", [rent.id, gas.id]
+        )
+
         assert result.btc_portion_usd == Decimal("1200.00")
         assert result.is_split_payment is False
 
@@ -705,7 +720,10 @@ class TestInitiateBtcWatch:
         invoice = _btc_enabled_invoice(
             status=Invoice.Status.SENT, btc_address="bc1qexample"
         )
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
         mocker.patch(
             "payments.services.get_btc_usd_price", return_value=50000
         )
@@ -732,6 +750,24 @@ class TestInitiateBtcWatch:
 
         assert result.btc_amount_sats == 50000  # $25 @ $50k/BTC
 
+    def test_noop_if_nothing_assigned(self, mocker):
+        """An address with no line items assigned quotes $0, so
+        opening the BTC panel must not start a watch.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        get_price = mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice)
+
+        assert result.btc_watch_expires_at is None
+        assert result.btc_amount_sats is None
+        get_price.assert_not_called()
+
     def test_noop_if_no_price_available(self, mocker):
         invoice = _btc_enabled_invoice(
             status=Invoice.Status.SENT, btc_address="bc1qexample"
@@ -754,7 +790,10 @@ class TestInitiateBtcWatch:
         invoice = _btc_enabled_invoice(
             status=Invoice.Status.DRAFT, btc_address="bc1qexample"
         )
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
         mocker.patch(
             "payments.services.get_btc_usd_price", return_value=50000
         )
@@ -808,7 +847,10 @@ class TestInitiateBtcWatch:
             btc_watch_expires_at=timezone.now()
             - timedelta(minutes=10),
         )
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
         response = MagicMock()
         response.json.return_value = []
         mocker.patch(
@@ -831,7 +873,10 @@ class TestInitiateBtcWatch:
             btc_watch_expires_at=timezone.now()
             - timedelta(minutes=2),
         )
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("40.00"))
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("40.00")
+        )
+        invoice.btc_line_items.set([item])
         _mock_mempool_requests(
             mocker,
             address_txs=[
@@ -862,7 +907,10 @@ class TestInitiateBtcWatch:
             btc_watch_expires_at=timezone.now()
             - timedelta(minutes=10),
         )
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
         _mock_mempool_requests(
             mocker,
             address_txs=[
@@ -1244,7 +1292,10 @@ class TestCheckBtcPayment:
             btc_amount_sats=100000,
             btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
         )
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([item])
         _mock_mempool_requests(
             mocker,
             address_txs=[
@@ -1384,7 +1435,10 @@ class TestBtcDiscrepancyEmails:
             btc_amount_sats=100000,
             btc_watch_expires_at=timezone.now() - timedelta(minutes=10),
         )
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([item])
         _mock_mempool_requests(
             mocker,
             address_txs=[
@@ -1419,7 +1473,10 @@ class TestBtcDiscrepancyEmails:
             btc_txid="big-tx",
             btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
         )
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([item])
         _mock_mempool_requests(
             mocker,
             tx_detail={
