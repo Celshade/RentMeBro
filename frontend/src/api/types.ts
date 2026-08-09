@@ -196,8 +196,9 @@ export type PaymentLock = '' | 'btc' | 'card';
  * @property amount - Line amount, as a decimal string.
  * @property kind - Whether this line is a rent or gas charge.
  * @property payment_lock - Which rail may pay this charge: '' (either),
- *   'btc', or 'card'. The only thing that restricts a rail -- unlike
- *   `Invoice.btc_line_items`, which is a non-binding expectation.
+ *   'btc', or 'card'. The only thing that restricts a rail;
+ *   `Invoice.btc_line_items` sizes and gates the BTC quote but never
+ *   removes the card rail on its own.
  */
 export interface InvoiceLineItem {
   id: number;
@@ -282,17 +283,19 @@ export type InvoiceStatus =
  *   shortfall. This is what distinguishes an underpaid invoice from
  *   one merely split across two payment methods, since both sit at
  *   'partial'.
- * @property btc_line_items - The landlord's non-binding expectation of
- *   what BTC covers: ids of the line items marked as BTC-billed, empty
- *   when nothing's marked yet even if a BTC address is attached. It
- *   sizes the BTC quote and drives the "Due in BTC" badge, but does
+ * @property btc_line_items - The landlord's BTC assignment: ids of the
+ *   line items marked as BTC-billed. Binding -- empty means no BTC
+ *   quote at all, even if a BTC address is attached. It sizes and
+ *   gates the BTC quote and drives the "Due in BTC" badge, but does
  *   *not* by itself restrict the card rail -- only `payment_lock` does.
  *   Paid items stay in this set (it's what keeps their "Paid in BTC"
  *   glyph); everything downstream filters to unpaid.
  * @property btc_portion_usd - The USD a fresh BTC quote would cover
- *   right now, as a decimal string: the landlord's expectation
- *   intersected with what's still BTC-payable, or every BTC-payable
- *   item if that intersection is empty.
+ *   right now, as a decimal string: the landlord's assignment
+ *   intersected with what's still BTC-payable, falling back to every
+ *   BTC-payable item only once something has been assigned and that
+ *   intersection has gone empty (a settled round quoting the
+ *   remainder); zero when nothing's ever been assigned.
  * @property stripe_portion_usd - The USD the Cash App tab bills by
  *   default, as a decimal string: card-payable items the landlord
  *   hasn't earmarked for BTC.
