@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
+from billing import services
 from billing.models import (
     BillingPeriod,
     DrivenDayLog,
@@ -97,6 +98,18 @@ class DrivenDayLogSerializer(serializers.ModelSerializer):
         kind = attrs.get('kind', getattr(self.instance, 'kind', None))
         if kind is not None and kind != DrivenDayLog.Kind.DRIVEN:
             attrs['day_fraction'] = Decimal('0')
+
+        landlord = self.context['request'].user
+        renter = attrs.get('renter', getattr(self.instance, 'renter', None))
+        target_date = attrs.get('date', getattr(self.instance, 'date', None))
+        # InvoiceLockedError deliberately isn't caught here -- it bubbles
+        # up so the view can map it to a 409, distinguishing a lock from
+        # a plain validation error.
+        services.assert_gas_period_editable(landlord, renter, target_date)
+        if self.instance is not None and self.instance.date != target_date:
+            services.assert_gas_period_editable(
+                landlord, renter, self.instance.date
+            )
         return attrs
 
     def create(self, validated_data: dict) -> DrivenDayLog:

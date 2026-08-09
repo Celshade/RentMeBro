@@ -61,6 +61,20 @@ class DrivenDayLogViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
 
+    def perform_destroy(self, instance: DrivenDayLog) -> None:
+        services.assert_gas_period_editable(
+            instance.landlord, instance.renter, instance.date
+        )
+        super().perform_destroy(instance)
+
+    def handle_exception(self, exc: Exception) -> Response:
+        """Maps a frozen gas month to 409, matching InvoiceViewSet.recompute."""
+        if isinstance(exc, services.InvoiceLockedError):
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+            )
+        return super().handle_exception(exc)
+
 
 class MileageProfileViewSet(viewsets.ModelViewSet):
     serializer_class = MileageProfileSerializer
