@@ -436,6 +436,7 @@ export function InvoiceDetail() {
             const paid = isLineItemPaid(invoice, item.id);
             const frozen = isLineItemFrozen(invoice, item.id);
             const cardLocked = item.payment_lock === 'card';
+            const btcLocked = item.payment_lock === 'btc';
             const itemRails = lineItemRails(invoice, item);
             const settlement = settlementForLineItem(invoice, item.id);
             // Paid: the settling tx. Assigned + still pending: the
@@ -479,11 +480,18 @@ export function InvoiceDetail() {
                     <button
                       type="button"
                       className="button--btc"
-                      disabled={assigningItemId !== null || cardLocked}
+                      disabled={
+                        assigningItemId !== null ||
+                        cardLocked ||
+                        (isAssigned && btcLocked)
+                      }
                       title={
                         cardLocked
                           ? 'This charge is locked to card only'
-                          : undefined
+                          : isAssigned && btcLocked
+                            ? 'This charge is locked to BTC only and ' +
+                              "can't be unassigned"
+                            : undefined
                       }
                       onClick={() => handleAssignBtc(item.id)}
                     >
