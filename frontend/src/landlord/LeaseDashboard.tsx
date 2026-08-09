@@ -13,7 +13,7 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
-import { paymentRails } from '../api/invoice';
+import { gasChargeIsFrozen, paymentRails } from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
@@ -137,11 +137,21 @@ export function LeaseDashboard({
     onBackHandlerChange,
   ]);
 
+  useEffect(() => {
+    const editingInvoice = invoices.find(
+      (invoice) => invoice.id === editingInvoiceId
+    );
+    if (editingInvoice && gasChargeIsFrozen(editingInvoice)) {
+      setEditingInvoiceId(null);
+    }
+  }, [invoices, editingInvoiceId]);
+
   const lockedMonths = new Set(
     invoices
       .filter(
         (invoice) =>
-          invoice.kind !== 'rent_only' && invoice.id !== editingInvoiceId
+          invoice.kind !== 'rent_only' &&
+          (invoice.id !== editingInvoiceId || gasChargeIsFrozen(invoice))
       )
       .map(
         (invoice) =>
@@ -394,7 +404,9 @@ export function LeaseDashboard({
             <ul className="list">
               {invoices.map((invoice) => {
                 const isLocked =
-                  invoice.status === 'paid' || invoice.status === 'void';
+                  invoice.status === 'paid' ||
+                  invoice.status === 'void' ||
+                  gasChargeIsFrozen(invoice);
                 const isEditing = editingInvoiceId === invoice.id;
                 const rails = paymentRails(invoice);
                 return (
