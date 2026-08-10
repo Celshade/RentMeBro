@@ -20,6 +20,7 @@ from payments.services import (
     check_btc_payment,
     create_payment_intent_for_invoice,
     handle_payment_intent_succeeded,
+    initiate_btc_watch,
     refresh_payment_state,
     set_line_item_payment_lock,
 )
@@ -475,6 +476,165 @@ class TestCreatePaymentIntentReprice:
 
         mock_modify.assert_not_called()
         assert result is processing_intent
+
+    def test_resnapshots_the_scope_even_when_the_amount_is_unchanged(
+        self, mocker
+    ):
+        """A landlord re-scope that leaves the total the same (locking
+        one item to BTC while a same-priced item takes its place) must
+        not leave stripe_round_line_items pointing at the old item.
+        """
+        invoice = _onboarded_invoice(
+            stripe_payment_intent_id="pi_same_amount"
+        )
+        old_item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("200.00")
+        )
+        invoice.stripe_round_line_items.set([old_item])
+        new_item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("200.00")
+        )
+        old_item.payment_lock = InvoiceLineItem.Lock.BTC
+        old_item.save(update_fields=["payment_lock"])
+
+        stale_intent = MagicMock(
+            id="pi_same_amount", amount=20000,
+            status="requires_payment_method",
+        )
+        stale_intent.to_dict.return_value = {
+            "status": "requires_payment_method"
+        }
+        mocker.patch(
+            "payments.services.stripe.PaymentIntent.retrieve",
+            return_value=stale_intent,
+        )
+        mock_modify = mocker.patch(
+            "payments.services.stripe.PaymentIntent.modify"
+        )
+
+        create_payment_intent_for_invoice(invoice)
+
+        mock_modify.assert_not_called()  # amount really is unchanged
+        assert {
+            item.id for item in invoice.stripe_round_line_items.all()
+        } == {new_item.id}
+
+
+class TestExpiryAloneDoesNotClearTheSnapshot:
+    def test_a_late_succeeded_settles_the_original_snapshot(self):
+        """A card round's local expiry lapsing must not by itself
+        clear stripe_round_line_items -- only a Stripe-confirmed
+        terminal event may. A `succeeded` webhook that lands after the
+        landlord re-scoped must still settle what was actually quoted,
+        not a scope re-derived from the invoice's current state.
+        """
+        invoice = _onboarded_invoice(
+            stripe_payment_intent_id="pi_late",
+            stripe_intent_status="requires_action",
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(minutes=1)
+            ),
+        )
+        original_item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.stripe_round_line_items.set([original_item])
+
+        # The round is no longer live locally, so this mutation is
+        # allowed to proceed -- and it changes what a *fresh* quote
+        # would cover.
+        assert original_item.id not in invoice.frozen_line_item_ids
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+
+        handle_payment_intent_succeeded(
+            {
+                "id": "pi_late",
+                "metadata": {"invoice_id": str(invoice.id)},
+            },
+            connected_account_id="acct_landlord",
+        )
+
+        settlement = invoice.settlements.get(
+            rail=InvoiceSettlement.Rail.CARD
+        )
+        assert {
+            item.id for item in settlement.line_items.all()
+        } == {original_item.id}
+
+
+class TestBtcRoundLapseThenRescope:
+    def test_lapsed_round_unfreezes_then_a_fresh_round_settles_rescoped(
+        self, mocker
+    ):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        gas = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("200.00"),
+            kind=InvoiceLineItem.Kind.GAS,
+        )
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=[gas.id]
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        # The renter starts a round; the item it covers freezes.
+        invoice = initiate_btc_watch(invoice)
+        assert invoice.btc_watch_expires_at is not None
+        assert gas.id in invoice.frozen_line_item_ids
+
+        # The window lapses with nothing received.
+        invoice.btc_watch_expires_at = (
+            timezone.now() - timedelta(minutes=20)
+        )
+        invoice.save(update_fields=["btc_watch_expires_at"])
+        empty_response = MagicMock()
+        empty_response.json.return_value = []
+        mocker.patch(
+            "payments.services.requests.get", return_value=empty_response
+        )
+
+        # A landlord mutation now succeeds -- something the still-live
+        # round would have blocked -- rescoping BTC onto rent instead.
+        rent = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("1000.00"),
+            kind=InvoiceLineItem.Kind.RENT,
+        )
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=[rent.id]
+        )
+        assert gas.id not in invoice.frozen_line_item_ids
+
+        # The renter starts a fresh round; it covers the re-scoped item.
+        invoice = initiate_btc_watch(invoice)
+        assert {
+            item.id for item in invoice.btc_round_line_items.all()
+        } == {rent.id}
+
+        # It settles against exactly that scope.
+        invoice.btc_txid = "fresh-tx"
+        invoice.save(update_fields=["btc_txid"])
+        _mock_mempool_requests(
+            mocker,
+            tx_detail={
+                "txid": "fresh-tx",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": invoice.btc_amount_sats,
+                    }
+                ],
+                "status": {"confirmed": True},
+            },
+        )
+        invoice = check_btc_payment(invoice)
+
+        settlement = invoice.settlements.get(
+            rail=InvoiceSettlement.Rail.BTC
+        )
+        assert {
+            item.id for item in settlement.line_items.all()
+        } == {rent.id}
 
 
 class TestExcludedTxidsSpansMultipleRounds:
