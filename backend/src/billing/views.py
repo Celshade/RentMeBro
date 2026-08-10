@@ -29,7 +29,7 @@ from billing.serializers import (
     PeriodPreviewSerializer,
     RenterLookupQuerySerializer,
 )
-from payments.services import check_btc_payment
+from payments.services import check_btc_payment, refresh_card_payment_state
 
 
 class LeaseViewSet(viewsets.ModelViewSet):
@@ -121,7 +121,8 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     def retrieve(self, request, *args, **kwargs) -> Response:
-        """Serves a single invoice, checking a pending BTC tx first.
+        """Serves a single invoice, self-healing stale payment state
+        first.
 
         The renter's browser is otherwise the only thing that ever
         polls mempool.space, so a payment that confirms after the tab
@@ -130,13 +131,21 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         costs nothing on every other invoice, and never runs
         `_reconcile_lapsed_watch` (that consumes the renter's quote and
         belongs to the renter explicitly restarting a watch, not to a
-        landlord opening a page). Deliberately not on `list`, which
-        would otherwise fan out to one mempool.space request per
-        invoice on a dashboard page load.
+        landlord opening a page).
+
+        Likewise, a stale card round (its local expiry lapsed, or was
+        never learned) gets one Stripe poll so an abandoned Cash App
+        attempt unlocks its line item instead of showing frozen
+        forever -- see `Invoice.card_round_is_stale`.
+
+        Deliberately not on `list`, which would otherwise fan out to
+        one external request per invoice on a dashboard page load.
         """
         invoice = self.get_object()
         if invoice.btc_address and invoice.btc_txid:
             invoice = check_btc_payment(invoice)
+        if invoice.card_round_is_stale:
+            invoice = refresh_card_payment_state(invoice)
         serializer = self.get_serializer(invoice)
         return Response(serializer.data)
 
