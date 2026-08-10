@@ -3,9 +3,11 @@ from unittest.mock import Mock
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from billing.models import Invoice
 from payments.services import (
+    CardCancelNotAllowedError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
 )
@@ -584,3 +586,167 @@ class TestInvoiceBtcCheckView:
 
         assert response.status_code == 200
         assert response.data["status"] == invoice.status
+
+
+class TestInvoiceBtcStatusView:
+    """Read-only counterpart to InvoiceBtcWatchView: opening the panel
+    must not mint a quote or spend against mempool.space's rate limit.
+    """
+
+    def test_requires_authentication(self, api_client, invoice):
+        response = api_client.get(
+            reverse("invoice-btc-status", args=[invoice.id])
+        )
+        assert response.status_code == 401
+
+    def test_other_user_gets_404(self, api_client, invoice):
+        from accounts.tests.factories import UserFactory
+
+        other_renter = UserFactory()
+        api_client.force_authenticate(user=other_renter)
+        response = api_client.get(
+            reverse("invoice-btc-status", args=[invoice.id])
+        )
+        assert response.status_code == 404
+
+    def test_creates_no_quote_and_hits_no_mempool_endpoint(
+        self, api_client, mocker, renter, invoice
+    ):
+        mock_price = mocker.patch(
+            "payments.services.get_btc_usd_price"
+        )
+        mock_get = mocker.patch("payments.services.requests.get")
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.get(
+            reverse("invoice-btc-status", args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        assert response.data["btc_amount_sats"] is None
+        assert response.data["line_items"] == []
+        mock_price.assert_not_called()
+        mock_get.assert_not_called()
+
+
+class TestInvoiceBtcCancelView:
+    def test_requires_authentication(self, api_client, invoice):
+        response = api_client.post(
+            reverse("invoice-btc-cancel", args=[invoice.id])
+        )
+        assert response.status_code == 401
+
+    def test_other_user_gets_404(self, api_client, invoice):
+        from accounts.tests.factories import UserFactory
+
+        other_renter = UserFactory()
+        api_client.force_authenticate(user=other_renter)
+        response = api_client.post(
+            reverse("invoice-btc-cancel", args=[invoice.id])
+        )
+        assert response.status_code == 404
+
+    def test_landlord_gets_404(self, api_client, landlord, invoice):
+        """No landlord route exists for this -- a landlord must never
+        interfere with a pending renter payment.
+        """
+        api_client.force_authenticate(user=landlord)
+        response = api_client.post(
+            reverse("invoice-btc-cancel", args=[invoice.id])
+        )
+        assert response.status_code == 404
+
+    def test_cancels_the_live_quote(
+        self, api_client, renter, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        item = InvoiceLineItemFactory(invoice=invoice)
+        invoice.btc_amount_sats = 400000
+        invoice.btc_watch_expires_at = timezone.now()
+        invoice.save(
+            update_fields=["btc_amount_sats", "btc_watch_expires_at"]
+        )
+        invoice.btc_round_line_items.set([item])
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-cancel", args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        assert response.data["btc_amount_sats"] is None
+        invoice.refresh_from_db()
+        assert invoice.btc_amount_sats is None
+        assert invoice.btc_round_line_items.exists() is False
+
+    def test_409_when_a_tx_has_already_been_seen(
+        self, api_client, renter, invoice
+    ):
+        invoice.btc_txid = "tx1"
+        invoice.save(update_fields=["btc_txid"])
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-cancel", args=[invoice.id])
+        )
+
+        assert response.status_code == 409
+
+
+class TestInvoicePaymentCancelView:
+    def test_requires_authentication(self, api_client, invoice):
+        response = api_client.post(
+            reverse("invoice-pay-cancel", args=[invoice.id])
+        )
+        assert response.status_code == 401
+
+    def test_other_user_gets_404(self, api_client, invoice):
+        from accounts.tests.factories import UserFactory
+
+        other_renter = UserFactory()
+        api_client.force_authenticate(user=other_renter)
+        response = api_client.post(
+            reverse("invoice-pay-cancel", args=[invoice.id])
+        )
+        assert response.status_code == 404
+
+    def test_landlord_gets_404(self, api_client, landlord, invoice):
+        """No landlord route exists for this -- a landlord must never
+        interfere with a pending renter payment.
+        """
+        api_client.force_authenticate(user=landlord)
+        response = api_client.post(
+            reverse("invoice-pay-cancel", args=[invoice.id])
+        )
+        assert response.status_code == 404
+
+    def test_cancels_for_own_invoice(
+        self, api_client, mocker, renter, invoice
+    ):
+        mocker.patch(
+            "payments.views.cancel_card_payment_attempt",
+            return_value=invoice,
+        )
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-pay-cancel", args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+
+    def test_not_allowed_returns_409(
+        self, api_client, mocker, renter, invoice
+    ):
+        mocker.patch(
+            "payments.views.cancel_card_payment_attempt",
+            side_effect=CardCancelNotAllowedError("nope"),
+        )
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-pay-cancel", args=[invoice.id])
+        )
+
+        assert response.status_code == 409
