@@ -55,6 +55,9 @@ class TestCreatePaymentIntentForInvoice:
             id='pi_new123', client_secret='secret',
             status='requires_payment_method',
         )
+        fake_intent.to_dict.return_value = {
+            'status': 'requires_payment_method'
+        }
         mock_create = mocker.patch(
             'payments.services.stripe.PaymentIntent.create',
             return_value=fake_intent,
@@ -94,6 +97,9 @@ class TestCreatePaymentIntentForInvoice:
             id='pi_split', client_secret='secret',
             status='requires_payment_method',
         )
+        fake_intent.to_dict.return_value = {
+            'status': 'requires_payment_method'
+        }
         mock_create = mocker.patch(
             'payments.services.stripe.PaymentIntent.create',
             return_value=fake_intent,
@@ -120,6 +126,9 @@ class TestCreatePaymentIntentForInvoice:
             id='pi_full', client_secret='secret',
             status='requires_payment_method',
         )
+        fake_intent.to_dict.return_value = {
+            'status': 'requires_payment_method'
+        }
         mock_create = mocker.patch(
             'payments.services.stripe.PaymentIntent.create',
             return_value=fake_intent,
@@ -134,6 +143,7 @@ class TestCreatePaymentIntentForInvoice:
         # 'processing' is real money in flight, so the reprice branch
         # (which would otherwise call the unmocked .modify) never runs.
         fake_intent = MagicMock(id='pi_existing', status='processing')
+        fake_intent.to_dict.return_value = {'status': 'processing'}
         mock_retrieve = mocker.patch(
             'payments.services.stripe.PaymentIntent.retrieve',
             return_value=fake_intent,
@@ -158,6 +168,9 @@ class TestCreatePaymentIntentForInvoice:
             id='pi_fresh123', client_secret='secret',
             status='requires_payment_method',
         )
+        fresh_intent.to_dict.return_value = {
+            'status': 'requires_payment_method'
+        }
         mocker.patch(
             'payments.services.stripe.PaymentIntent.retrieve',
             return_value=stale_intent,

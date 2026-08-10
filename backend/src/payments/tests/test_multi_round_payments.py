@@ -143,6 +143,9 @@ class TestFullyBtcAssignedStillBillsFullCard:
             id="pi_full", client_secret="secret",
             status="requires_payment_method",
         )
+        fake_intent.to_dict.return_value = {
+            "status": "requires_payment_method"
+        }
         mocker.patch(
             "payments.services.stripe.PaymentIntent.create",
             return_value=fake_intent,
@@ -255,6 +258,9 @@ class TestPayFull:
             id="pi_full_pay", client_secret="secret",
             status="requires_payment_method",
         )
+        fake_intent.to_dict.return_value = {
+            "status": "requires_payment_method"
+        }
         mocker.patch(
             "payments.services.stripe.PaymentIntent.create",
             return_value=fake_intent,
@@ -432,6 +438,9 @@ class TestCreatePaymentIntentReprice:
         modified_intent = MagicMock(
             id="pi_stale_amount", status="requires_payment_method",
         )
+        modified_intent.to_dict.return_value = {
+            "status": "requires_payment_method"
+        }
         mock_modify = mocker.patch(
             "payments.services.stripe.PaymentIntent.modify",
             return_value=modified_intent,
@@ -453,6 +462,7 @@ class TestCreatePaymentIntentReprice:
         processing_intent = MagicMock(
             id="pi_in_flight", amount=10000, status="processing",
         )
+        processing_intent.to_dict.return_value = {"status": "processing"}
         mocker.patch(
             "payments.services.stripe.PaymentIntent.retrieve",
             return_value=processing_intent,
