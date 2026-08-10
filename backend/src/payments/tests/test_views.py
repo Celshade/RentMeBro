@@ -254,6 +254,40 @@ class TestStripeWebhookView:
         invoice.refresh_from_db()
         assert invoice.status != Invoice.Status.PAID
 
+    def test_requires_action_event_syncs_intent_state(
+        self, api_client, mocker, landlord, invoice
+    ):
+        landlord.stripe_account_id = 'acct_1'
+        landlord.save()
+        invoice.stripe_payment_intent_id = 'pi_1'
+        invoice.save()
+        fake_event = {
+            'type': 'payment_intent.requires_action',
+            'account': 'acct_1',
+            'data': {
+                'object': {
+                    'id': 'pi_1',
+                    'status': 'requires_action',
+                    'metadata': {'invoice_id': str(invoice.id)},
+                }
+            },
+        }
+        mocker.patch(
+            'payments.views.stripe.Webhook.construct_event',
+            return_value=fake_event,
+        )
+
+        response = api_client.post(
+            reverse('stripe-webhook'),
+            data=b'{}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='fake-sig',
+        )
+
+        assert response.status_code == 200
+        invoice.refresh_from_db()
+        assert invoice.stripe_intent_status == 'requires_action'
+
     def test_no_authentication_required(self, api_client, mocker):
         mocker.patch(
             'payments.views.stripe.Webhook.construct_event',
@@ -320,6 +354,46 @@ class TestConnectWebhookView:
         assert response.status_code == 200
         invoice.refresh_from_db()
         assert invoice.status != Invoice.Status.PAID
+
+    def test_canceled_event_syncs_and_clears_round_line_items(
+        self, api_client, mocker, landlord, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        landlord.stripe_account_id = 'acct_1'
+        landlord.save()
+        invoice.stripe_payment_intent_id = 'pi_1'
+        invoice.stripe_intent_status = 'requires_action'
+        invoice.save()
+        item = InvoiceLineItemFactory(invoice=invoice)
+        invoice.stripe_round_line_items.set([item])
+        fake_event = {
+            'type': 'payment_intent.canceled',
+            'account': 'acct_1',
+            'data': {
+                'object': {
+                    'id': 'pi_1',
+                    'status': 'canceled',
+                    'metadata': {'invoice_id': str(invoice.id)},
+                }
+            },
+        }
+        mocker.patch(
+            'payments.views.stripe.Webhook.construct_event',
+            return_value=fake_event,
+        )
+
+        response = api_client.post(
+            reverse('stripe-connect-webhook'),
+            data=b'{}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='fake-sig',
+        )
+
+        assert response.status_code == 200
+        invoice.refresh_from_db()
+        assert invoice.stripe_intent_status == 'canceled'
+        assert invoice.stripe_round_line_items.exists() is False
 
     def test_account_updated_event_syncs_charges_enabled(
         self, api_client, mocker, landlord
