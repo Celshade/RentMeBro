@@ -600,6 +600,98 @@ class TestInvoiceViewSetRetrieve:
         assert response.status_code == 200
         mock_check.assert_called_once()
 
+    def test_self_heals_a_stale_card_round(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            stripe_intent_status="requires_action",
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(minutes=1)
+            ),
+        )
+        mock_refresh = mocker.patch(
+            "billing.views.refresh_card_payment_state", return_value=invoice
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_refresh.assert_called_once_with(invoice)
+
+    def test_does_not_refresh_a_live_card_round(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            stripe_intent_status="requires_action",
+            stripe_round_expires_at=(
+                timezone.now() + timedelta(minutes=1)
+            ),
+        )
+        mock_refresh = mocker.patch(
+            "billing.views.refresh_card_payment_state"
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_refresh.assert_not_called()
+
+    def test_does_not_refresh_a_terminal_card_round(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            stripe_intent_status="succeeded",
+            stripe_round_expires_at=None,
+        )
+        mock_refresh = mocker.patch(
+            "billing.views.refresh_card_payment_state"
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_refresh.assert_not_called()
+
+    def test_does_not_refresh_on_list(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        InvoiceFactory(
+            billing_period=billing_period,
+            stripe_intent_status="requires_action",
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(minutes=1)
+            ),
+        )
+        mock_refresh = mocker.patch(
+            "billing.views.refresh_card_payment_state"
+        )
+
+        response = landlord_client.get(reverse('invoice-list'))
+
+        assert response.status_code == 200
+        mock_refresh.assert_not_called()
+
 
 class TestInvoiceViewSetWeeks:
     def test_returns_weekly_breakdown_for_owned_invoice(
