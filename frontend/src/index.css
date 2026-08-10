@@ -557,6 +557,49 @@ body {
   border-bottom: none;
 }
 
+.payment-leg-summary {
+  font-size: 14px;
+  color: var(--text);
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+  margin-bottom: 12px;
+}
+
+.payment-leg-summary--btc {
+  border-left-color: var(--btc-orange);
+}
+
+.payment-leg-summary__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 4px;
+}
+
+.payment-leg-summary__items {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 4px;
+}
+
+.payment-leg-summary__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.payment-leg-summary__total {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.payment-leg-summary__note {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
 .pay-invoice__split-notice {
   font-size: 14px;
   color: var(--text);
