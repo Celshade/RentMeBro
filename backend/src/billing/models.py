@@ -312,6 +312,7 @@ class Invoice(models.Model):
         'InvoiceLineItem', blank=True, related_name='+'
     )
     stripe_intent_status = models.CharField(max_length=32, blank=True)
+    stripe_round_expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ('billing_period', 'kind')
@@ -373,12 +374,39 @@ class Invoice(models.Model):
     def card_round_is_live(self) -> bool:
         """Whether a card round is currently in flight.
 
-        Only `processing`/`requires_action` count -- a PaymentIntent
-        merely sitting at `requires_payment_method` (the renter opened
-        the tab and walked away) blocks nothing.
+        `processing` never expires on a local clock -- the renter
+        approved in-app and funds are moving, and only Stripe's own
+        resolution may end that. `requires_action` means a Cash App QR
+        is on screen awaiting the renter, which is exactly the
+        abandonment case, so it's time-bounded by
+        `stripe_round_expires_at`; a null expiry (not yet learned from
+        Stripe) is treated as live so nothing unfreezes before the
+        first poll. Any other status, including
+        `requires_payment_method` (the renter opened the tab and
+        walked away), blocks nothing.
         """
-        return self.stripe_intent_status in (
-            'processing', 'requires_action'
+        if self.stripe_intent_status == 'processing':
+            return True
+        if self.stripe_intent_status != 'requires_action':
+            return False
+        if self.stripe_round_expires_at is None:
+            return True
+        return timezone.now() <= self.stripe_round_expires_at
+
+    @property
+    def card_round_is_stale(self) -> bool:
+        """Whether an in-flight card round's local expiry has lapsed (or
+        was never learned), and so needs a fresh Stripe poll.
+
+        Drives the read-path self-heal only -- `card_round_is_live`
+        itself never calls Stripe.
+        """
+        return (
+            self.stripe_intent_status in ('processing', 'requires_action')
+            and (
+                self.stripe_round_expires_at is None
+                or timezone.now() > self.stripe_round_expires_at
+            )
         )
 
     @property
