@@ -193,6 +193,9 @@ class InvoiceSerializer(serializers.ModelSerializer):
     paid_line_items = serializers.SerializerMethodField()
     frozen_line_items = serializers.SerializerMethodField()
     settlements = serializers.SerializerMethodField()
+    btc_scope_line_items = serializers.SerializerMethodField()
+    stripe_scope_line_items = serializers.SerializerMethodField()
+    card_full_line_items = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -205,14 +208,15 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "is_split_payment", "btc_settled_at", "btc_overpaid_usd",
             "stripe_settled_at", "btc_txid", "btc_credited_txid",
             "btc_watch_expires_at", "paid_line_items", "frozen_line_items",
-            "settlements",
+            "settlements", "stripe_round_expires_at", "btc_scope_line_items",
+            "stripe_scope_line_items", "card_full_line_items",
         ]
         read_only_fields = [
             "status", "stripe_payment_intent_id", "created_at",
             "btc_address", "btc_amount_sats", "remainder_owed_usd",
             "btc_line_items", "btc_settled_at", "btc_overpaid_usd",
             "stripe_settled_at", "btc_txid", "btc_credited_txid",
-            "btc_watch_expires_at",
+            "btc_watch_expires_at", "stripe_round_expires_at",
         ]
 
     def get_btc_owed_usd(self, obj: Invoice) -> str:
@@ -233,6 +237,24 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
     def get_frozen_line_items(self, obj: Invoice) -> list[int]:
         return sorted(obj.frozen_line_item_ids)
+
+    def get_btc_scope_line_items(self, obj: Invoice) -> list[int]:
+        """What a fresh BTC quote would cover right now.
+
+        The frontend must not re-derive this from `btc_line_items` --
+        the fallback rules in `Invoice.btc_scope_line_items` are subtle.
+        """
+        return sorted(item.id for item in obj.btc_scope_line_items)
+
+    def get_stripe_scope_line_items(self, obj: Invoice) -> list[int]:
+        """What the card leg bills by default right now."""
+        return sorted(item.id for item in obj.stripe_scope_line_items)
+
+    def get_card_full_line_items(self, obj: Invoice) -> list[int]:
+        """Every card-payable item, ignoring the BTC expectation --
+        what a `pay_full` card charge would cover.
+        """
+        return sorted(item.id for item in obj.card_full_line_items)
 
     def get_settlements(self, obj: Invoice) -> list[dict]:
         return [
