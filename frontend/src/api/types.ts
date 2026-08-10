@@ -63,6 +63,10 @@ export interface BtcSettings {
  * @property status - The invoice's current status (mirrors
  *   InvoiceStatus, kept separate since some BTC endpoints don't return
  *   a full Invoice).
+ * @property line_items - Ids of the line items the live round covers,
+ *   or -- with no round live -- what a fresh quote would cover right
+ *   now (`Invoice.btc_scope_line_items`). Distinct from the paid/
+ *   frozen sets on a full `Invoice`.
  */
 export interface BtcInvoiceStatus {
   btc_address: string;
@@ -73,6 +77,7 @@ export interface BtcInvoiceStatus {
   remainder_owed_usd: string | null;
   btc_owed_usd: string;
   status: InvoiceStatus;
+  line_items: number[];
 }
 
 
@@ -330,6 +335,19 @@ export type InvoiceStatus =
  * @property frozen_line_items - Ids of line items the landlord may no
  *   longer re-scope or re-lock: paid, or with a payment in flight on
  *   either rail (minus the underpaid-round exception).
+ * @property stripe_round_expires_at - When the current in-flight card
+ *   round's local expiry lapses (ISO 8601), or null if there's no
+ *   in-flight round or its expiry hasn't been learned from Stripe yet.
+ * @property btc_scope_line_items - What a fresh BTC quote would cover
+ *   right now. Distinct from `btc_line_items` (the landlord's
+ *   assignment) and `paid_line_items` -- this is *what the next round
+ *   would bill*, already resolved through the fallback rules on
+ *   `Invoice.btc_scope_line_items`. Don't re-derive it client-side.
+ * @property stripe_scope_line_items - What the Cash App tab would bill
+ *   right now, following the same "what the next round would bill"
+ *   convention as `btc_scope_line_items`.
+ * @property card_full_line_items - What "pay full balance by card
+ *   instead" would bill right now, ignoring the BTC expectation.
  * @property settlements - Every completed payment round against this
  *   invoice, oldest first.
  */
@@ -361,6 +379,10 @@ export interface Invoice {
   btc_watch_expires_at: string | null;
   paid_line_items: number[];
   frozen_line_items: number[];
+  stripe_round_expires_at: string | null;
+  btc_scope_line_items: number[];
+  stripe_scope_line_items: number[];
+  card_full_line_items: number[];
   settlements: InvoiceSettlement[];
 }
 
