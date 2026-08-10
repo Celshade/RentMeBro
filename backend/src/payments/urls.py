@@ -7,9 +7,12 @@ from payments.views import (
     ConnectStatusView,
     ConnectWebhookView,
     InvoiceBtcAttachView,
+    InvoiceBtcCancelView,
     InvoiceBtcCheckView,
+    InvoiceBtcStatusView,
     InvoiceBtcWatchView,
     InvoiceLineItemPaymentLockView,
+    InvoicePaymentCancelView,
     InvoicePaymentIntentView,
     StripeWebhookView,
 )
@@ -19,6 +22,11 @@ urlpatterns = [
         'invoices/<int:invoice_id>/pay/',
         InvoicePaymentIntentView.as_view(),
         name='invoice-pay',
+    ),
+    path(
+        'invoices/<int:invoice_id>/pay/cancel/',
+        InvoicePaymentCancelView.as_view(),
+        name='invoice-pay-cancel',
     ),
     path(
         'stripe/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'
@@ -62,6 +70,16 @@ urlpatterns = [
         "invoices/<int:invoice_id>/btc/check/",
         InvoiceBtcCheckView.as_view(),
         name="invoice-btc-check",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/status/",
+        InvoiceBtcStatusView.as_view(),
+        name="invoice-btc-status",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/cancel/",
+        InvoiceBtcCancelView.as_view(),
+        name="invoice-btc-cancel",
     ),
     path(
         "invoices/<int:invoice_id>/line-items/<int:line_item_id>/"
