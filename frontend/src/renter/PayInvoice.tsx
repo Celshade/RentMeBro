@@ -10,6 +10,7 @@ import { apiFetch } from '../api/client';
 import { formatMoney } from '../api/format';
 import { isLineItemPaid, lineItemRails } from '../api/invoice';
 import type { Invoice } from '../api/types';
+import { PaymentLegSummary } from '../components/PaymentLegSummary';
 import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
 import { PayInvoiceBtc } from './PayInvoiceBtc';
 
@@ -52,12 +53,25 @@ interface PayIntentResponse {
 
 /**
  * The embedded Stripe payment form; renders once a client_secret exists.
+ * @param props.invoiceId - The invoice this payment attempt is for.
  * @param props.onDone - Called after a successful payment confirmation.
+ * @param props.onCancelled - Called after the renter calls off their
+ *   own in-flight attempt, so the caller can fetch a fresh intent.
  */
-function PaymentForm({ onDone }: { onDone: () => void }) {
+function PaymentForm({
+  invoiceId,
+  onDone,
+  onCancelled,
+}: {
+  invoiceId: number;
+  onDone: () => void;
+  onCancelled: () => void;
+}) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent) {
@@ -65,6 +79,7 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
     if (!stripe || !elements) return;
 
     setSubmitting(true);
+    setSubmitted(true);
     setError(null);
     try {
       const submitResult = await elements.submit();
@@ -89,6 +104,15 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
     }
   }
 
+  function handleCancel() {
+    setCancelling(true);
+    setError(null);
+    apiFetch(`/api/invoices/${invoiceId}/pay/cancel/`, { method: 'POST' })
+      .then(() => onCancelled())
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setCancelling(false));
+  }
+
   return (
     <form onSubmit={handleSubmit}>
       <PaymentElement />
@@ -96,6 +120,11 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
       <button type="submit" disabled={!stripe || submitting}>
         {submitting ? 'Paying...' : 'Pay with Cash App'}
       </button>
+      {submitted && (
+        <button type="button" onClick={handleCancel} disabled={cancelling}>
+          {cancelling ? 'Cancelling...' : "Never mind — don't pay"}
+        </button>
+      )}
     </form>
   );
 }
@@ -118,6 +147,7 @@ function PayInvoiceCashApp({
 }) {
   const [payIntent, setPayIntent] = useState<PayIntentResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     setPayIntent(null);
@@ -128,17 +158,22 @@ function PayInvoiceCashApp({
     })
       .then(setPayIntent)
       .catch((err: Error) => setError(err.message));
-  }, [invoiceId, payFull]);
+  }, [invoiceId, payFull, refreshKey]);
 
   if (error) return <p role="alert">{error}</p>;
   if (!payIntent) return <p>Preparing payment...</p>;
 
   return (
     <Elements
+      key={payIntent.client_secret}
       stripe={loadStripeForAccount(payIntent.stripe_account_id)}
       options={{ clientSecret: payIntent.client_secret }}
     >
-      <PaymentForm onDone={onPaid} />
+      <PaymentForm
+        invoiceId={invoiceId}
+        onDone={onPaid}
+        onCancelled={() => setRefreshKey((key) => key + 1)}
+      />
     </Elements>
   );
 }
@@ -219,12 +254,7 @@ export function PayInvoice({
       </ul>
       {invoice.is_split_payment && (
         <p className="pay-invoice__split-notice">
-          This invoice is split across two payments:{' '}
-          <strong>${formatMoney(invoice.btc_portion_usd)} in BTC</strong>{' '}
-          {Number(invoice.btc_owed_usd) === 0 ? '(paid)' : '(due)'} and{' '}
-          <strong>${formatMoney(invoice.stripe_portion_usd)} by card</strong>{' '}
-          {invoice.stripe_settled_at !== null ? '(paid)' : '(due)'}. Both
-          are needed to settle it.
+          Both a BTC and a card payment are needed to settle this invoice.
         </p>
       )}
       {cardOwesNothing && (
@@ -265,6 +295,20 @@ export function PayInvoice({
               {formatMoney(invoice.card_full_owed_usd)}
             </label>
           )}
+          <PaymentLegSummary
+            rail="card"
+            lineItems={invoice.line_items}
+            itemIds={
+              payFull
+                ? invoice.card_full_line_items
+                : invoice.stripe_scope_line_items
+            }
+            totalUsd={
+              payFull
+                ? invoice.card_full_owed_usd
+                : invoice.stripe_portion_usd
+            }
+          />
           <PayInvoiceCashApp
             invoiceId={invoice.id}
             payFull={payFull}
@@ -272,7 +316,11 @@ export function PayInvoice({
           />
         </>
       ) : (
-        <PayInvoiceBtc invoiceId={invoice.id} onPaid={onPaid} />
+        <PayInvoiceBtc
+          invoiceId={invoice.id}
+          lineItems={invoice.line_items}
+          onPaid={onPaid}
+        />
       )}
     </div>
   );
