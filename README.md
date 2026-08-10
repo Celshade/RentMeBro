@@ -12,7 +12,7 @@ renter for driving days at a per-week gas price.
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF)
 ![Stripe](https://img.shields.io/badge/Stripe-Cash%20App%20Pay-635BFF)
 ![Bitcoin](https://img.shields.io/badge/Bitcoin-on--chain-F7931A)
-![Status](https://img.shields.io/badge/Status-Active%20Development-yellow)
+![Status](https://img.shields.io/badge/Status-Alpha-orange)
 ![License](https://img.shields.io/badge/License-GPL--3.0%20%2B%20Commons%20Clause-purple)
 
 ## Status
