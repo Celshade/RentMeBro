@@ -13,22 +13,39 @@ from billing.services import InvoiceLockedError
 from payments.services import (
     BtcLineItemError,
     BtcNotEnabledError,
+    BtcWatchCancelError,
+    CardCancelNotAllowedError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
     NothingLeftToChargeError,
     PaymentLockError,
     _invoice_usd_owed,
     attach_btc_payment,
+    cancel_btc_watch,
+    cancel_card_payment_attempt,
     check_btc_payment,
     create_payment_intent_for_invoice,
     enable_btc_payments,
     get_btc_usd_price,
     handle_account_updated,
+    handle_payment_intent_state_change,
     handle_payment_intent_succeeded,
     initiate_btc_watch,
     refresh_connect_status,
     set_line_item_payment_lock,
     start_connect_onboarding,
+)
+
+# PaymentIntent webhook events that change a card round's state without
+# settling it -- dispatched to handle_payment_intent_state_change so
+# stripe_round_expires_at stays accurate without waiting on a poll.
+_INTENT_STATE_CHANGE_EVENTS = frozenset(
+    {
+        'payment_intent.requires_action',
+        'payment_intent.processing',
+        'payment_intent.payment_failed',
+        'payment_intent.canceled',
+    }
 )
 
 
@@ -72,6 +89,29 @@ class InvoicePaymentIntentView(APIView):
                 'stripe_account_id': landlord.stripe_account_id,
             }
         )
+
+
+class InvoicePaymentCancelView(APIView):
+    """Cancels the renter's in-flight Cash App attempt at their own
+    request.
+
+    No landlord route exists for this -- a landlord must never
+    interfere with a pending renter payment.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, invoice_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice, id=invoice_id, billing_period__renter=request.user
+        )
+        try:
+            invoice = cancel_card_payment_attempt(invoice)
+        except CardCancelNotAllowedError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+            )
+        return Response(InvoiceSerializer(invoice).data)
 
 
 class ConnectOnboardingView(APIView):
@@ -131,6 +171,11 @@ class StripeWebhookView(APIView):
                 event['data']['object'],
                 connected_account_id=event.get('account'),
             )
+        elif event['type'] in _INTENT_STATE_CHANGE_EVENTS:
+            handle_payment_intent_state_change(
+                event['data']['object'],
+                connected_account_id=event.get('account'),
+            )
 
         return Response(status=status.HTTP_200_OK)
 
@@ -160,6 +205,11 @@ class ConnectWebhookView(APIView):
 
         if event['type'] == 'payment_intent.succeeded':
             handle_payment_intent_succeeded(
+                event['data']['object'],
+                connected_account_id=event.get('account'),
+            )
+        elif event['type'] in _INTENT_STATE_CHANGE_EVENTS:
+            handle_payment_intent_state_change(
                 event['data']['object'],
                 connected_account_id=event.get('account'),
             )
@@ -273,6 +323,10 @@ class InvoiceLineItemPaymentLockView(APIView):
 
 
 def _btc_status_response(invoice: Invoice) -> Response:
+    if invoice.btc_round_is_live:
+        scoped_items = invoice.btc_round_line_items.all()
+    else:
+        scoped_items = invoice.btc_scope_line_items
     return Response(
         {
             "btc_address": invoice.btc_address,
@@ -283,6 +337,7 @@ def _btc_status_response(invoice: Invoice) -> Response:
             "remainder_owed_usd": invoice.remainder_owed_usd,
             "btc_owed_usd": _invoice_usd_owed(invoice),
             "status": invoice.status,
+            "line_items": sorted(item.id for item in scoped_items),
         }
     )
 
@@ -297,6 +352,47 @@ class InvoiceBtcWatchView(APIView):
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
         invoice = initiate_btc_watch(invoice)
+        return _btc_status_response(invoice)
+
+
+class InvoiceBtcStatusView(APIView):
+    """Reports the renter's current BTC payment status with no side
+    effects.
+
+    Deliberately distinct from `InvoiceBtcCheckView`, which hits
+    mempool.space on every call -- this is what lets the "Pay with
+    BTC" panel open without minting a quote or spending against an
+    undocumented rate limit just because a tab was opened.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, invoice_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice, id=invoice_id, billing_period__renter=request.user
+        )
+        return _btc_status_response(invoice)
+
+
+class InvoiceBtcCancelView(APIView):
+    """Cancels the renter's live BTC quote at their own request.
+
+    No landlord route exists for this -- a landlord must never
+    interfere with a pending renter payment.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, invoice_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice, id=invoice_id, billing_period__renter=request.user
+        )
+        try:
+            invoice = cancel_btc_watch(invoice)
+        except BtcWatchCancelError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
+            )
         return _btc_status_response(invoice)
 
 
