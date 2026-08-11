@@ -1791,6 +1791,116 @@ class TestCheckBtcPayment:
         assert result.btc_overpaid_usd == Decimal("10.00")
 
 
+class TestUnderpaymentRoundTrip:
+    """Drives a real underpay -> re-quote -> top-up -> PAID cycle,
+    rather than hand-setting `remainder_owed_usd` the way
+    `test_settling_the_btc_leg_clears_a_prior_shortfall` does -- that
+    shortcut is exactly what left this path uncovered.
+    """
+
+    def test_short_tx_credits_a_remainder_then_a_topup_settles_it(
+        self, mocker
+    ):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=[gas.id]
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        invoice = initiate_btc_watch(invoice)
+        assert invoice.btc_amount_sats == 400000  # $200 gas @ $50k/BTC
+
+        # Lapse the window with only a short tx on the address.
+        invoice.btc_watch_expires_at = timezone.now() - timedelta(minutes=5)
+        invoice.save(update_fields=["btc_watch_expires_at"])
+        # A couple seconds' buffer keeps `block_time` (int-truncated)
+        # from landing before this window's precise `started_at` when
+        # both fall in the same wall-clock second.
+        short_tx_time = int(
+            (timezone.now() + timedelta(seconds=2)).timestamp()
+        )
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "short-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 300000,
+                        }
+                    ],
+                    "status": {
+                        "confirmed": True,
+                        "block_time": short_tx_time,
+                    },
+                }
+            ],
+        )
+
+        invoice = initiate_btc_watch(invoice)
+
+        assert invoice.status == Invoice.Status.UNDERPAID
+        assert invoice.remainder_owed_usd == Decimal("50.00")
+        assert invoice.btc_credited_txid == "short-tx"
+        assert invoice.btc_credited_usd == Decimal("150.00")
+
+        # Re-quote off the remainder.
+        invoice = initiate_btc_watch(invoice)
+        assert invoice.btc_amount_sats == 100000  # $50 @ $50k/BTC
+
+        # The old short tx is still on the address, sized to look like
+        # an overpayment against the smaller remainder quote -- it
+        # must stay excluded, or it would wrongly re-match here. A
+        # couple seconds' buffer keeps `block_time` (int-truncated)
+        # from landing before the new window's precise `started_at`
+        # when both fall in the same wall-clock second.
+        topup_time = int(
+            (timezone.now() + timedelta(seconds=2)).timestamp()
+        )
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "short-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 300000,
+                        }
+                    ],
+                    "status": {
+                        "confirmed": True,
+                        "block_time": topup_time,
+                    },
+                },
+                {
+                    "txid": "topup-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {
+                        "confirmed": True,
+                        "block_time": topup_time,
+                    },
+                },
+            ],
+        )
+
+        invoice = check_btc_payment(invoice)
+
+        assert invoice.status == Invoice.Status.PARTIAL
+        assert invoice.remainder_owed_usd is None
+        settlement = invoice.settlements.get()
+        assert settlement.txid == "topup-tx"
+        assert gas in settlement.line_items.all()
+
+
 class TestBtcDiscrepancyEmails:
     """Fix 5b: the landlord is emailed on either kind of discrepancy,
     exactly once, and a dead mail host must never lose a settled
