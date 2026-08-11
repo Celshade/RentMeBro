@@ -1,4 +1,5 @@
 
+from datetime import timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -601,6 +602,36 @@ class TestInvoiceBtcAttachView:
         assert invoice.btc_address == ""
         assert invoice.btc_line_items.exists() is False
 
+    def test_live_round_item_returns_400_with_service_detail(
+        self, api_client, landlord, invoice
+    ):
+        """A live quote freezes the item it covers -- re-scoping away
+        from it goes through `BtcLineItemError`, not the PAID/VOID
+        `InvoiceLockedError` path `test_locked_invoice_returns_409`
+        covers.
+        """
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        landlord.btc_payments_enabled = True
+        landlord.save()
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        invoice.btc_address = "bc1qexample"
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        invoice.save()
+        invoice.btc_line_items.set([line_item])
+        invoice.btc_round_line_items.set([line_item])
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse("invoice-btc-attach", args=[invoice.id]),
+            data={"address": "bc1qexample", "line_items": []},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert str(line_item.id) in response.data["detail"]
+        assert "in flight" in response.data["detail"]
+
 
 class TestInvoiceBtcWatchView:
     def test_requires_authentication(self, api_client, invoice):
@@ -701,6 +732,68 @@ class TestInvoiceBtcStatusView:
         assert response.data["line_items"] == []
         mock_price.assert_not_called()
         mock_get.assert_not_called()
+
+    def test_live_quote_survives_a_get_untouched(
+        self, api_client, mocker, renter, invoice
+    ):
+        """Bug 2: a GET here must never restamp `btc_watch_expires_at`
+        or `btc_amount_sats` -- this is the exact field pair that
+        regression clobbered.
+        """
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        item = InvoiceLineItemFactory(invoice=invoice)
+        invoice.status = Invoice.Status.SENT
+        invoice.btc_address = "bc1qexample"
+        invoice.btc_amount_sats = 12345
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        invoice.save()
+        invoice.btc_line_items.set([item])
+        invoice.btc_round_line_items.set([item])
+        mock_price = mocker.patch("payments.services.get_btc_usd_price")
+        mock_get = mocker.patch("payments.services.requests.get")
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.get(
+            reverse("invoice-btc-status", args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        invoice.refresh_from_db()
+        assert invoice.btc_amount_sats == 12345
+        assert response.data["btc_amount_sats"] == 12345
+        mock_price.assert_not_called()
+        mock_get.assert_not_called()
+
+    def test_live_round_reports_the_frozen_snapshot_not_live_scope(
+        self, api_client, renter, invoice
+    ):
+        """`line_items` must come from `btc_round_line_items` while a
+        round is live, not the live `btc_scope_line_items` -- the two
+        diverge the moment a landlord re-scopes mid-round.
+        """
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        item_a = InvoiceLineItemFactory(invoice=invoice)
+        item_b = InvoiceLineItemFactory(invoice=invoice)
+        invoice.status = Invoice.Status.SENT
+        invoice.btc_address = "bc1qexample"
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        invoice.save()
+        # The round was quoted against both items ...
+        invoice.btc_round_line_items.set([item_a, item_b])
+        # ... but the landlord has since re-scoped down to just one.
+        invoice.btc_line_items.set([item_a])
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.get(
+            reverse("invoice-btc-status", args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        assert response.data["line_items"] == sorted(
+            [item_a.id, item_b.id]
+        )
 
 
 class TestInvoiceBtcCancelView:
@@ -824,3 +917,102 @@ class TestInvoicePaymentCancelView:
         )
 
         assert response.status_code == 409
+
+
+class TestInvoiceLineItemPaymentLockView:
+    def test_requires_landlord(self, api_client, renter, invoice):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-payment-lock",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"payment_lock": "card"},
+        )
+
+        assert response.status_code == 403
+
+    def test_other_landlord_gets_404(self, api_client, invoice):
+        from accounts.tests.factories import LandlordFactory
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        other_landlord = LandlordFactory()
+        api_client.force_authenticate(user=other_landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-payment-lock",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"payment_lock": "card"},
+        )
+
+        assert response.status_code == 404
+
+    def test_owning_landlord_locks_and_returns_full_invoice(
+        self, api_client, landlord, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-payment-lock",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"payment_lock": "card"},
+        )
+
+        assert response.status_code == 200
+        assert response.data["id"] == invoice.id
+        assert "line_items" in response.data
+
+    def test_stray_line_item_returns_400(
+        self, api_client, landlord, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        other_invoice_item = InvoiceLineItemFactory()
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-payment-lock",
+                args=[invoice.id, other_invoice_item.id],
+            ),
+            data={"payment_lock": "card"},
+        )
+
+        assert response.status_code == 400
+
+    def test_frozen_item_returns_409_with_service_detail(
+        self, api_client, landlord, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        invoice.btc_address = "bc1qexample"
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        invoice.save()
+        invoice.btc_line_items.set([line_item])
+        invoice.btc_round_line_items.set([line_item])
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-payment-lock",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"payment_lock": "card"},
+        )
+
+        assert response.status_code == 409
+        assert str(line_item.id) in response.data["detail"]
+        assert "in flight" in response.data["detail"]
