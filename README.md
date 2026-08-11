@@ -57,8 +57,9 @@ Permitted uses under the [LICENSE](LICENSE):
 
 ## Tech stack
 
-- **Backend**: Django 6 + Django REST Framework + drf-spectacular +
-  SimpleJWT, Postgres (SQLite for local dev), managed with `uv`
+- **Backend**: Python 3.12 + Django 6 + Django REST Framework + drf-spectacular +
+  SimpleJWT, Postgres (SQLite for local dev)
+  - managed with `uv`
 - **Frontend**: React 19 + TypeScript + Vite, `oxlint`,
   `@stripe/react-stripe-js`
 
