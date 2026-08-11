@@ -1,5 +1,6 @@
 
 from datetime import timedelta
+from decimal import Decimal
 from unittest.mock import Mock
 
 import pytest
@@ -1016,3 +1017,59 @@ class TestInvoiceLineItemPaymentLockView:
         assert response.status_code == 409
         assert str(line_item.id) in response.data["detail"]
         assert "in flight" in response.data["detail"]
+
+    def test_lapsed_quote_unfreezes_the_item(
+        self, api_client, landlord, invoice
+    ):
+        """PR #5 Test plan L99: the freeze from a live quote must
+        release once the quote lapses -- `set_line_item_payment_lock`
+        calls `refresh_payment_state` first, so a lapsed watch with no
+        settling tx never shows up in `frozen_line_item_ids`.
+        """
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        invoice.btc_address = "bc1qexample"
+        invoice.btc_watch_expires_at = timezone.now() - timedelta(minutes=30)
+        invoice.save()
+        invoice.btc_line_items.set([line_item])
+        invoice.btc_round_line_items.set([line_item])
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-payment-lock",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"payment_lock": "card"},
+        )
+
+        assert response.status_code == 200
+
+    def test_underpaid_item_unfreezes_the_item(
+        self, api_client, landlord, invoice
+    ):
+        """PR #5 Test plan L99: an UNDERPAID round clears
+        `btc_watch_expires_at` and never sets `btc_txid`, so the item
+        it covered is no longer in flight either.
+        """
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        invoice.status = Invoice.Status.UNDERPAID
+        invoice.btc_address = "bc1qexample"
+        invoice.remainder_owed_usd = Decimal("35.00")
+        invoice.save()
+        invoice.btc_line_items.set([line_item])
+        invoice.btc_round_line_items.set([line_item])
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-payment-lock",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"payment_lock": "card"},
+        )
+
+        assert response.status_code == 200
