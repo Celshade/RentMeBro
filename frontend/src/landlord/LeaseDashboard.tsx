@@ -13,8 +13,10 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
+import { gasChargeIsFrozen, paymentRails } from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
@@ -135,11 +137,21 @@ export function LeaseDashboard({
     onBackHandlerChange,
   ]);
 
+  useEffect(() => {
+    const editingInvoice = invoices.find(
+      (invoice) => invoice.id === editingInvoiceId
+    );
+    if (editingInvoice && gasChargeIsFrozen(editingInvoice)) {
+      setEditingInvoiceId(null);
+    }
+  }, [invoices, editingInvoiceId]);
+
   const lockedMonths = new Set(
     invoices
       .filter(
         (invoice) =>
-          invoice.kind !== 'rent_only' && invoice.id !== editingInvoiceId
+          invoice.kind !== 'rent_only' &&
+          (invoice.id !== editingInvoiceId || gasChargeIsFrozen(invoice))
       )
       .map(
         (invoice) =>
@@ -274,7 +286,7 @@ export function LeaseDashboard({
         {mileageProfile && (
           <section className="card">
             <div className="card__header">
-              <h2>Mileage log</h2>
+              <h2>Mileage Log</h2>
               {!logDayTarget && !bulkSelectMode && (
                 <span className="dashboard-toolbar__actions">
                   <button
@@ -283,13 +295,13 @@ export function LeaseDashboard({
                       setLogDayTarget({ dates: [''], logs: [null] })
                     }
                   >
-                    Log a day
+                    Log a Day
                   </button>
                   <button
                     type="button"
                     onClick={() => setBulkSelectMode(true)}
                   >
-                    Log multiple days
+                    Log Multiple Days
                   </button>
                 </span>
               )}
@@ -373,7 +385,7 @@ export function LeaseDashboard({
                 type="button"
                 onClick={() => setShowGenerateInvoice(true)}
               >
-                Generate invoice
+                Generate Invoice
               </button>
             )}
           </div>
@@ -392,11 +404,18 @@ export function LeaseDashboard({
             <ul className="list">
               {invoices.map((invoice) => {
                 const isLocked =
-                  invoice.status === 'paid' || invoice.status === 'void';
+                  invoice.status === 'paid' ||
+                  invoice.status === 'void' ||
+                  gasChargeIsFrozen(invoice);
                 const isEditing = editingInvoiceId === invoice.id;
+                const rails = paymentRails(invoice);
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
+                      <span className="list-row__rails">
+                        {rails.btc && <PaymentRailGlyph rail="btc" />}
+                        {rails.card && <PaymentRailGlyph rail="card" />}
+                      </span>
                       <strong>
                         {formatBillingPeriod(
                           invoice.billing_period.month,
@@ -410,6 +429,8 @@ export function LeaseDashboard({
                       <InvoiceStatusBadge
                         status={invoice.status}
                         isLate={invoice.is_late}
+                        remainderOwedUsd={invoice.remainder_owed_usd}
+                        overpaidUsd={invoice.btc_overpaid_usd}
                       />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
                       {!isLocked && invoice.kind !== 'rent_only' && (

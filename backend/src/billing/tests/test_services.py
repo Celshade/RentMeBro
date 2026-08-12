@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 from django.db import transaction
+from django.utils import timezone
 
 from accounts.tests.factories import LandlordFactory, UserFactory
 from billing import services
@@ -16,6 +17,7 @@ from billing.tests.factories import (
     LeaseFactory,
     MileageProfileFactory,
 )
+from payments.tests.factories import InvoiceSettlementFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -477,3 +479,227 @@ class TestRecomputeInvoiceGas:
         invoice = InvoiceFactory(status=Invoice.Status.VOID)
         with pytest.raises(services.InvoiceLockedError):
             services.recompute_invoice_gas(invoice)
+
+    def test_allows_pending_invoice_with_unfrozen_gas_item(self):
+        invoice = InvoiceFactory(status=Invoice.Status.PENDING)
+        InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
+            amount=Decimal('0.00'),
+        )
+        result = services.recompute_invoice_gas(invoice)
+        assert result.status == Invoice.Status.PENDING
+
+    def test_raises_for_frozen_gas_item(self):
+        """A PENDING/PARTIAL status no longer locks the whole invoice --
+        only a frozen (paid or in-flight) gas item does.
+        """
+        invoice = InvoiceFactory(status=Invoice.Status.PARTIAL)
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
+            amount=Decimal('0.00'),
+        )
+        invoice.btc_address = 'bc1qexample'
+        invoice.btc_amount_sats = 1000
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        invoice.save()
+        invoice.btc_round_line_items.set([gas_item])
+
+        with pytest.raises(services.InvoiceLockedError):
+            services.recompute_invoice_gas(invoice)
+
+    def test_clears_btc_fields_when_total_changes(self, mocker):
+        mocker.patch(
+            "payments.services.refresh_payment_state",
+            side_effect=lambda invoice: invoice,
+        )
+        landlord, renter = LandlordFactory(), UserFactory()
+        MileageProfileFactory(
+            landlord=landlord,
+            renter=renter,
+            one_way_miles=Decimal("10.00"),
+            mpg=Decimal("25.00"),
+            effective_from=date(2024, 1, 1),
+        )
+        GasPriceEntryFactory(
+            landlord=landlord,
+            renter=renter,
+            price_per_gallon=Decimal("3.500"),
+            effective_from=date(2024, 1, 1),
+        )
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            kind=Invoice.Kind.GAS_ONLY,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="deadbeef",
+        )
+        InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
+            amount=Decimal("0.00"),
+        )
+        DrivenDayLogFactory(
+            landlord=landlord,
+            renter=renter,
+            date=date(2024, 6, 3),
+            kind=DrivenDayLog.Kind.DRIVEN,
+        )
+
+        updated = services.recompute_invoice_gas(invoice)
+
+        assert updated.btc_address == ""
+        assert updated.btc_amount_sats is None
+        assert updated.btc_txid == ""
+
+    def test_keeps_btc_fields_when_total_unchanged(self, mocker):
+        mocker.patch(
+            "payments.services.refresh_payment_state",
+            side_effect=lambda invoice: invoice,
+        )
+        invoice = InvoiceFactory(
+            kind=Invoice.Kind.GAS_ONLY,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="deadbeef",
+        )
+        InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
+            amount=Decimal("0.00"),
+        )
+
+        updated = services.recompute_invoice_gas(invoice)
+
+        assert updated.btc_address == "bc1qexample"
+        assert updated.btc_amount_sats == 100000
+        assert updated.btc_txid == "deadbeef"
+
+
+# --- gas_period_is_locked / assert_gas_period_editable -----------------
+
+class TestGasPeriodIsLocked:
+    def test_no_billing_period_is_not_locked(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        assert services.gas_period_is_locked(
+            landlord, renter, 2024, 6
+        ) is False
+
+    def test_unpaid_gas_item_is_not_locked(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+
+        assert services.gas_period_is_locked(
+            landlord, renter, 2024, 6
+        ) is False
+
+    def test_settled_gas_item_is_locked(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        assert services.gas_period_is_locked(
+            landlord, renter, 2024, 6
+        ) is True
+
+    def test_in_flight_btc_round_is_locked(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            kind=Invoice.Kind.GAS_ONLY,
+            status=Invoice.Status.PARTIAL,
+            btc_address="bc1qexample",
+            btc_amount_sats=1000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        invoice.btc_round_line_items.set([gas_item])
+
+        assert services.gas_period_is_locked(
+            landlord, renter, 2024, 6
+        ) is True
+
+    def test_underpaid_fallback_is_not_locked(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            kind=Invoice.Kind.GAS_ONLY,
+            status=Invoice.Status.UNDERPAID,
+            btc_address="bc1qexample",
+            btc_amount_sats=1000,
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=5),
+            remainder_owed_usd=Decimal("5.00"),
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        invoice.btc_round_line_items.set([gas_item])
+
+        assert services.gas_period_is_locked(
+            landlord, renter, 2024, 6
+        ) is False
+
+    def test_rent_only_invoice_is_not_locked(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.RENT_ONLY
+        )
+
+        assert services.gas_period_is_locked(
+            landlord, renter, 2024, 6
+        ) is False
+
+
+class TestAssertGasPeriodEditable:
+    def test_raises_for_locked_month(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        with pytest.raises(services.InvoiceLockedError):
+            services.assert_gas_period_editable(
+                landlord, renter, date(2024, 6, 15)
+            )
+
+    def test_does_not_raise_for_unlocked_month(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        services.assert_gas_period_editable(
+            landlord, renter, date(2024, 6, 15)
+        )

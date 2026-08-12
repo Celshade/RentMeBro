@@ -12,8 +12,10 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
+import { paymentRails } from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
 import { PayInvoice } from './PayInvoice';
 
@@ -107,7 +109,7 @@ export function RenterDashboard() {
         {mileageProfile && (
           <section className="card">
             <div className="card__header">
-              <h2>Mileage log</h2>
+              <h2>Mileage Log</h2>
             </div>
             <DrivenDaysCalendar logs={logs} />
             <DrivenDaysCalendarKey />
@@ -123,9 +125,14 @@ export function RenterDashboard() {
           ) : (
             <ul className="list">
               {invoices.map((invoice) => {
+                const rails = paymentRails(invoice);
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
+                      <span className="list-row__rails">
+                        {rails.btc && <PaymentRailGlyph rail="btc" />}
+                        {rails.card && <PaymentRailGlyph rail="card" />}
+                      </span>
                       <strong>
                         {formatBillingPeriod(
                           invoice.billing_period.month,
@@ -139,6 +146,8 @@ export function RenterDashboard() {
                       <InvoiceStatusBadge
                         status={invoice.status}
                         isLate={invoice.is_late}
+                        remainderOwedUsd={invoice.remainder_owed_usd}
+                        overpaidUsd={invoice.btc_overpaid_usd}
                       />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
                       {invoice.status !== 'paid' && (
@@ -152,7 +161,7 @@ export function RenterDashboard() {
                     </span>
                     {payingInvoiceId === invoice.id && (
                       <PayInvoice
-                        invoiceId={invoice.id}
+                        invoice={invoice}
                         onPaid={() => {
                           setPayingInvoiceId(null);
                           apiFetch<Invoice[]>('/api/invoices/').then(

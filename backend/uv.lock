@@ -545,6 +545,7 @@ dependencies = [
     { name = "djangorestframework-simplejwt" },
     { name = "drf-spectacular" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "requests" },
     { name = "stripe" },
 ]
 
@@ -566,6 +567,7 @@ requires-dist = [
     { name = "djangorestframework-simplejwt", specifier = ">=5.5.1" },
     { name = "drf-spectacular", specifier = ">=0.30.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
+    { name = "requests", specifier = ">=2.32.5" },
     { name = "stripe", specifier = ">=15.3.0" },
 ]
 

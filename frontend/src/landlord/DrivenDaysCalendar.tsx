@@ -179,6 +179,9 @@ export function DrivenDaysCalendar({
                   style={{ width: `${Number(log.day_fraction) * 100}%` }}
                 />
               );
+              const otherRideBar = log?.kind === 'other_ride' && (
+                <span className="driven-days-calendar__fraction-bar" />
+              );
               if (activeOnToggleDate) {
                 return (
                   <button
@@ -190,6 +193,7 @@ export function DrivenDaysCalendar({
                   >
                     {dayNumber}
                     {fractionBar}
+                    {otherRideBar}
                   </button>
                 );
               }
@@ -198,6 +202,7 @@ export function DrivenDaysCalendar({
                   <div key={dateKey} className={cellClass} title={title}>
                     {dayNumber}
                     {fractionBar}
+                    {otherRideBar}
                   </div>
                 );
               }
@@ -211,6 +216,7 @@ export function DrivenDaysCalendar({
                 >
                   {dayNumber}
                   {fractionBar}
+                  {otherRideBar}
                 </button>
               );
             })}

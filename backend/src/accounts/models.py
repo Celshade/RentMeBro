@@ -21,6 +21,8 @@ class User(AbstractUser):
     role = models.CharField(max_length=16, choices=Role.choices)
     stripe_account_id = models.CharField(max_length=255, blank=True)
     stripe_charges_enabled = models.BooleanField(default=False)
+    btc_payments_enabled = models.BooleanField(default=False)
+    btc_terms_accepted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [

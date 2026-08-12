@@ -75,7 +75,7 @@ export function GenerateInvoice({
 
   return (
     <form onSubmit={handleGenerate}>
-      <h3>Generate invoice</h3>
+      <h3>Generate Invoice</h3>
       <label htmlFor="year">Year</label>
       <input
         id="year"
@@ -122,7 +122,7 @@ export function GenerateInvoice({
         </p>
       )}
 
-      <button type="submit">Generate invoice</button>
+      <button type="submit">Generate Invoice</button>
       {error && <p role="alert">{error}</p>}
     </form>
   );

@@ -3,18 +3,21 @@ from decimal import Decimal
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.tests.factories import LandlordFactory, UserFactory
-from billing.models import Invoice
+from billing.models import Invoice, InvoiceLineItem
 from billing.tests.factories import (
     BillingPeriodFactory,
     DrivenDayLogFactory,
     GasPriceEntryFactory,
     InvoiceFactory,
+    InvoiceLineItemFactory,
     LeaseFactory,
     LeaseRentRevisionFactory,
     MileageProfileFactory,
 )
+from payments.tests.factories import InvoiceSettlementFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -213,6 +216,135 @@ class TestDrivenDayLogViewSet:
         assert response.status_code == 201
         assert response.data['day_fraction'] == '0.00'
 
+    def test_patch_paid_month_returns_409(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        log = DrivenDayLogFactory(
+            landlord=landlord, renter=renter, date=date(2024, 6, 5)
+        )
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        response = landlord_client.patch(
+            reverse('driven-day-detail', args=[log.id]), {'note': 'edit'}
+        )
+
+        assert response.status_code == 409
+        assert 'detail' in response.data
+
+    def test_post_paid_month_returns_409(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        response = landlord_client.post(
+            reverse('driven-day-list'),
+            {
+                'renter': renter.id,
+                'date': '2024-06-05',
+                'kind': 'driven',
+                'day_fraction': '1.00',
+            },
+        )
+
+        assert response.status_code == 409
+        assert 'detail' in response.data
+
+    def test_delete_paid_month_returns_409(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        log = DrivenDayLogFactory(
+            landlord=landlord, renter=renter, date=date(2024, 6, 5)
+        )
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        response = landlord_client.delete(
+            reverse('driven-day-detail', args=[log.id])
+        )
+
+        assert response.status_code == 409
+        assert 'detail' in response.data
+
+    def test_writes_against_unpaid_month_still_succeed(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        log = DrivenDayLogFactory(
+            landlord=landlord, renter=renter, date=date(2024, 6, 5)
+        )
+        BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+
+        patch_response = landlord_client.patch(
+            reverse('driven-day-detail', args=[log.id]), {'note': 'edit'}
+        )
+        assert patch_response.status_code == 200
+
+        delete_response = landlord_client.delete(
+            reverse('driven-day-detail', args=[log.id])
+        )
+        assert delete_response.status_code == 204
+
+    def test_moving_log_into_paid_month_returns_409(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        log = DrivenDayLogFactory(
+            landlord=landlord, renter=renter, date=date(2024, 7, 5)
+        )
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter, year=2024, month=6
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
+        )
+        gas_item = InvoiceLineItemFactory(
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS
+        )
+        settlement = InvoiceSettlementFactory(invoice=invoice)
+        settlement.line_items.set([gas_item])
+
+        response = landlord_client.patch(
+            reverse('driven-day-detail', args=[log.id]),
+            {'date': '2024-06-05'},
+        )
+
+        assert response.status_code == 409
+        assert 'detail' in response.data
+
 
 # --- MileageProfileViewSet / GasPriceEntryViewSet -----------------------
 
@@ -369,6 +501,196 @@ class TestInvoiceViewSetCreate:
             {'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'rent_only'},
         )
         assert response.status_code == 400
+
+
+class TestInvoiceViewSetRetrieve:
+    """Fix 3: a pending BTC tx is checked on retrieve, so a payment
+    that confirms after the renter's tab closes still gets settled.
+    """
+
+    def test_checks_pending_btc_tx_on_retrieve(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            btc_address="bc1qexample",
+            btc_txid="tx1",
+            btc_settled_at=None,
+        )
+        mock_check = mocker.patch(
+            "billing.views.check_btc_payment", return_value=invoice
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        assert response.data["btc_txid"] == "tx1"
+        mock_check.assert_called_once_with(invoice)
+
+    def test_does_not_check_when_no_txid_seen(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            btc_address="bc1qexample",
+            btc_txid="",
+            btc_settled_at=None,
+        )
+        mock_check = mocker.patch("billing.views.check_btc_payment")
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_check.assert_not_called()
+
+    def test_does_not_check_when_no_tx_seen_yet(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            btc_address="bc1qexample",
+            btc_txid="",
+        )
+        mock_check = mocker.patch("billing.views.check_btc_payment")
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_check.assert_not_called()
+
+    def test_checks_a_second_round_even_after_a_prior_settle(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        """A non-empty btc_txid now only ever means an in-flight,
+        unconfirmed round -- a stale btc_settled_at from a prior round
+        must not suppress the check on this one.
+        """
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            btc_address="bc1qexample",
+            btc_txid="tx2",
+            btc_settled_at=timezone.now(),
+        )
+        mock_check = mocker.patch(
+            "billing.views.check_btc_payment", side_effect=lambda inv: inv
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_check.assert_called_once()
+
+    def test_self_heals_a_stale_card_round(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            stripe_intent_status="requires_action",
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(minutes=1)
+            ),
+        )
+        mock_refresh = mocker.patch(
+            "billing.views.refresh_card_payment_state", return_value=invoice
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_refresh.assert_called_once_with(invoice)
+
+    def test_does_not_refresh_a_live_card_round(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            stripe_intent_status="requires_action",
+            stripe_round_expires_at=(
+                timezone.now() + timedelta(minutes=1)
+            ),
+        )
+        mock_refresh = mocker.patch(
+            "billing.views.refresh_card_payment_state"
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_refresh.assert_not_called()
+
+    def test_does_not_refresh_a_terminal_card_round(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        invoice = InvoiceFactory(
+            billing_period=billing_period,
+            stripe_intent_status="succeeded",
+            stripe_round_expires_at=None,
+        )
+        mock_refresh = mocker.patch(
+            "billing.views.refresh_card_payment_state"
+        )
+
+        response = landlord_client.get(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+
+        assert response.status_code == 200
+        mock_refresh.assert_not_called()
+
+    def test_does_not_refresh_on_list(
+        self, mocker, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(
+            landlord=landlord, renter=renter
+        )
+        InvoiceFactory(
+            billing_period=billing_period,
+            stripe_intent_status="requires_action",
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(minutes=1)
+            ),
+        )
+        mock_refresh = mocker.patch(
+            "billing.views.refresh_card_payment_state"
+        )
+
+        response = landlord_client.get(reverse('invoice-list'))
+
+        assert response.status_code == 200
+        mock_refresh.assert_not_called()
 
 
 class TestInvoiceViewSetWeeks:
