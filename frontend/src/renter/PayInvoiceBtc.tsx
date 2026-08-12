@@ -246,25 +246,6 @@ export function PayInvoiceBtc({
       </div>
     );
   }
-  if (btcStatus.btc_settled_at !== null) {
-    // A round settled but not everything owed via BTC was covered by
-    // it -- the renter must explicitly restart the watch for the
-    // remainder, since settling clears the live quote fields.
-    return (
-      <div className="pay-invoice-btc">
-        {errorBanner}
-        <BtcBroadcastBlocks confirmed />
-        <p className="pay-invoice-btc__seen">Payment confirmed</p>
-        <BtcTxLink txid={lastTxidRef.current} />
-        <p className="pay-invoice-btc__seen-note">
-          ${formatMoney(btcStatus.btc_owed_usd)} is still owed via BTC.
-        </p>
-        <button type="button" onClick={generateQuote}>
-          Pay the rest
-        </button>
-      </div>
-    );
-  }
   if (btcStatus.btc_txid) {
     // Seen in the mempool but not yet confirmed. QR, address, and
     // countdown are deliberately gone -- the renter has already paid,
@@ -287,9 +268,20 @@ export function PayInvoiceBtc({
     btcStatus.btc_amount_sats === null ||
     btcStatus.btc_watch_expires_at === null
   ) {
+    // btc_settled_at is a historical stamp -- it's restamped on every
+    // settle and never cleared -- so its presence here just means an
+    // earlier round on this invoice settled, not that this one has.
+    // That's still useful context: it's why there's a remainder left
+    // to quote instead of a fresh invoice with nothing paid yet.
+    const priorRoundSettled = btcStatus.btc_settled_at !== null;
     return (
       <div className="pay-invoice-btc">
         {errorBanner}
+        {priorRoundSettled && (
+          <p className="pay-invoice-btc__seen-note">
+            A previous BTC payment on this invoice was confirmed.
+          </p>
+        )}
         <PaymentLegSummary
           rail="btc"
           lineItems={lineItems}
@@ -311,7 +303,7 @@ export function PayInvoiceBtc({
               you're ready to send.
             </p>
             <button type="button" onClick={generateQuote}>
-              Generate quote
+              {priorRoundSettled ? 'Pay the rest' : 'Generate quote'}
             </button>
           </>
         )}
