@@ -234,17 +234,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
         ]
 
     def get_btc_owed_usd(self, obj: Invoice) -> str:
-        """The USD still owed via BTC, mirroring
-        `payments.services._invoice_usd_owed` without importing it --
-        the BTC portion, or whatever's left after a prior underpayment
-        was credited toward it.
-        """
-        owed = (
-            obj.remainder_owed_usd
-            if obj.remainder_owed_usd is not None
-            else obj.btc_portion_usd
-        )
-        return str(owed)
+        """The USD still owed via BTC -- see `Invoice.btc_owed_usd`."""
+        return str(obj.btc_owed_usd)
 
     def get_paid_line_items(self, obj: Invoice) -> list[int]:
         return sorted(obj.paid_line_item_ids)
