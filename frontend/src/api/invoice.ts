@@ -106,3 +106,61 @@ export function paymentRails(invoice: Invoice): {
       { btc: false, card: false }
     );
 }
+
+
+/** Whether a rail covers none, some, or all of an invoice's unpaid
+ * line items. */
+export type RailCoverage = 'none' | 'partial' | 'full';
+
+
+/**
+ * How completely each rail covers what's still unpaid, for the glyph
+ * hover text -- distinguishing "payable in X" from "partially payable
+ * in X" without re-deriving scope client-side.
+ * @param invoice - The invoice to check.
+ * @returns For each rail, 'none' if it doesn't scope any unpaid item,
+ *   'full' if its scope is every unpaid item, 'partial' otherwise.
+ *   Compares the server's `btc_scope_line_items` /
+ *   `stripe_scope_line_items` against the unpaid item ids -- see
+ *   `Invoice.btc_scope_line_items` for what "scope" means.
+ */
+export function railCoverage(invoice: Invoice): {
+  btc: RailCoverage;
+  card: RailCoverage;
+} {
+  const unpaidIds = invoice.line_items
+    .filter((item) => !isLineItemPaid(invoice, item.id))
+    .map((item) => item.id);
+
+  function coverageFor(scopeIds: number[]): RailCoverage {
+    const covered = unpaidIds.filter((id) => scopeIds.includes(id));
+    if (covered.length === 0) return 'none';
+    return covered.length === unpaidIds.length ? 'full' : 'partial';
+  }
+
+  return {
+    btc: coverageFor(invoice.btc_scope_line_items),
+    card: coverageFor(invoice.stripe_scope_line_items),
+  };
+}
+
+
+/**
+ * The glyph hover label for a rail, given its coverage.
+ * @param rail - Which rail the glyph is for.
+ * @param coverage - That rail's coverage, from `railCoverage`.
+ * @returns undefined on 'none' so the glyph falls back to its default
+ *   label -- callers only reach this for a rail that's visible at all,
+ *   so 'none' shouldn't normally occur, but the fallback keeps a
+ *   mismatch from ever hiding a glyph's text.
+ */
+export function railCoverageLabel(
+  rail: 'btc' | 'card',
+  coverage: RailCoverage
+): string | undefined {
+  if (coverage === 'none') return undefined;
+  const railName = rail === 'btc' ? 'Bitcoin' : 'card (Cash App)';
+  return coverage === 'full'
+    ? `Payable in ${railName}`
+    : `Partially payable in ${railName}`;
+}
