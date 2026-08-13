@@ -1143,6 +1143,20 @@ class TestSplitPaymentSettlement:
 
 
 class TestInitiateBtcWatch:
+    def test_raises_if_no_btc_address(self):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+
+        with pytest.raises(BtcNotEnabledError):
+            initiate_btc_watch(invoice)
+
+    def test_raises_if_no_btc_address_even_with_pay_full(self):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100.00"))
+
+        with pytest.raises(BtcNotEnabledError):
+            initiate_btc_watch(invoice, pay_full=True)
+
     def test_starts_watch_window_and_generates_amount_for_sent_invoice(
         self, mocker
     ):
@@ -1282,7 +1296,9 @@ class TestInitiateBtcWatch:
         [Invoice.Status.PENDING, Invoice.Status.PAID, Invoice.Status.VOID],
     )
     def test_noop_if_invoice_is_not_payable(self, status):
-        invoice = _btc_enabled_invoice(status=status)
+        invoice = _btc_enabled_invoice(
+            status=status, btc_address="bc1qexample"
+        )
 
         result = initiate_btc_watch(invoice)
 
@@ -1290,7 +1306,9 @@ class TestInitiateBtcWatch:
 
     def test_noop_if_tx_already_seen(self):
         invoice = _btc_enabled_invoice(
-            status=Invoice.Status.SENT, btc_txid="deadbeef"
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_txid="deadbeef",
         )
 
         result = initiate_btc_watch(invoice)
