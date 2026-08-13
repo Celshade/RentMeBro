@@ -1,6 +1,22 @@
 from django.urls import path
 
-from payments.views import InvoicePaymentIntentView, StripeWebhookView
+from payments.views import (
+    BtcPriceView,
+    BtcSettingsView,
+    ConnectOnboardingView,
+    ConnectStatusView,
+    ConnectWebhookView,
+    InvoiceBtcAttachView,
+    InvoiceBtcCancelView,
+    InvoiceBtcCheckView,
+    InvoiceBtcStatusView,
+    InvoiceBtcWatchView,
+    InvoiceLineItemMarkPaidView,
+    InvoiceLineItemPaymentLockView,
+    InvoicePaymentCancelView,
+    InvoicePaymentIntentView,
+    StripeWebhookView,
+)
 
 urlpatterns = [
     path(
@@ -8,5 +24,74 @@ urlpatterns = [
         InvoicePaymentIntentView.as_view(),
         name='invoice-pay',
     ),
-    path('stripe/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'),
+    path(
+        'invoices/<int:invoice_id>/pay/cancel/',
+        InvoicePaymentCancelView.as_view(),
+        name='invoice-pay-cancel',
+    ),
+    path(
+        'stripe/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'
+    ),
+    path(
+        'stripe/connect-webhook/',
+        ConnectWebhookView.as_view(),
+        name='stripe-connect-webhook',
+    ),
+    path(
+        'payments/connect/onboard/',
+        ConnectOnboardingView.as_view(),
+        name='connect-onboard',
+    ),
+    path(
+        'payments/connect/status/',
+        ConnectStatusView.as_view(),
+        name='connect-status',
+    ),
+    path(
+        "payments/btc/settings/",
+        BtcSettingsView.as_view(),
+        name="btc-settings",
+    ),
+    path(
+        "payments/btc/price/",
+        BtcPriceView.as_view(),
+        name="btc-price",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/",
+        InvoiceBtcAttachView.as_view(),
+        name="invoice-btc-attach",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/watch/",
+        InvoiceBtcWatchView.as_view(),
+        name="invoice-btc-watch",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/check/",
+        InvoiceBtcCheckView.as_view(),
+        name="invoice-btc-check",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/status/",
+        InvoiceBtcStatusView.as_view(),
+        name="invoice-btc-status",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/cancel/",
+        InvoiceBtcCancelView.as_view(),
+        name="invoice-btc-cancel",
+    ),
+    path(
+        "invoices/<int:invoice_id>/line-items/<int:line_item_id>/"
+        "payment-lock/",
+        InvoiceLineItemPaymentLockView.as_view(),
+        name="invoice-line-item-payment-lock",
+    ),
+    path(
+        "invoices/<int:invoice_id>/line-items/<int:line_item_id>/"
+        "mark-paid/",
+        InvoiceLineItemMarkPaidView.as_view(),
+        name="invoice-line-item-mark-paid",
+    ),
 ]

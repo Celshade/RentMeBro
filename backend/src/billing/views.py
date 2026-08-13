@@ -29,6 +29,7 @@ from billing.serializers import (
     PeriodPreviewSerializer,
     RenterLookupQuerySerializer,
 )
+from payments.services import check_btc_payment, refresh_card_payment_state
 
 
 class LeaseViewSet(viewsets.ModelViewSet):
@@ -59,6 +60,20 @@ class DrivenDayLogViewSet(viewsets.ModelViewSet):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
+
+    def perform_destroy(self, instance: DrivenDayLog) -> None:
+        services.assert_gas_period_editable(
+            instance.landlord, instance.renter, instance.date
+        )
+        super().perform_destroy(instance)
+
+    def handle_exception(self, exc: Exception) -> Response:
+        """Maps a frozen gas month to 409, matching InvoiceViewSet.recompute."""
+        if isinstance(exc, services.InvoiceLockedError):
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+            )
+        return super().handle_exception(exc)
 
 
 class MileageProfileViewSet(viewsets.ModelViewSet):
@@ -97,7 +112,44 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         return Invoice.objects.filter(
             Q(billing_period__landlord=user) | Q(billing_period__renter=user)
+        ).prefetch_related(
+            'line_items',
+            'btc_line_items',
+            'btc_round_line_items',
+            'stripe_round_line_items',
+            'settlements__line_items',
+        ).order_by(
+            '-billing_period__year', '-billing_period__month', '-created_at'
         )
+
+    def retrieve(self, request, *args, **kwargs) -> Response:
+        """Serves a single invoice, self-healing stale payment state
+        first.
+
+        The renter's browser is otherwise the only thing that ever
+        polls mempool.space, so a payment that confirms after the tab
+        closes would never get settled. Scoped to the one case that
+        matters -- a tx already seen but not yet confirmed -- so this
+        costs nothing on every other invoice, and never runs
+        `_reconcile_lapsed_watch` (that consumes the renter's quote and
+        belongs to the renter explicitly restarting a watch, not to a
+        landlord opening a page).
+
+        Likewise, a stale card round (its local expiry lapsed, or was
+        never learned) gets one Stripe poll so an abandoned Cash App
+        attempt unlocks its line item instead of showing frozen
+        forever -- see `Invoice.card_round_is_stale`.
+
+        Deliberately not on `list`, which would otherwise fan out to
+        one external request per invoice on a dashboard page load.
+        """
+        invoice = self.get_object()
+        if invoice.btc_address and invoice.btc_txid:
+            invoice = check_btc_payment(invoice)
+        if invoice.card_round_is_stale:
+            invoice = refresh_card_payment_state(invoice)
+        serializer = self.get_serializer(invoice)
+        return Response(serializer.data)
 
     def create(self, request, *args, **kwargs) -> Response:
         serializer = InvoiceCreateSerializer(
@@ -117,7 +169,10 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
             )
-        except services.BillingConfigError as exc:
+        except (
+            services.BillingConfigError,
+            services.FutureInvoiceKindError,
+        ) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -126,9 +181,35 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     def get_permissions(self) -> list[BasePermission]:
-        if self.action == 'create':
+        if self.action in ('create', 'destroy'):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
+
+    def destroy(self, request, *args, **kwargs) -> Response:
+        """Hard-deletes an invoice that hasn't taken any money yet.
+
+        Blocked once anything has settled or is mid-flight, or once
+        the invoice reached a paid/partial/underpaid/pending status --
+        those states mean a payment exists or is in progress.
+        """
+        invoice = self.get_object()
+        if invoice.status in (
+            Invoice.Status.PENDING,
+            Invoice.Status.PARTIAL,
+            Invoice.Status.UNDERPAID,
+            Invoice.Status.PAID,
+        ):
+            return Response(
+                {'detail': 'Only an unpaid invoice can be deleted.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if invoice.settlements.exists() or invoice.frozen_line_item_ids:
+            return Response(
+                {'detail': 'Only an unpaid invoice can be deleted.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        invoice.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'])
     def weeks(self, request, pk=None) -> Response:
@@ -139,6 +220,23 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             period.landlord, period.renter, period.year, period.month
         )
         return Response(InvoiceWeekSerializer(weeks, many=True).data)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, IsLandlord],
+    )
+    def send(self, request, pk=None) -> Response:
+        """Promotes a draft invoice to sent, making it visible as due."""
+        invoice = self.get_object()
+        if invoice.status != Invoice.Status.DRAFT:
+            return Response(
+                {'detail': 'Only a draft invoice can be sent.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        invoice.status = Invoice.Status.SENT
+        invoice.save(update_fields=['status'])
+        return Response(InvoiceSerializer(invoice).data)
 
     @action(
         detail=True,

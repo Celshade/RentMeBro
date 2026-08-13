@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
+from billing import services
 from billing.models import (
     BillingPeriod,
     DrivenDayLog,
@@ -87,7 +88,8 @@ class DrivenDayLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = DrivenDayLog
         fields = [
-            'id', 'landlord', 'renter', 'date', 'kind', 'day_fraction', 'note',
+            'id', 'landlord', 'renter', 'date', 'kind', 'day_fraction',
+            'half_leg', 'note',
         ]
 
     def validate_renter(self, renter: User) -> User:
@@ -97,6 +99,26 @@ class DrivenDayLogSerializer(serializers.ModelSerializer):
         kind = attrs.get('kind', getattr(self.instance, 'kind', None))
         if kind is not None and kind != DrivenDayLog.Kind.DRIVEN:
             attrs['day_fraction'] = Decimal('0')
+
+        day_fraction = attrs.get(
+            'day_fraction', getattr(self.instance, 'day_fraction', None)
+        )
+        if kind != DrivenDayLog.Kind.DRIVEN or (
+            day_fraction is not None and day_fraction >= 1
+        ):
+            attrs['half_leg'] = ''
+
+        landlord = self.context['request'].user
+        renter = attrs.get('renter', getattr(self.instance, 'renter', None))
+        target_date = attrs.get('date', getattr(self.instance, 'date', None))
+        # InvoiceLockedError deliberately isn't caught here -- it bubbles
+        # up so the view can map it to a 409, distinguishing a lock from
+        # a plain validation error.
+        services.assert_gas_period_editable(landlord, renter, target_date)
+        if self.instance is not None and self.instance.date != target_date:
+            services.assert_gas_period_editable(
+                landlord, renter, self.instance.date
+            )
         return attrs
 
     def create(self, validated_data: dict) -> DrivenDayLog:
@@ -146,7 +168,8 @@ class GasPriceEntrySerializer(serializers.ModelSerializer):
 class InvoiceLineItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = InvoiceLineItem
-        fields = ['id', 'description', 'amount', 'kind']
+        fields = ['id', 'description', 'amount', 'kind', 'payment_lock']
+        read_only_fields = ['payment_lock']
 
 
 class BillingPeriodSerializer(serializers.ModelSerializer):
@@ -162,15 +185,117 @@ class InvoiceSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True
     )
     is_late = serializers.BooleanField(read_only=True)
+    btc_portion_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    stripe_portion_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    card_full_owed_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    btc_full_owed_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    btc_overpaid_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, allow_null=True
+    )
+    is_split_payment = serializers.BooleanField(read_only=True)
+    btc_owed_usd = serializers.SerializerMethodField()
+    paid_line_items = serializers.SerializerMethodField()
+    frozen_line_items = serializers.SerializerMethodField()
+    settlements = serializers.SerializerMethodField()
+    btc_scope_line_items = serializers.SerializerMethodField()
+    stripe_scope_line_items = serializers.SerializerMethodField()
+    card_full_line_items = serializers.SerializerMethodField()
+    btc_full_line_items = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
         fields = [
-            'id', 'billing_period', 'kind', 'status', 'due_date',
-            'stripe_payment_intent_id', 'created_at', 'line_items', 'total',
-            'is_late',
+            "id", "billing_period", "kind", "status", "due_date",
+            "stripe_payment_intent_id", "created_at", "line_items", "total",
+            "is_late", "btc_address", "btc_amount_sats",
+            "remainder_owed_usd", "btc_line_items", "btc_portion_usd",
+            "stripe_portion_usd", "card_full_owed_usd", "btc_owed_usd",
+            "is_split_payment", "btc_settled_at", "btc_overpaid_usd",
+            "stripe_settled_at", "btc_txid", "btc_credited_txid",
+            "btc_watch_expires_at", "paid_line_items", "frozen_line_items",
+            "settlements", "stripe_round_expires_at", "btc_scope_line_items",
+            "stripe_scope_line_items", "card_full_line_items",
+            "btc_full_owed_usd", "btc_full_line_items",
         ]
-        read_only_fields = ['status', 'stripe_payment_intent_id', 'created_at']
+        read_only_fields = [
+            "status", "stripe_payment_intent_id", "created_at",
+            "btc_address", "btc_amount_sats", "remainder_owed_usd",
+            "btc_line_items", "btc_settled_at", "btc_overpaid_usd",
+            "stripe_settled_at", "btc_txid", "btc_credited_txid",
+            "btc_watch_expires_at", "stripe_round_expires_at",
+        ]
+
+    def get_btc_owed_usd(self, obj: Invoice) -> str:
+        """The USD still owed via BTC, mirroring
+        `payments.services._invoice_usd_owed` without importing it --
+        the BTC portion, or whatever's left after a prior underpayment
+        was credited toward it.
+        """
+        owed = (
+            obj.remainder_owed_usd
+            if obj.remainder_owed_usd is not None
+            else obj.btc_portion_usd
+        )
+        return str(owed)
+
+    def get_paid_line_items(self, obj: Invoice) -> list[int]:
+        return sorted(obj.paid_line_item_ids)
+
+    def get_frozen_line_items(self, obj: Invoice) -> list[int]:
+        return sorted(obj.frozen_line_item_ids)
+
+    def get_btc_scope_line_items(self, obj: Invoice) -> list[int]:
+        """What a fresh BTC quote would cover right now.
+
+        The frontend must not re-derive this from `btc_line_items` --
+        the fallback rules in `Invoice.btc_scope_line_items` are subtle.
+        """
+        return sorted(item.id for item in obj.btc_scope_line_items)
+
+    def get_stripe_scope_line_items(self, obj: Invoice) -> list[int]:
+        """What the card leg bills by default right now."""
+        return sorted(item.id for item in obj.stripe_scope_line_items)
+
+    def get_card_full_line_items(self, obj: Invoice) -> list[int]:
+        """Every card-payable item, ignoring the BTC expectation --
+        what a `pay_full` card charge would cover.
+        """
+        return sorted(item.id for item in obj.card_full_line_items)
+
+    def get_btc_full_line_items(self, obj: Invoice) -> list[int]:
+        """Every BTC-payable item, ignoring the landlord's BTC scope --
+        what a `pay_full` BTC quote would cover.
+        """
+        return sorted(item.id for item in obj.btc_full_line_items)
+
+    def get_settlements(self, obj: Invoice) -> list[dict]:
+        return [
+            {
+                "id": settlement.id,
+                "rail": settlement.rail,
+                "txid": settlement.txid,
+                "line_items": [
+                    item.id for item in settlement.line_items.all()
+                ],
+                "amount_usd": str(settlement.amount_usd),
+                "overpaid_usd": (
+                    str(settlement.overpaid_usd)
+                    if settlement.overpaid_usd is not None
+                    else None
+                ),
+                "note": settlement.note,
+                "settled_at": settlement.settled_at.isoformat(),
+            }
+            for settlement in obj.settlements.all()
+        ]
 
 
 class InvoiceWeekDaySerializer(serializers.Serializer):
@@ -192,6 +317,9 @@ class InvoiceWeekSerializer(serializers.Serializer):
     days = InvoiceWeekDaySerializer(many=True)
 
 
+MAX_FUTURE_INVOICE_MONTHS = 12
+
+
 class InvoiceCreateSerializer(serializers.Serializer):
     renter = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(role=User.Role.RENTER)
@@ -203,6 +331,20 @@ class InvoiceCreateSerializer(serializers.Serializer):
 
     def validate_renter(self, renter: User) -> User:
         return _validate_is_own_renter(renter, self.context['request'].user)
+
+    def validate(self, attrs: dict) -> dict:
+        today = timezone.now().date()
+        latest_year, latest_month = today.year, today.month + (
+            MAX_FUTURE_INVOICE_MONTHS
+        )
+        latest_year += (latest_month - 1) // 12
+        latest_month = (latest_month - 1) % 12 + 1
+        if (attrs['year'], attrs['month']) > (latest_year, latest_month):
+            raise serializers.ValidationError(
+                f'Invoices can only be generated up to '
+                f'{MAX_FUTURE_INVOICE_MONTHS} months ahead.'
+            )
+        return attrs
 
 
 class PeriodPreviewSerializer(serializers.Serializer):

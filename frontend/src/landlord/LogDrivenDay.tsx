@@ -1,32 +1,54 @@
 import { useState, type FormEvent } from 'react';
 import { apiFetch } from '../api/client';
-import type { DrivenDayLog, DrivenDayLogKind } from '../api/types';
+import type {
+  DrivenDayHalfLeg,
+  DrivenDayLog,
+  DrivenDayLogKind,
+} from '../api/types';
 
-/** The four choices the "Trip" dropdown offers, each mapping to a
- * kind + day_fraction pair.
+/** The six choices the "Trip" dropdown offers, each mapping to a
+ * kind + day_fraction + half_leg triple. `half` is the neutral
+ * "leg unknown" option, kept for editing older rows without forcing
+ * a choice.
  */
-type TripOption = 'full' | 'half' | 'day_off' | 'other_ride';
+type TripOption =
+  | 'full'
+  | 'half'
+  | 'half_drop_off'
+  | 'half_pick_up'
+  | 'day_off'
+  | 'other_ride';
 
 /** Picks the trip option matching an existing log, for editing. */
 function tripOptionForLog(log: DrivenDayLog): TripOption {
   if (log.kind === 'day_off') return 'day_off';
   if (log.kind === 'other_ride') return 'other_ride';
-  return Number(log.day_fraction) >= 0.75 ? 'full' : 'half';
+  if (Number(log.day_fraction) >= 0.75) return 'full';
+  if (log.half_leg === 'drop_off') return 'half_drop_off';
+  if (log.half_leg === 'pick_up') return 'half_pick_up';
+  return 'half';
 }
 
-/** Maps a trip option to the kind/day_fraction pair it saves as. */
-function tripOptionToFields(
-  option: TripOption
-): { kind: DrivenDayLogKind; day_fraction: string } {
+/** Maps a trip option to the kind/day_fraction/half_leg triple it
+ * saves as. */
+function tripOptionToFields(option: TripOption): {
+  kind: DrivenDayLogKind;
+  day_fraction: string;
+  half_leg: DrivenDayHalfLeg;
+} {
   switch (option) {
     case 'full':
-      return { kind: 'driven', day_fraction: '1' };
+      return { kind: 'driven', day_fraction: '1', half_leg: '' };
     case 'half':
-      return { kind: 'driven', day_fraction: '0.5' };
+      return { kind: 'driven', day_fraction: '0.5', half_leg: '' };
+    case 'half_drop_off':
+      return { kind: 'driven', day_fraction: '0.5', half_leg: 'drop_off' };
+    case 'half_pick_up':
+      return { kind: 'driven', day_fraction: '0.5', half_leg: 'pick_up' };
     case 'day_off':
-      return { kind: 'day_off', day_fraction: '0' };
+      return { kind: 'day_off', day_fraction: '0', half_leg: '' };
     case 'other_ride':
-      return { kind: 'other_ride', day_fraction: '0' };
+      return { kind: 'other_ride', day_fraction: '0', half_leg: '' };
   }
 }
 
@@ -76,7 +98,7 @@ export function LogDrivenDay({
     event.preventDefault();
     setStatus(null);
     try {
-      const { kind, day_fraction } = tripOptionToFields(tripOption);
+      const { kind, day_fraction, half_leg } = tripOptionToFields(tripOption);
       const targets = isSingle
         ? [{ date, log: singleExistingLog }]
         : dates.map((d, i) => ({ date: d, log: existingLogs[i] }));
@@ -87,7 +109,14 @@ export function LogDrivenDay({
             : '/api/driven-days/';
           return apiFetch<DrivenDayLog>(path, {
             method: log ? 'PATCH' : 'POST',
-            body: { renter: renterId, date, kind, day_fraction, note },
+            body: {
+              renter: renterId,
+              date,
+              kind,
+              day_fraction,
+              half_leg,
+              note,
+            },
           });
         })
       );
@@ -138,7 +167,9 @@ export function LogDrivenDay({
         onChange={(e) => setTripOption(e.target.value as TripOption)}
       >
         <option value="full">Full day (drop-off + pick-up)</option>
-        <option value="half">Half day (drop-off or pick-up only)</option>
+        <option value="half_drop_off">Half day — drop-off only</option>
+        <option value="half_pick_up">Half day — pick-up only</option>
+        <option value="half">Half day — leg unknown</option>
         <option value="day_off">Day off (no work)</option>
         <option value="other_ride">
           Other ride (someone else drove — unpaid to you)

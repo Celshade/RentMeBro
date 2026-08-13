@@ -116,6 +116,13 @@ DEFAULT_FROM_EMAIL = env(
 STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
 STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', default='')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
+STRIPE_CONNECT_WEBHOOK_SECRET = env(
+    'STRIPE_CONNECT_WEBHOOK_SECRET', default=''
+)
+
+MEMPOOL_API_BASE_URL = env(
+    "MEMPOOL_API_BASE_URL", default="https://mempool.space/api"
+)
 
 ROOT_URLCONF = 'config.urls'
 

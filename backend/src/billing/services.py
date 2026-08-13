@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from accounts.models import User
 from billing.models import (
@@ -28,6 +29,10 @@ class InvoiceAlreadyExistsError(Exception):
 
 class InvoiceLockedError(Exception):
     """Raised when trying to edit an invoice that's already paid/void."""
+
+
+class FutureInvoiceKindError(Exception):
+    """Raised for a non-rent_only invoice kind billed for a future month."""
 
 
 def get_active_lease(landlord: User, renter: User) -> Lease:
@@ -256,7 +261,7 @@ def compute_period_preview(
     """
     lease = get_active_lease(landlord, renter)
     return {
-        'rent': lease.current_monthly_rent,
+        'rent': lease.rent_for_month(year, month),
         'gas': compute_period_gas_total(landlord, renter, year, month),
     }
 
@@ -273,6 +278,16 @@ def default_invoice_due_date(year: int, month: int) -> date:
     """
     next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
     return date(next_year, next_month, 5)
+
+
+# The line-item kinds each invoice kind bills, used to reject a new
+# invoice whose components overlap an already-generated one for the
+# same billing period.
+_KIND_COMPONENTS = {
+    Invoice.Kind.COMBINED: frozenset({'rent', 'gas'}),
+    Invoice.Kind.RENT_ONLY: frozenset({'rent'}),
+    Invoice.Kind.GAS_ONLY: frozenset({'gas'}),
+}
 
 
 @transaction.atomic
@@ -300,14 +315,41 @@ def generate_invoice(
 
     Raises:
         InvoiceAlreadyExistsError: If an invoice of this kind already
-            exists for the pair's billing period.
+            exists for the pair's billing period, or an existing
+            invoice already covers one of the components (rent/gas)
+            this kind would bill.
+        FutureInvoiceKindError: If `kind` isn't rent_only for a month
+            whose 1st hasn't happened yet -- gas totals for a future
+            month aren't knowable, so only rent can be billed ahead.
     """
+    today = timezone.now().date()
+    if date(year, month, 1) > today and kind != Invoice.Kind.RENT_ONLY:
+        raise FutureInvoiceKindError(
+            f'Only rent_only invoices can be generated for a future '
+            f'month ({year}-{month:02d}).'
+        )
+
     if due_date is None:
         due_date = default_invoice_due_date(year, month)
 
     billing_period, _ = BillingPeriod.objects.get_or_create(
         landlord=landlord, renter=renter, year=year, month=month
     )
+
+    requested_components = _KIND_COMPONENTS[kind]
+    existing_components: set[str] = set()
+    for existing in billing_period.invoices.exclude(
+        status=Invoice.Status.VOID
+    ):
+        existing_components |= _KIND_COMPONENTS[existing.kind]
+    if requested_components & existing_components:
+        raise InvoiceAlreadyExistsError(
+            f'An invoice already covers '
+            f'{sorted(requested_components & existing_components)} for '
+            f'landlord {landlord.id}, renter {renter.id} in '
+            f'{year}-{month:02d}.'
+        )
+
     try:
         with transaction.atomic():
             invoice = Invoice.objects.create(
@@ -324,7 +366,7 @@ def generate_invoice(
         InvoiceLineItem.objects.create(
             invoice=invoice,
             description=f'Rent for {year}-{month:02d}',
-            amount=lease.current_monthly_rent,
+            amount=lease.rent_for_month(year, month),
             kind=InvoiceLineItem.Kind.RENT,
         )
 
@@ -346,17 +388,29 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
 
     Lets a landlord correct mileage logs for an already-generated
     invoice's billing month and pull the correction into the invoice
-    total, up until the renter pays it.
+    total, up until the renter pays it. Refreshes payment state first
+    (see `payments.services.refresh_payment_state`) so a payment that
+    landed since the page loaded is caught before the gas line item --
+    and its now-stale BTC quote -- gets rewritten out from under it.
 
     Args:
-        invoice: The invoice to recompute. Must not yet be paid or void.
+        invoice: The invoice to recompute. Must not yet be paid or void,
+            and its gas line item must not be frozen (paid or with a
+            payment in flight).
 
     Returns:
         The updated invoice.
 
     Raises:
-        InvoiceLockedError: If the invoice is already paid or void.
+        InvoiceLockedError: If the invoice is paid or void, or its gas
+            line item is frozen.
     """
+    # Imported here, not at module scope, to avoid a circular import:
+    # payments.services imports InvoiceLockedError from this module.
+    from payments.services import refresh_payment_state
+
+    invoice = refresh_payment_state(invoice)
+
     if invoice.status in (Invoice.Status.PAID, Invoice.Status.VOID):
         raise InvoiceLockedError(
             f'Invoice {invoice.id} is {invoice.status} and can no longer '
@@ -368,10 +422,111 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
     ).first()
     if gas_line_item is None:
         return invoice
+    if gas_line_item.id in invoice.frozen_line_item_ids:
+        raise InvoiceLockedError(
+            f'Invoice {invoice.id}\'s gas charge is already settled or '
+            'has a payment in flight and can no longer be recomputed.'
+        )
 
     period = invoice.billing_period
-    gas_line_item.amount = compute_period_gas_total(
+    new_amount = compute_period_gas_total(
         period.landlord, period.renter, period.year, period.month
     )
+    if new_amount == gas_line_item.amount:
+        return invoice
+
+    gas_line_item.amount = new_amount
     gas_line_item.save(update_fields=['amount'])
+
+    invoice.btc_address = ""
+    invoice.btc_amount_sats = None
+    invoice.btc_txid = ""
+    invoice.btc_watch_expires_at = None
+    invoice.remainder_owed_usd = None
+    invoice.btc_credited_txid = ""
+    invoice.btc_credited_usd = None
+    invoice.save(
+        update_fields=[
+            "btc_address",
+            "btc_amount_sats",
+            "btc_txid",
+            "btc_watch_expires_at",
+            "remainder_owed_usd",
+            "btc_credited_txid",
+            "btc_credited_usd",
+        ]
+    )
+    invoice.btc_line_items.clear()
+    invoice.line_items.filter(payment_lock=InvoiceLineItem.Lock.BTC).update(
+        payment_lock=''
+    )
     return invoice
+
+
+def gas_period_is_locked(
+    landlord: User, renter: User, year: int, month: int
+) -> bool:
+    """Checks whether a pair's gas charge for a month is already frozen.
+
+    Args:
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
+        year: The billing period's year.
+        month: The billing period's month (1-12).
+
+    Returns:
+        True if a billing period exists for the month and any of its
+        invoices has a gas line item that's paid or has a payment in
+        flight (see `Invoice.frozen_line_item_ids`).
+    """
+    # Imported here, not at module scope, to avoid a circular import:
+    # payments.services imports InvoiceLockedError from this module.
+    from payments.services import refresh_payment_state
+
+    billing_period = BillingPeriod.objects.filter(
+        landlord=landlord, renter=renter, year=year, month=month
+    ).first()
+    if billing_period is None:
+        return False
+
+    invoices = billing_period.invoices.filter(
+        line_items__kind=InvoiceLineItem.Kind.GAS
+    ).distinct().prefetch_related(
+        "line_items",
+        "settlements__line_items",
+        "btc_round_line_items",
+        "stripe_round_line_items",
+    )
+    for invoice in invoices:
+        invoice = refresh_payment_state(invoice)
+        gas_line_item = invoice.line_items.filter(
+            kind=InvoiceLineItem.Kind.GAS
+        ).first()
+        if gas_line_item is not None:
+            if gas_line_item.id in invoice.frozen_line_item_ids:
+                return True
+    return False
+
+
+def assert_gas_period_editable(
+    landlord: User, renter: User, on_date: date
+) -> None:
+    """Raises if a pair's gas charge for `on_date`'s month is frozen.
+
+    Args:
+        landlord: The landlord side of the pair.
+        renter: The renter side of the pair.
+        on_date: Any date within the month to check.
+
+    Raises:
+        InvoiceLockedError: If that month's gas charge is already
+            settled or has a payment in flight.
+    """
+    if gas_period_is_locked(
+        landlord, renter, on_date.year, on_date.month
+    ):
+        raise InvoiceLockedError(
+            f"The gas charge for {on_date.year}-{on_date.month:02d} is "
+            "already settled or has a payment in flight and its driven "
+            "days can no longer be edited."
+        )

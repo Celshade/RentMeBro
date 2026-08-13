@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
-import { formatUserWithEmail } from '../api/format';
+import {
+  formatBillingPeriod,
+  formatInvoiceKind,
+  formatUserWithEmail,
+} from '../api/format';
 import type {
   DrivenDayLog,
   GasPriceEntry,
@@ -9,13 +13,39 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
+import {
+  gasChargeIsFrozen,
+  paymentRails,
+  railCoverage,
+  railCoverageLabel,
+} from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
+import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
 import { LogDrivenDay } from './LogDrivenDay';
+
+/** How many invoices show before the list collapses behind "Show all". */
+const COLLAPSED_INVOICE_COUNT = 3;
+
+/** Mirrors the API's ordering so a locally-inserted invoice stays in place. */
+function sortInvoices(list: Invoice[]): Invoice[] {
+  return [...list].sort((a, b) => {
+    if (a.billing_period.year !== b.billing_period.year) {
+      return b.billing_period.year - a.billing_period.year;
+    }
+    if (a.billing_period.month !== b.billing_period.month) {
+      return b.billing_period.month - a.billing_period.month;
+    }
+    return (
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  });
+}
+
 
 /**
  * Manages a single lease: rent/renter summary, optional gas billing
@@ -47,6 +77,9 @@ export function LeaseDashboard({
     null
   );
   const [savingInvoiceEdit, setSavingInvoiceEdit] = useState(false);
+  const [invoiceEditError, setInvoiceEditError] = useState<string | null>(
+    null
+  );
   const [logDayTarget, setLogDayTarget] = useState<{
     dates: string[];
     logs: (DrivenDayLog | null)[];
@@ -57,6 +90,7 @@ export function LeaseDashboard({
     from: string;
     to: string;
   } | null>(null);
+  const [showAllInvoices, setShowAllInvoices] = useState(false);
 
   function toggleSelectedDate(date: string) {
     setSelectedDates((prev) => {
@@ -131,11 +165,21 @@ export function LeaseDashboard({
     onBackHandlerChange,
   ]);
 
+  useEffect(() => {
+    const editingInvoice = invoices.find(
+      (invoice) => invoice.id === editingInvoiceId
+    );
+    if (editingInvoice && gasChargeIsFrozen(editingInvoice)) {
+      setEditingInvoiceId(null);
+    }
+  }, [invoices, editingInvoiceId]);
+
   const lockedMonths = new Set(
     invoices
       .filter(
         (invoice) =>
-          invoice.kind !== 'rent_only' && invoice.id !== editingInvoiceId
+          invoice.kind !== 'rent_only' &&
+          (invoice.id !== editingInvoiceId || gasChargeIsFrozen(invoice))
       )
       .map(
         (invoice) =>
@@ -144,8 +188,33 @@ export function LeaseDashboard({
       )
   );
 
+  async function handleDeleteInvoice(invoice: Invoice) {
+    const confirmed = window.confirm(
+      `Delete the ${formatBillingPeriod(
+        invoice.billing_period.month,
+        invoice.billing_period.year
+      )} ${formatInvoiceKind(invoice.kind)} invoice? This cannot be undone.`
+    );
+    if (!confirmed) return;
+    await apiFetch(`/api/invoices/${invoice.id}/`, { method: 'DELETE' });
+    setInvoices(invoices.filter((inv) => inv.id !== invoice.id));
+  }
+
+  async function handleSendInvoice(invoiceId: number) {
+    const updated = await apiFetch<Invoice>(
+      `/api/invoices/${invoiceId}/send/`,
+      { method: 'POST' }
+    );
+    setInvoices(
+      invoices.map((invoice) =>
+        invoice.id === updated.id ? updated : invoice
+      )
+    );
+  }
+
   async function handleSaveInvoiceEdit(invoiceId: number) {
     setSavingInvoiceEdit(true);
+    setInvoiceEditError(null);
     try {
       const updated = await apiFetch<Invoice>(
         `/api/invoices/${invoiceId}/recompute/`,
@@ -157,6 +226,10 @@ export function LeaseDashboard({
         )
       );
       setEditingInvoiceId(null);
+    } catch (err) {
+      setInvoiceEditError(
+        err instanceof Error ? err.message : 'Failed to apply mileage.'
+      );
     } finally {
       setSavingInvoiceEdit(false);
     }
@@ -270,7 +343,7 @@ export function LeaseDashboard({
         {mileageProfile && (
           <section className="card">
             <div className="card__header">
-              <h2>Mileage log</h2>
+              <h2>Mileage Log</h2>
               {!logDayTarget && !bulkSelectMode && (
                 <span className="dashboard-toolbar__actions">
                   <button
@@ -279,13 +352,13 @@ export function LeaseDashboard({
                       setLogDayTarget({ dates: [''], logs: [null] })
                     }
                   >
-                    Log a day
+                    Log a Day
                   </button>
                   <button
                     type="button"
                     onClick={() => setBulkSelectMode(true)}
                   >
-                    Log multiple days
+                    Log Multiple Days
                   </button>
                 </span>
               )}
@@ -354,6 +427,7 @@ export function LeaseDashboard({
               pricedWeekRanges={priceEntries.map((entry) => ({
                 from: entry.effective_from,
                 to: entry.effective_to,
+                price_per_gallon: entry.price_per_gallon,
               }))}
               lockedMonths={lockedMonths}
             />
@@ -369,7 +443,7 @@ export function LeaseDashboard({
                 type="button"
                 onClick={() => setShowGenerateInvoice(true)}
               >
-                Generate invoice
+                Generate Invoice
               </button>
             )}
           </div>
@@ -377,37 +451,81 @@ export function LeaseDashboard({
             <GenerateInvoice
               renterId={lease.renter}
               onGenerated={(invoice) => {
-                setInvoices([invoice, ...invoices]);
+                setInvoices(sortInvoices([invoice, ...invoices]));
                 setShowGenerateInvoice(false);
               }}
+              onCancel={() => setShowGenerateInvoice(false)}
             />
           )}
           {invoices.length === 0 ? (
             <p className="empty-state">No invoices yet.</p>
           ) : (
             <ul className="list">
-              {invoices.map((invoice) => {
-                const month = String(invoice.billing_period.month).padStart(
-                  2,
-                  '0'
-                );
+              {(showAllInvoices || editingInvoiceId !== null
+                ? invoices
+                : invoices.slice(0, COLLAPSED_INVOICE_COUNT)
+              ).map((invoice) => {
                 const isLocked =
-                  invoice.status === 'paid' || invoice.status === 'void';
+                  invoice.status === 'paid' ||
+                  invoice.status === 'void' ||
+                  gasChargeIsFrozen(invoice);
                 const isEditing = editingInvoiceId === invoice.id;
+                const rails = paymentRails(invoice);
+                const coverage = railCoverage(invoice);
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
-                      {invoice.billing_period.year}-{month}
-                      {' — '}
-                      {invoice.kind} — ${invoice.total} — due{' '}
-                      {invoice.due_date}
+                      <span className="list-row__rails">
+                        {rails.btc && (
+                          <PaymentRailGlyph
+                            rail="btc"
+                            label={railCoverageLabel('btc', coverage.btc)}
+                          />
+                        )}
+                        {rails.card && (
+                          <PaymentRailGlyph
+                            rail="card"
+                            label={railCoverageLabel('card', coverage.card)}
+                          />
+                        )}
+                      </span>
+                      <strong>
+                        {formatBillingPeriod(
+                          invoice.billing_period.month,
+                          invoice.billing_period.year
+                        )}
+                        : {formatInvoiceKind(invoice.kind)}
+                      </strong>{' '}
+                      — ${invoice.total} — due {invoice.due_date}
                     </span>
                     <span className="renter-dashboard__invoice-actions">
                       <InvoiceStatusBadge
                         status={invoice.status}
                         isLate={invoice.is_late}
+                        remainderOwedUsd={invoice.remainder_owed_usd}
+                        overpaidUsd={invoice.btc_overpaid_usd}
                       />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
+                      {invoice.status === 'draft' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSendInvoice(invoice.id)}
+                        >
+                          Send invoice
+                        </button>
+                      )}
+                      {(invoice.status === 'draft' ||
+                        invoice.status === 'sent' ||
+                        invoice.status === 'void') &&
+                        invoice.settlements.length === 0 &&
+                        invoice.frozen_line_items.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteInvoice(invoice)}
+                          >
+                            Delete
+                          </button>
+                        )}
                       {!isLocked && invoice.kind !== 'rent_only' && (
                         isEditing ? (
                           <>
@@ -418,22 +536,28 @@ export function LeaseDashboard({
                                 handleSaveInvoiceEdit(invoice.id)
                               }
                             >
-                              Save changes
+                              Apply to invoice
                             </button>
                             <button
                               type="button"
                               disabled={savingInvoiceEdit}
-                              onClick={() => setEditingInvoiceId(null)}
+                              onClick={() => {
+                                setEditingInvoiceId(null);
+                                setInvoiceEditError(null);
+                              }}
                             >
                               Cancel
                             </button>
+                            {invoiceEditError && (
+                              <span role="alert">{invoiceEditError}</span>
+                            )}
                           </>
                         ) : (
                           <button
                             type="button"
                             onClick={() => setEditingInvoiceId(invoice.id)}
                           >
-                            Edit
+                            Correct mileage
                           </button>
                         )
                       )}
@@ -443,6 +567,17 @@ export function LeaseDashboard({
               })}
             </ul>
           )}
+          {invoices.length > COLLAPSED_INVOICE_COUNT &&
+            editingInvoiceId === null && (
+              <button
+                type="button"
+                onClick={() => setShowAllInvoices((show) => !show)}
+              >
+                {showAllInvoices
+                  ? 'Show fewer'
+                  : `Show all (${invoices.length})`}
+              </button>
+            )}
         </section>
       </div>
     </div>

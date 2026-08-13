@@ -103,6 +103,65 @@ class TestLease:
         )
         assert lease.pending_rent_revision == sooner
 
+    def test_rent_for_month_with_no_revisions_uses_base_rent(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        assert lease.rent_for_month(2024, 6) == Decimal('1000.00')
+
+    def test_rent_for_month_revision_effective_on_the_1st_applies(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 6, 1),
+        )
+        assert lease.rent_for_month(2024, 6) == Decimal('1100.00')
+
+    def test_rent_for_month_revision_effective_before_month_applies(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 5, 15),
+        )
+        assert lease.rent_for_month(2024, 6) == Decimal('1100.00')
+
+    def test_rent_for_month_revision_effective_after_month_ignored(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 6, 2),
+        )
+        assert lease.rent_for_month(2024, 6) == Decimal('1000.00')
+
+    def test_rent_for_month_uses_most_recent_qualifying_revision(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 1, 1),
+        )
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1200.00'),
+            effective_date=date(2024, 5, 1),
+        )
+        assert lease.rent_for_month(2024, 6) == Decimal('1200.00')
+
+    def test_rent_for_month_is_independent_of_todays_date(self):
+        """A back-dated or future-dated invoice bills the rent that was
+        actually in force for the billed month, not whatever is in
+        effect today.
+        """
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1200.00'),
+            effective_date=timezone.now().date() - timedelta(days=1),
+        )
+        past_year = timezone.now().date().year - 2
+        assert lease.rent_for_month(past_year, 1) == Decimal('1000.00')
+
     def test_str_includes_landlord_and_renter(self):
         lease = LeaseFactory()
         assert str(lease) == f'Lease({lease.landlord} -> {lease.renter})'
@@ -201,9 +260,17 @@ class TestInvoice:
         )
         assert invoice.is_late is False
 
-    def test_is_late_true_for_draft_invoice_past_due(self):
+    def test_is_late_false_for_draft_invoice_past_due(self):
+        """A draft was never sent, so it can't be late yet (#27)."""
         invoice = InvoiceFactory(
             status=Invoice.Status.DRAFT,
+            due_date=timezone.now().date() - timedelta(days=1),
+        )
+        assert invoice.is_late is False
+
+    def test_is_late_true_for_sent_invoice_past_due(self):
+        invoice = InvoiceFactory(
+            status=Invoice.Status.SENT,
             due_date=timezone.now().date() - timedelta(days=1),
         )
         assert invoice.is_late is True
@@ -220,6 +287,101 @@ class TestInvoice:
         assert str(invoice) == (
             f'Invoice({invoice.billing_period}, rent_only)'
         )
+
+
+class TestCardRoundLiveness:
+    def test_processing_is_live_even_an_hour_past_expiry(self):
+        """Only Stripe may end a `processing` round -- expiry never
+        resurrects it locally.
+        """
+        invoice = InvoiceFactory(
+            stripe_intent_status='processing',
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(hours=1)
+            ),
+        )
+        assert invoice.card_round_is_live is True
+
+    def test_requires_action_past_expiry_is_not_live(self):
+        invoice = InvoiceFactory(
+            stripe_intent_status='requires_action',
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(minutes=1)
+            ),
+        )
+        assert invoice.card_round_is_live is False
+
+    def test_requires_action_future_expiry_is_live(self):
+        invoice = InvoiceFactory(
+            stripe_intent_status='requires_action',
+            stripe_round_expires_at=(
+                timezone.now() + timedelta(minutes=1)
+            ),
+        )
+        assert invoice.card_round_is_live is True
+
+    def test_requires_action_null_expiry_is_live(self):
+        """A round the app hasn't polled yet must not unfreeze before
+        the first poll learns a real expiry.
+        """
+        invoice = InvoiceFactory(
+            stripe_intent_status='requires_action',
+            stripe_round_expires_at=None,
+        )
+        assert invoice.card_round_is_live is True
+
+    def test_requires_payment_method_future_expiry_is_not_live(self):
+        """A stale expiry left over from a prior round must not
+        resurrect a status that blocks nothing.
+        """
+        invoice = InvoiceFactory(
+            stripe_intent_status='requires_payment_method',
+            stripe_round_expires_at=(
+                timezone.now() + timedelta(minutes=1)
+            ),
+        )
+        assert invoice.card_round_is_live is False
+
+    def test_stale_true_for_processing_past_expiry(self):
+        invoice = InvoiceFactory(
+            stripe_intent_status='processing',
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(minutes=1)
+            ),
+        )
+        assert invoice.card_round_is_stale is True
+
+    def test_stale_true_for_requires_action_past_expiry(self):
+        invoice = InvoiceFactory(
+            stripe_intent_status='requires_action',
+            stripe_round_expires_at=(
+                timezone.now() - timedelta(minutes=1)
+            ),
+        )
+        assert invoice.card_round_is_stale is True
+
+    def test_stale_true_for_null_expiry(self):
+        invoice = InvoiceFactory(
+            stripe_intent_status='requires_action',
+            stripe_round_expires_at=None,
+        )
+        assert invoice.card_round_is_stale is True
+
+    def test_stale_false_while_live(self):
+        invoice = InvoiceFactory(
+            stripe_intent_status='processing',
+            stripe_round_expires_at=(
+                timezone.now() + timedelta(minutes=1)
+            ),
+        )
+        assert invoice.card_round_is_stale is False
+
+    def test_stale_false_for_terminal_status(self):
+        invoice = InvoiceFactory(
+            stripe_intent_status='succeeded',
+            stripe_round_expires_at=None,
+        )
+        assert invoice.card_round_is_stale is False
 
 
 class TestInvoiceLineItem:

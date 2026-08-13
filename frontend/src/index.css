@@ -4,12 +4,43 @@
   --bg: #fff;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --half-day: #b45309;
-  --half-day-bg: rgba(180, 83, 9, 0.12);
-  --half-day-border: rgba(180, 83, 9, 0.5);
+  --accent: #475569;
+  --accent-bg: rgba(71, 85, 105, 0.1);
+  --accent-border: rgba(71, 85, 105, 0.5);
+  --action: #2563eb;
+  --action-hover: #1d4ed8;
+  --stripe-purple: #aa3bff;
+  --stripe-purple-bg: rgba(170, 59, 255, 0.1);
+  --stripe-purple-border: rgba(170, 59, 255, 0.5);
+  --driven-full: #0891b2;
+  --driven-full-bg: rgba(8, 145, 178, 0.18);
+  --driven-full-border: rgba(8, 145, 178, 0.65);
+  --pending-rgb: 29, 78, 216;
+  --pending: rgb(var(--pending-rgb));
+  --pending-bg: rgba(var(--pending-rgb), 0.135);
+  --pending-border: rgba(var(--pending-rgb), 0.49);
+  --btc-orange: #f7931a;
+  --btc-orange-bg: rgba(247, 147, 26, 0.1);
+  --btc-orange-border: rgba(247, 147, 26, 0.5);
+  --other-ride: #334155;
+  --other-ride-bg: rgba(51, 65, 85, 0.115);
+  --other-ride-border: rgba(51, 65, 85, 0.42);
+  --late-rgb: 185, 28, 28;
+  --late: rgb(var(--late-rgb));
+  --late-bg: rgba(var(--late-rgb), 0.115);
+  --late-border: rgba(var(--late-rgb), 0.42);
+  --paid-rgb: 21, 128, 61;
+  --paid: rgb(var(--paid-rgb));
+  --paid-bg: rgba(var(--paid-rgb), 0.12);
+  --sent-rgb: 180, 83, 9;
+  --sent: rgb(var(--sent-rgb));
+  --sent-bg: rgba(var(--sent-rgb), 0.12);
+  --overpaid-rgb: 37, 99, 235;
+  --overpaid: rgb(var(--overpaid-rgb));
+  --overpaid-bg: rgba(var(--overpaid-rgb), 0.12);
+  --connected-rgb: 21, 128, 61;
+  --connected: rgb(var(--connected-rgb));
+  --connected-bg: rgba(var(--connected-rgb), 0.12);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -33,27 +64,111 @@
   }
 }
 
+/*
+ * Dark palette applies in two cases: the OS prefers dark and the user
+ * hasn't overridden the theme (:not([data-theme="light"]), guarding
+ * against the media query alone), or the user explicitly picked dark
+ * via the in-app toggle (:root[data-theme="dark"] below). Both blocks
+ * carry the same variable values so they stay in lockstep.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --text: #9ca3af;
     --text-h: #f3f4f6;
     --bg: #16171d;
     --border: #2e303a;
     --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --half-day: #fbbf24;
-    --half-day-bg: rgba(251, 191, 36, 0.15);
-    --half-day-border: rgba(251, 191, 36, 0.5);
+    --accent: #94a3b8;
+    --accent-bg: rgba(148, 163, 184, 0.15);
+    --accent-border: rgba(148, 163, 184, 0.5);
+    --action: #3b82f6;
+    --action-hover: #60a5fa;
+    --stripe-purple: #c084fc;
+    --stripe-purple-bg: rgba(192, 132, 252, 0.15);
+    --stripe-purple-border: rgba(192, 132, 252, 0.5);
+    --driven-full: #22d3ee;
+    --driven-full-bg: rgba(34, 211, 238, 0.25);
+    --driven-full-border: rgba(34, 211, 238, 0.7);
+    --pending-rgb: 96, 165, 250;
+    --pending: rgb(var(--pending-rgb));
+    --pending-bg: rgba(var(--pending-rgb), 0.19);
+    --pending-border: rgba(var(--pending-rgb), 0.53);
+    --btc-orange: #ffa733;
+    --btc-orange-bg: rgba(255, 167, 51, 0.15);
+    --btc-orange-border: rgba(255, 167, 51, 0.5);
+    --other-ride: #cbd5e1;
+    --other-ride-bg: rgba(203, 213, 225, 0.16);
+    --other-ride-border: rgba(203, 213, 225, 0.45);
+    --late-rgb: 248, 113, 113;
+    --late: rgb(var(--late-rgb));
+    --late-bg: rgba(var(--late-rgb), 0.16);
+    --late-border: rgba(var(--late-rgb), 0.45);
+    --paid-rgb: 74, 222, 128;
+    --paid: rgb(var(--paid-rgb));
+    --paid-bg: rgba(var(--paid-rgb), 0.15);
+    --sent-rgb: 251, 191, 36;
+    --overpaid-rgb: 96, 165, 250;
+    --connected-rgb: 74, 222, 128;
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    color-scheme: dark;
   }
 
-  #social .button-icon {
+  :root:not([data-theme='light']) #social .button-icon {
     filter: invert(1) brightness(2);
   }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --bg: #16171d;
+  --border: #2e303a;
+  --code-bg: #1f2028;
+  --accent: #94a3b8;
+  --accent-bg: rgba(148, 163, 184, 0.15);
+  --accent-border: rgba(148, 163, 184, 0.5);
+  --action: #3b82f6;
+  --action-hover: #60a5fa;
+  --stripe-purple: #c084fc;
+  --stripe-purple-bg: rgba(192, 132, 252, 0.15);
+  --stripe-purple-border: rgba(192, 132, 252, 0.5);
+  --driven-full: #22d3ee;
+  --driven-full-bg: rgba(34, 211, 238, 0.25);
+  --driven-full-border: rgba(34, 211, 238, 0.7);
+  --pending-rgb: 96, 165, 250;
+  --pending: rgb(var(--pending-rgb));
+  --pending-bg: rgba(var(--pending-rgb), 0.19);
+  --pending-border: rgba(var(--pending-rgb), 0.53);
+  --btc-orange: #ffa733;
+  --btc-orange-bg: rgba(255, 167, 51, 0.15);
+  --btc-orange-border: rgba(255, 167, 51, 0.5);
+  --other-ride: #cbd5e1;
+  --other-ride-bg: rgba(203, 213, 225, 0.16);
+  --other-ride-border: rgba(203, 213, 225, 0.45);
+  --late-rgb: 248, 113, 113;
+  --late: rgb(var(--late-rgb));
+  --late-bg: rgba(var(--late-rgb), 0.16);
+  --late-border: rgba(var(--late-rgb), 0.45);
+  --paid-rgb: 74, 222, 128;
+  --paid: rgb(var(--paid-rgb));
+  --paid-bg: rgba(var(--paid-rgb), 0.15);
+  --sent-rgb: 251, 191, 36;
+  --overpaid-rgb: 96, 165, 250;
+  --connected-rgb: 74, 222, 128;
+  --social-bg: rgba(47, 48, 58, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'] #social .button-icon {
+  filter: invert(1) brightness(2);
 }
 
 #root {
@@ -188,6 +303,23 @@ body {
   gap: 8px;
 }
 
+.badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-h);
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+}
+
+.badge--connected {
+  color: var(--connected);
+  background: var(--connected-bg);
+  border-color: var(--connected);
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -225,10 +357,27 @@ body {
   color: var(--text-h);
 }
 
+/* For tiles holding pills rather than text, which would otherwise sit
+   flush against each other (JSX drops the newline between them). */
+.stat-tile__value--badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .stat-tile__value--muted {
   font-size: 15px;
   font-weight: 400;
   color: var(--text);
+}
+
+/* For the Payment options tile's rail glyphs, which want more
+   breathing room than a row of pills. */
+.stat-tile__value--rails {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .stat-tile__meta {
@@ -247,6 +396,240 @@ body {
   border-radius: 12px;
   padding: 20px;
   box-shadow: var(--shadow);
+}
+
+.mark-paid-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.mark-paid-modal {
+  background: var(--bg);
+  width: min(360px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mark-paid-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mark-paid-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pay-invoice__mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.pay-invoice-btc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pay-invoice-btc__qr {
+  align-self: center;
+  width: 220px;
+  height: 220px;
+  image-rendering: pixelated;
+}
+
+.pay-invoice-btc .btc-blocks {
+  align-self: center;
+}
+
+.pay-invoice-btc__address {
+  font-family: monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.pay-invoice-btc__countdown {
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.pay-invoice-btc__expiry {
+  font-size: 12px;
+  color: var(--text);
+  margin-top: -4px;
+}
+
+.pay-invoice-btc__seen {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.pay-invoice-btc__seen-sub {
+  font-size: 14px;
+  color: var(--text);
+  margin-top: -6px;
+}
+
+.pay-invoice-btc__seen-note {
+  font-size: 13px;
+  color: var(--text);
+  max-width: 320px;
+}
+
+.pay-invoice-cashapp {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pay-invoice-cashapp__qr {
+  align-self: center;
+  width: 220px;
+  height: 220px;
+}
+
+.pay-invoice-cashapp__countdown {
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.btc-tx-link {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.btc-tx-link--pending {
+  color: var(--pending);
+}
+
+.btc-blocks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btc-blocks__block {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--pending-border);
+  background: var(--pending-bg);
+  animation: btc-block-fill 2.4s ease-in-out infinite;
+}
+
+.btc-blocks__block:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.btc-blocks__block:nth-child(2) {
+  animation-delay: 0.3s;
+}
+
+.btc-blocks__block:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+.btc-blocks__block:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: 4px;
+  height: 1px;
+  background: var(--pending-border);
+  transform: translateY(-50%);
+}
+
+.btc-blocks__block--pending {
+  border-style: dashed;
+  background: transparent;
+  animation: btc-block-pulse 2.4s ease-in-out infinite;
+  animation-delay: 0.9s;
+}
+
+.btc-blocks__block--confirmed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--paid);
+  border-style: solid;
+  border-color: var(--paid);
+  background: var(--paid-bg);
+  animation: btc-block-settle 0.4s ease-out 1 forwards;
+}
+
+@keyframes btc-block-fill {
+  0%,
+  100% {
+    background: transparent;
+  }
+  40%,
+  90% {
+    background: var(--pending-bg);
+  }
+}
+
+@keyframes btc-block-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    border-color: var(--pending-border);
+  }
+  50% {
+    opacity: 1;
+    border-color: var(--pending);
+  }
+}
+
+@keyframes btc-block-settle {
+  0% {
+    transform: scale(1);
+    background: var(--pending-bg);
+    border-color: var(--pending-border);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+    background: var(--paid-bg);
+    border-color: var(--paid);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btc-blocks__block,
+  .btc-blocks__block--pending,
+  .btc-blocks__block--confirmed {
+    animation: none;
+    background: var(--pending-bg);
+  }
+
+  .btc-blocks__block--pending {
+    background: transparent;
+  }
+
+  .btc-blocks__block--confirmed {
+    background: var(--paid-bg);
+  }
 }
 
 .dashboard-columns {
@@ -295,6 +678,146 @@ body {
 
 .list-row:last-child {
   border-bottom: none;
+}
+
+.payment-leg-summary {
+  font-size: 14px;
+  color: var(--text);
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+  margin-bottom: 12px;
+}
+
+.payment-leg-summary--btc {
+  border-left-color: var(--btc-orange);
+}
+
+.payment-leg-summary__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 4px;
+}
+
+.payment-leg-summary__items {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 4px;
+}
+
+.payment-leg-summary__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.payment-leg-summary__total {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.payment-leg-summary__note {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.pay-invoice__split-notice {
+  font-size: 14px;
+  color: var(--text);
+  border-left: 3px solid var(--btc-orange);
+  padding-left: 10px;
+  margin-bottom: 12px;
+}
+
+.pay-invoice__pay-full {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.pay-invoice__pay-full-note {
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.theme-toggle__option {
+  font-size: 13px;
+  padding: 2px 8px;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.theme-toggle__option:last-child {
+  border-right: none;
+}
+
+.theme-toggle__option[aria-pressed='true'] {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent-border);
+}
+
+.payment-lock-select {
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.btc-glyph {
+  color: var(--btc-orange);
+  font-weight: 700;
+  cursor: help;
+  margin-right: 4px;
+}
+
+/* Payment-rail symbols for the Payment options stat tile -- see
+   PaymentRailGlyph.tsx. */
+.rail-glyph {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  cursor: help;
+}
+
+.rail-glyph--btc {
+  color: var(--btc-orange);
+}
+
+.rail-glyph--card {
+  color: var(--stripe-purple);
+}
+
+.rail-glyph--cash,
+.rail-glyph--check,
+.rail-glyph--other {
+  color: var(--accent);
+}
+
+/* Fixed-width gutter so a line-item description stays aligned whether
+   its row shows one glyph or two. */
+.list-row__rails {
+  display: inline-flex;
+  gap: 4px;
+  min-width: 34px;
 }
 
 .empty-state {
@@ -407,14 +930,15 @@ button:hover {
 }
 
 button[type='submit'] {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--action);
+  border-color: var(--action);
   color: #fff;
   font-weight: 600;
 }
 
 button[type='submit']:hover {
-  opacity: 0.9;
+  background: var(--action-hover);
+  border-color: var(--action-hover);
 }
 
 button:disabled {
@@ -422,8 +946,107 @@ button:disabled {
   opacity: 0.5;
 }
 
+.button--stripe {
+  border-color: var(--stripe-purple-border);
+  color: var(--stripe-purple);
+}
+
+.button--stripe:hover {
+  background: var(--stripe-purple-bg);
+}
+
+.button--btc {
+  border-color: var(--btc-orange-border);
+  color: var(--btc-orange);
+}
+
+.button--btc:hover {
+  background: var(--btc-orange-bg);
+}
+
+button[type='submit'].button--btc {
+  background: transparent;
+  border-color: var(--btc-orange-border);
+  color: var(--btc-orange);
+}
+
+button[type='submit'].button--btc:hover {
+  background: var(--btc-orange-bg);
+}
+
+.btc-address-form {
+  max-width: 560px;
+}
+
+.btc-address-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.btc-address-row__field {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.btc-address-row__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btc-address-disclaimer {
+  font-size: 13px;
+  color: var(--text);
+  border-left: 3px solid var(--btc-orange);
+  padding-left: 10px;
+  margin-bottom: 12px;
+}
+
+.btc-price-hint {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.btc-price-hint__info {
+  cursor: help;
+  color: var(--btc-orange);
+}
+
+.btc-address-nudge-hint {
+  font-size: 13px;
+  color: var(--btc-orange);
+  margin: -4px 0 12px;
+}
+
+/* Draws attention to the Attach button when the landlord tried to
+   lock a charge to BTC with no address attached yet. */
+@keyframes attach-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--btc-orange-border);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--btc-orange-border);
+  }
+}
+
+.attach-nudge {
+  animation: attach-pulse 1s ease-in-out 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attach-nudge {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--btc-orange-border);
+  }
+}
+
 .driven-days-calendar {
   max-width: 360px;
+  margin-top: 16px;
 }
 
 .driven-days-calendar__header {
@@ -457,9 +1080,9 @@ button:disabled {
 }
 
 .driven-days-calendar__week-price-btn--priced {
-  color: #15803d;
-  border-color: #15803d;
-  background: rgba(21, 128, 61, 0.12);
+  color: var(--connected);
+  border-color: var(--connected);
+  background: var(--connected-bg);
 }
 
 .driven-days-calendar__weekday {
@@ -489,23 +1112,23 @@ button:disabled {
 }
 
 .driven-days-calendar__cell--full {
-  background: var(--accent-bg);
-  border-color: var(--accent-border);
+  background: var(--driven-full-bg);
+  border-color: var(--driven-full-border);
   font-weight: 600;
 }
 
 .driven-days-calendar__cell--full:hover {
-  border-color: var(--accent);
+  border-color: var(--driven-full);
 }
 
 .driven-days-calendar__cell--half {
-  background: var(--half-day-bg);
-  border-color: var(--half-day-border);
+  background: var(--pending-bg);
+  border-color: var(--pending-border);
   font-weight: 600;
 }
 
 .driven-days-calendar__cell--half:hover {
-  border-color: var(--half-day);
+  border-color: var(--pending);
 }
 
 .driven-days-calendar__cell--selected {
@@ -515,13 +1138,21 @@ button:disabled {
 }
 
 .driven-days-calendar__cell--day-off {
-  background: rgba(220, 38, 38, 0.1);
-  border-color: rgba(220, 38, 38, 0.4);
+  background: var(--late-bg);
+  border-color: var(--late-border);
+}
+
+.driven-days-calendar__cell--day-off:hover {
+  border-color: var(--late);
 }
 
 .driven-days-calendar__cell--other-ride {
-  background: rgba(37, 99, 235, 0.1);
-  border-color: rgba(37, 99, 235, 0.4);
+  background: var(--other-ride-bg);
+  border-color: var(--other-ride-border);
+}
+
+.driven-days-calendar__cell--other-ride:hover {
+  border-color: var(--other-ride);
 }
 
 .driven-days-calendar__fraction-bar {
@@ -532,11 +1163,50 @@ button:disabled {
 }
 
 .driven-days-calendar__cell--full .driven-days-calendar__fraction-bar {
-  background: var(--accent);
+  background: var(--driven-full);
 }
 
 .driven-days-calendar__cell--half .driven-days-calendar__fraction-bar {
-  background: var(--half-day);
+  background: var(--pending);
+  max-width: 35%;
+}
+
+.driven-days-calendar__cell--other-ride .driven-days-calendar__fraction-bar {
+  background: var(--other-ride);
+  width: 12%;
+  min-width: 12%;
+  max-width: 12%;
+}
+
+.driven-days-calendar__half-leg-glyph {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.driven-days-calendar__half-leg-glyph--drop_off {
+  color: var(--driven-full);
+}
+
+.driven-days-calendar__half-leg-glyph--pick_up {
+  color: var(--other-ride);
+}
+
+.calendar-key__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.calendar-key-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .calendar-key {
@@ -546,6 +1216,10 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 12px 16px;
+}
+
+.calendar-key-group .calendar-key {
+  margin-top: 0;
 }
 
 .calendar-key__entry {
@@ -561,7 +1235,8 @@ button:disabled {
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  border: 1px solid var(--border);
+  border-width: 1px;
+  border-style: solid;
 }
 
 h1,
@@ -619,13 +1294,23 @@ code {
 }
 
 .status-badge--paid {
-  color: #15803d;
-  background: rgba(21, 128, 61, 0.12);
+  color: var(--paid);
+  background: var(--paid-bg);
 }
 
 .status-badge--sent {
-  color: #b45309;
-  background: rgba(180, 83, 9, 0.12);
+  color: var(--sent);
+  background: var(--sent-bg);
+}
+
+.status-badge--pending {
+  color: var(--pending);
+  background: rgba(var(--pending-rgb), 0.12);
+}
+
+.status-badge--partial {
+  color: var(--btc-orange);
+  background: var(--btc-orange-bg);
 }
 
 .status-badge--draft {
@@ -640,39 +1325,25 @@ code {
 }
 
 .status-badge--late {
-  color: #b91c1c;
-  background: rgba(185, 28, 28, 0.12);
+  color: var(--late);
+  background: rgba(var(--late-rgb), 0.12);
 }
 
-@media (prefers-color-scheme: dark) {
-  .status-badge--paid {
-    color: #4ade80;
-    background: rgba(74, 222, 128, 0.15);
-  }
-
-  .status-badge--sent {
-    color: #fbbf24;
-    background: rgba(251, 191, 36, 0.15);
-  }
-
-  .status-badge--late {
-    color: #f87171;
-    background: rgba(248, 113, 113, 0.15);
-  }
-
-  .driven-days-calendar__cell--day-off {
-    background: rgba(248, 113, 113, 0.15);
-    border-color: rgba(248, 113, 113, 0.5);
-  }
-
-  .driven-days-calendar__cell--other-ride {
-    background: rgba(96, 165, 250, 0.15);
-    border-color: rgba(96, 165, 250, 0.5);
-  }
-
-  .driven-days-calendar__week-price-btn--priced {
-    color: #4ade80;
-    border-color: #4ade80;
-    background: rgba(74, 222, 128, 0.15);
-  }
+/* A BTC underpayment needs chasing; an invoice merely split across two
+   payment methods doesn't. Amber separates the shortfall from the
+   orange "Partially Paid" pill. */
+.status-badge--underpaid {
+  color: var(--sent);
+  background: var(--sent-bg);
+  cursor: help;
 }
+
+/* An overpayment is additive to "Paid," not a replacement -- blue
+   keeps it read as informational rather than alarming like the amber
+   underpaid pill. */
+.status-badge--overpaid {
+  color: var(--overpaid);
+  background: var(--overpaid-bg);
+  cursor: help;
+}
+
