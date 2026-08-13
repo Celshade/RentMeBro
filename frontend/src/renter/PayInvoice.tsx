@@ -263,7 +263,7 @@ export function PayInvoice({
   onPaid: () => void;
 }) {
   const hasBtcOption =
-    invoice.btc_address !== '' && Number(invoice.btc_owed_usd) > 0;
+    invoice.btc_address !== '' && Number(invoice.btc_full_owed_usd) > 0;
   const [mode, setMode] = useState<'cashapp' | 'btc'>(
     Number(invoice.btc_owed_usd) > 0 &&
       Number(invoice.stripe_portion_usd) === 0
@@ -356,7 +356,7 @@ export function PayInvoice({
       )}
       {mode === 'cashapp' && !cardOwesNothing ? (
         <>
-          {canPayFullByCard && (
+          {canPayFullByCard ? (
             <label className="pay-invoice__pay-full">
               <input
                 type="checkbox"
@@ -366,6 +366,10 @@ export function PayInvoice({
               Pay full balance by card instead -- $
               {formatMoney(invoice.card_full_owed_usd)}
             </label>
+          ) : (
+            <p className="pay-invoice__pay-full-note">
+              This covers the full balance.
+            </p>
           )}
           <PaymentLegSummary
             rail="card"
@@ -391,6 +395,7 @@ export function PayInvoice({
         <PayInvoiceBtc
           invoiceId={invoice.id}
           lineItems={invoice.line_items}
+          fullOwedUsd={invoice.btc_full_owed_usd}
           onPaid={onPaid}
         />
       )}
