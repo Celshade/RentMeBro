@@ -830,12 +830,15 @@ def set_line_item_payment_lock(
     """Sets (or clears, via '') a line item's payment-method lock.
 
     The one and only way a rail may be taken off a charge -- an
-    explicit landlord action. Locking to 'card' also drops the item
-    from `invoice.btc_line_items`, since leaving it there would show
-    the item as BTC-assigned while no rail is actually free to bill it
-    in BTC. Locking to 'btc' is the mirror: it adds the item to
-    `invoice.btc_line_items`, since locking a charge to BTC-only
-    implies BTC should quote it.
+    explicit landlord action. This is also the sole per-item control
+    over `invoice.btc_line_items` scope now: locking to 'card' drops
+    the item from scope, since leaving it there would show the item as
+    BTC-assigned while no rail is actually free to bill it in BTC.
+    Locking to 'btc' adds the item to scope, since locking a charge to
+    BTC-only implies BTC should quote it. Clearing the lock ('') also
+    adds the item to scope, but only when a BTC address is already
+    attached -- with no address, scope would be meaningless, and every
+    item defaults to '' on invoices that never touch BTC at all.
 
     Args:
         invoice: The invoice the line item belongs to.
@@ -870,7 +873,7 @@ def set_line_item_payment_lock(
     line_item.save(update_fields=["payment_lock"])
     if lock == InvoiceLineItem.Lock.CARD:
         invoice.btc_line_items.remove(line_item)
-    elif lock == InvoiceLineItem.Lock.BTC:
+    elif lock == InvoiceLineItem.Lock.BTC or invoice.btc_address:
         invoice.btc_line_items.add(line_item)
     return invoice
 
