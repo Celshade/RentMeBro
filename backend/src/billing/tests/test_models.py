@@ -103,6 +103,65 @@ class TestLease:
         )
         assert lease.pending_rent_revision == sooner
 
+    def test_rent_for_month_with_no_revisions_uses_base_rent(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        assert lease.rent_for_month(2024, 6) == Decimal('1000.00')
+
+    def test_rent_for_month_revision_effective_on_the_1st_applies(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 6, 1),
+        )
+        assert lease.rent_for_month(2024, 6) == Decimal('1100.00')
+
+    def test_rent_for_month_revision_effective_before_month_applies(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 5, 15),
+        )
+        assert lease.rent_for_month(2024, 6) == Decimal('1100.00')
+
+    def test_rent_for_month_revision_effective_after_month_ignored(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 6, 2),
+        )
+        assert lease.rent_for_month(2024, 6) == Decimal('1000.00')
+
+    def test_rent_for_month_uses_most_recent_qualifying_revision(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 1, 1),
+        )
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1200.00'),
+            effective_date=date(2024, 5, 1),
+        )
+        assert lease.rent_for_month(2024, 6) == Decimal('1200.00')
+
+    def test_rent_for_month_is_independent_of_todays_date(self):
+        """A back-dated or future-dated invoice bills the rent that was
+        actually in force for the billed month, not whatever is in
+        effect today.
+        """
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1200.00'),
+            effective_date=timezone.now().date() - timedelta(days=1),
+        )
+        past_year = timezone.now().date().year - 2
+        assert lease.rent_for_month(past_year, 1) == Decimal('1000.00')
+
     def test_str_includes_landlord_and_renter(self):
         lease = LeaseFactory()
         assert str(lease) == f'Lease({lease.landlord} -> {lease.renter})'
