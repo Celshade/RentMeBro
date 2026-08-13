@@ -13,7 +13,7 @@ renter for driving days at a per-week gas price.
 ![Stripe](https://img.shields.io/badge/Stripe-Cash%20App%20Pay-635BFF)
 ![Bitcoin](https://img.shields.io/badge/Bitcoin-on--chain-F7931A)
 ![Status](https://img.shields.io/badge/Status-Alpha-orange)
-![License](https://img.shields.io/badge/License-GPL--3.0%20%2B%20Commons%20Clause-purple)
+![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-purple)
 
 ## Status
 
@@ -21,10 +21,11 @@ Early-stage and not deployed. This is a portfolio/learning project first; use
 it at your own risk.
 
 Permitted uses under the [LICENSE](LICENSE):
-- ✅ Personal use / self-hosting for your own rentals
-- ✅ Education and portfolio use
+- ✅ Personal use / self-hosting for noncommercial purposes
+- ✅ Education, research, and portfolio use
 - ✅ Contributions back to this repository
-- ❌ Commercial use or selling derivatives
+- ❌ Any commercial use, including running RentMeBro (or a derivative)
+  as a paid or hosted service
 
 ## Features
 
@@ -172,14 +173,22 @@ Backend test suites live under `src/{accounts,billing,payments}/tests/`.
 
 ## License
 
-GPL-3.0 with a [Commons Clause](LICENSE):
+[PolyForm Noncommercial 1.0.0](LICENSE), source-available (not OSI-approved
+open source):
 
 - ✅ Study, modify, and contribute
-- ✅ Personal use and self-hosting for your own rentals
-- ❌ No commercial use or resale of derivatives
+- ✅ Personal use and self-hosting for noncommercial purposes
+- ❌ No commercial use — including selling derivatives or running
+  RentMeBro (or a fork) as a paid or hosted service
 - ℹ️ The creator and their business retain full commercial rights
 
-See [LICENSE](LICENSE) for the full text.
+See [LICENSE](LICENSE) for the full text and the attribution requirements
+that apply when redistributing.
+
+Select components with standalone reuse value (currently: the P2P Bitcoin
+payment-watching rail) are being considered for release under a separate
+FOSS (Free and Open Source Software) license in the future, once they can
+be cleanly separated from the rest of the codebase.
 
 ## Credits
 
