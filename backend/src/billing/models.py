@@ -525,6 +525,26 @@ class Invoice(models.Model):
         )
 
     @property
+    def btc_full_line_items(self) -> list['InvoiceLineItem']:
+        """Every BTC-payable item, ignoring the landlord's BTC scope.
+
+        Public alias for `_btc_candidates` -- lets a renter pay the
+        whole card-and-BTC-unscoped balance in one BTC round, mirroring
+        `card_full_line_items` on the other rail.
+        """
+        return self._btc_candidates
+
+    @property
+    def btc_full_owed_usd(self) -> Decimal:
+        """Every BTC-payable item's total -- the opt-in "pay it all by
+        BTC instead" figure, ignoring the landlord's BTC scope.
+        """
+        return sum(
+            (item.amount for item in self.btc_full_line_items),
+            start=Decimal(0),
+        )
+
+    @property
     def card_full_line_items(self) -> list['InvoiceLineItem']:
         """Every card-payable item, ignoring the BTC expectation.
 
