@@ -280,6 +280,16 @@ def default_invoice_due_date(year: int, month: int) -> date:
     return date(next_year, next_month, 5)
 
 
+# The line-item kinds each invoice kind bills, used to reject a new
+# invoice whose components overlap an already-generated one for the
+# same billing period.
+_KIND_COMPONENTS = {
+    Invoice.Kind.COMBINED: frozenset({'rent', 'gas'}),
+    Invoice.Kind.RENT_ONLY: frozenset({'rent'}),
+    Invoice.Kind.GAS_ONLY: frozenset({'gas'}),
+}
+
+
 @transaction.atomic
 def generate_invoice(
     landlord: User,
@@ -305,7 +315,9 @@ def generate_invoice(
 
     Raises:
         InvoiceAlreadyExistsError: If an invoice of this kind already
-            exists for the pair's billing period.
+            exists for the pair's billing period, or an existing
+            invoice already covers one of the components (rent/gas)
+            this kind would bill.
         FutureInvoiceKindError: If `kind` isn't rent_only for a month
             whose 1st hasn't happened yet -- gas totals for a future
             month aren't knowable, so only rent can be billed ahead.
@@ -323,6 +335,21 @@ def generate_invoice(
     billing_period, _ = BillingPeriod.objects.get_or_create(
         landlord=landlord, renter=renter, year=year, month=month
     )
+
+    requested_components = _KIND_COMPONENTS[kind]
+    existing_components: set[str] = set()
+    for existing in billing_period.invoices.exclude(
+        status=Invoice.Status.VOID
+    ):
+        existing_components |= _KIND_COMPONENTS[existing.kind]
+    if requested_components & existing_components:
+        raise InvoiceAlreadyExistsError(
+            f'An invoice already covers '
+            f'{sorted(requested_components & existing_components)} for '
+            f'landlord {landlord.id}, renter {renter.id} in '
+            f'{year}-{month:02d}.'
+        )
+
     try:
         with transaction.atomic():
             invoice = Invoice.objects.create(
