@@ -441,9 +441,13 @@ export function InvoiceDetail({
           </span>
           {invoice.is_split_payment && (
             <span className="stat-tile__meta">
-              <PaymentRailGlyph rail="btc" /> $
+              <PaymentRailGlyph rail="btc" label="Payable in Bitcoin" /> $
               {formatMoney(invoice.btc_portion_usd)} ·{' '}
-              <PaymentRailGlyph rail="card" /> $
+              <PaymentRailGlyph
+                rail="card"
+                label="Payable by card (Cash App)"
+              />{' '}
+              $
               {formatMoney(invoice.stripe_portion_usd)}
             </span>
           )}
@@ -497,8 +501,15 @@ export function InvoiceDetail({
               <li key={item.id} className="list-row">
                 <span>
                   <span className="list-row__rails">
-                    {itemRails.btc && <PaymentRailGlyph rail="btc" />}
-                    {itemRails.card && <PaymentRailGlyph rail="card" />}
+                    {itemRails.btc && (
+                      <PaymentRailGlyph rail="btc" label="Payable in Bitcoin" />
+                    )}
+                    {itemRails.card && (
+                      <PaymentRailGlyph
+                        rail="card"
+                        label="Payable by card (Cash App)"
+                      />
+                    )}
                   </span>
                   {item.description}
                 </span>
