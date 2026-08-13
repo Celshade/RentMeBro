@@ -15,6 +15,7 @@ from billing.tests.factories import (
     InvoiceFactory,
     InvoiceLineItemFactory,
     LeaseFactory,
+    LeaseRentRevisionFactory,
     MileageProfileFactory,
 )
 from payments.tests.factories import InvoiceSettlementFactory
@@ -336,6 +337,18 @@ class TestComputePeriodPreview:
         with pytest.raises(services.BillingConfigError):
             services.compute_period_preview(landlord, renter, 2024, 6)
 
+    def test_honors_revision_effective_for_the_billed_month(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 6, 1),
+        )
+        preview = services.compute_period_preview(
+            lease.landlord, lease.renter, 2024, 6
+        )
+        assert preview['rent'] == Decimal('1100.00')
+
 
 # --- default_invoice_due_date ---------------------------------------------
 
@@ -409,6 +422,37 @@ class TestGenerateInvoice:
         assert BillingPeriod.objects.filter(
             landlord=lease.landlord, renter=lease.renter, year=2024, month=6
         ).count() == 1
+
+    def test_rent_line_item_honors_revision_effective_for_billed_month(
+        self,
+    ):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1100.00'),
+            effective_date=date(2024, 6, 1),
+        )
+        invoice = services.generate_invoice(
+            lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
+        )
+        rent_item = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
+        assert rent_item.amount == Decimal('1100.00')
+
+    def test_rent_amount_matches_preview_for_same_month(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        LeaseRentRevisionFactory(
+            lease=lease,
+            new_monthly_rent=Decimal('1150.00'),
+            effective_date=date(2024, 5, 20),
+        )
+        preview = services.compute_period_preview(
+            lease.landlord, lease.renter, 2024, 6
+        )
+        invoice = services.generate_invoice(
+            lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
+        )
+        rent_item = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
+        assert preview['rent'] == rent_item.amount
 
     def test_explicit_due_date_overrides_default(self):
         lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
