@@ -554,6 +554,106 @@ class TestInvoiceViewSetCreate:
         assert response.status_code == 400
 
 
+class TestInvoiceViewSetCreateFutureMonths:
+    def test_rent_only_next_month_succeeds(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(
+            landlord=landlord, renter=renter, monthly_rent=Decimal('1000.00')
+        )
+        today = timezone.now().date()
+        next_year, next_month = (
+            (today.year + 1, 1) if today.month == 12
+            else (today.year, today.month + 1)
+        )
+        response = landlord_client.post(
+            reverse('invoice-list'),
+            {
+                'renter': renter.id,
+                'year': next_year,
+                'month': next_month,
+                'kind': 'rent_only',
+            },
+        )
+        assert response.status_code == 201
+
+    def test_combined_next_month_rejected(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        today = timezone.now().date()
+        next_year, next_month = (
+            (today.year + 1, 1) if today.month == 12
+            else (today.year, today.month + 1)
+        )
+        response = landlord_client.post(
+            reverse('invoice-list'),
+            {
+                'renter': renter.id,
+                'year': next_year,
+                'month': next_month,
+                'kind': 'combined',
+            },
+        )
+        assert response.status_code == 400
+
+    def test_gas_only_next_month_rejected(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        today = timezone.now().date()
+        next_year, next_month = (
+            (today.year + 1, 1) if today.month == 12
+            else (today.year, today.month + 1)
+        )
+        response = landlord_client.post(
+            reverse('invoice-list'),
+            {
+                'renter': renter.id,
+                'year': next_year,
+                'month': next_month,
+                'kind': 'gas_only',
+            },
+        )
+        assert response.status_code == 400
+
+    def test_more_than_twelve_months_ahead_rejected(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        today = timezone.now().date()
+        response = landlord_client.post(
+            reverse('invoice-list'),
+            {
+                'renter': renter.id,
+                'year': today.year + 2,
+                'month': today.month,
+                'kind': 'rent_only',
+            },
+        )
+        assert response.status_code == 400
+
+    def test_twelve_months_ahead_exactly_succeeds(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(
+            landlord=landlord, renter=renter, monthly_rent=Decimal('1000.00')
+        )
+        today = timezone.now().date()
+        boundary_month = today.month
+        boundary_year = today.year + 1
+        response = landlord_client.post(
+            reverse('invoice-list'),
+            {
+                'renter': renter.id,
+                'year': boundary_year,
+                'month': boundary_month,
+                'kind': 'rent_only',
+            },
+        )
+        assert response.status_code == 201
+
+
 class TestInvoiceViewSetRetrieve:
     """Fix 3: a pending BTC tx is checked on retrieve, so a payment
     that confirms after the renter's tab closes still gets settled.
