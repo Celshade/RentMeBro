@@ -10,26 +10,30 @@ import { RenterDashboard } from './renter/RenterDashboard';
 import { LandlordDashboard } from './landlord/LandlordDashboard';
 import { ThemeProvider, useTheme, type Theme } from './theme/ThemeContext';
 
-const THEME_CYCLE: Record<Theme, Theme> = {
-  system: 'light',
-  light: 'dark',
-  dark: 'system',
-};
-
-const THEME_LABEL: Record<Theme, string> = {
-  system: 'Theme: System',
-  light: 'Theme: Light',
-  dark: 'Theme: Dark',
-};
+const THEME_OPTIONS: { value: Theme; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
 
 
-/** Cycles system -> light -> dark -> system on each click. */
+/** A segmented control letting the user pick system/light/dark directly. */
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   return (
-    <button onClick={() => setTheme(THEME_CYCLE[theme])}>
-      {THEME_LABEL[theme]}
-    </button>
+    <div className="theme-toggle" role="group" aria-label="Theme">
+      {THEME_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className="theme-toggle__option"
+          aria-pressed={theme === option.value}
+          onClick={() => setTheme(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
