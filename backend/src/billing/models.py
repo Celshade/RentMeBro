@@ -349,6 +349,7 @@ class Invoice(models.Model):
     @property
     def is_late(self) -> bool:
         if self.status in (
+            Invoice.Status.DRAFT,
             Invoice.Status.PENDING,
             Invoice.Status.PARTIAL,
             Invoice.Status.UNDERPAID,
