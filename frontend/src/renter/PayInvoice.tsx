@@ -65,11 +65,23 @@ function loadStripeForAccount(stripeAccountId: string) {
  * @property client_secret - Stripe PaymentIntent client secret.
  * @property stripe_account_id - The landlord's connected Stripe account
  *   the PaymentIntent was created on.
+ * @property intent_status - The PaymentIntent's current Stripe status,
+ *   used to decide whether a cancel control should be offered before
+ *   the QR code exists.
  */
 interface PayIntentResponse {
   client_secret: string;
   stripe_account_id: string;
+  intent_status: string;
 }
+
+// Mirrors payments/services.py's _CANCELABLE_INTENT_STATUSES -- these
+// are the statuses cancel_card_payment_attempt will actually act on.
+const CANCELABLE_INTENT_STATUSES = new Set([
+  'requires_payment_method',
+  'requires_confirmation',
+  'requires_action',
+]);
 
 
 /**
@@ -157,7 +169,7 @@ function PayInvoiceCashApp({
     try {
       const result = await stripe.confirmCashappPayment(
         payIntent.client_secret,
-        {},
+        { payment_method: {} },
         { handleActions: false }
       );
       if (result.error) {
@@ -194,7 +206,19 @@ function PayInvoiceCashApp({
       .finally(() => setCancelling(false));
   }
 
-  if (fetchError) return <p role="alert">{fetchError}</p>;
+  if (fetchError) {
+    return (
+      <div>
+        <p role="alert">{fetchError}</p>
+        <button
+          type="button"
+          onClick={() => setRefreshKey((key) => key + 1)}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
   if (!payIntent || !stripe) return <p>Preparing payment...</p>;
 
   if (qrCode) {
@@ -227,11 +251,13 @@ function PayInvoiceCashApp({
         )}
         <p>Waiting for payment...</p>
         <button type="button" onClick={handleCancel} disabled={cancelling}>
-          {cancelling ? 'Cancelling...' : "Never mind — don't pay"}
+          {cancelling ? 'Cancelling...' : 'Cancel payment'}
         </button>
       </div>
     );
   }
+
+  const canCancel = CANCELABLE_INTENT_STATUSES.has(payIntent.intent_status);
 
   return (
     <div>
@@ -239,6 +265,11 @@ function PayInvoiceCashApp({
       <button type="button" onClick={handlePay} disabled={submitting}>
         {submitting ? 'Starting...' : 'Pay with Cash App'}
       </button>
+      {canCancel && (
+        <button type="button" onClick={handleCancel} disabled={cancelling}>
+          {cancelling ? 'Cancelling...' : 'Cancel payment'}
+        </button>
+      )}
     </div>
   );
 }
@@ -391,13 +422,18 @@ export function PayInvoice({
             onPaid={onPaid}
           />
         </>
-      ) : (
+      ) : hasBtcOption ? (
         <PayInvoiceBtc
           invoiceId={invoice.id}
           lineItems={invoice.line_items}
           fullOwedUsd={invoice.btc_full_owed_usd}
           onPaid={onPaid}
         />
+      ) : (
+        <p role="alert">
+          This invoice has no payment method available right now. Contact
+          your landlord.
+        </p>
       )}
     </div>
   );
