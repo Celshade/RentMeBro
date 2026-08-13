@@ -90,6 +90,7 @@ class InvoicePaymentIntentView(APIView):
                 'client_secret': intent.client_secret,
                 'publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
                 'stripe_account_id': landlord.stripe_account_id,
+                'intent_status': intent.status,
             }
         )
 
@@ -388,7 +389,12 @@ class InvoiceBtcWatchView(APIView):
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
         pay_full = bool(request.data.get('pay_full', False))
-        invoice = initiate_btc_watch(invoice, pay_full=pay_full)
+        try:
+            invoice = initiate_btc_watch(invoice, pay_full=pay_full)
+        except BtcNotEnabledError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+            )
         return _btc_status_response(invoice)
 
 
