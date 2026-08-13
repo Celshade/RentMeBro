@@ -230,8 +230,15 @@ export function PayInvoice({
             <li key={item.id} className="list-row">
               <span>
                 <span className="list-row__rails">
-                  {itemRails.btc && <PaymentRailGlyph rail="btc" />}
-                  {itemRails.card && <PaymentRailGlyph rail="card" />}
+                  {itemRails.btc && (
+                    <PaymentRailGlyph rail="btc" label="Payable in Bitcoin" />
+                  )}
+                  {itemRails.card && (
+                    <PaymentRailGlyph
+                      rail="card"
+                      label="Payable by card (Cash App)"
+                    />
+                  )}
                 </span>
                 {item.description}
               </span>
