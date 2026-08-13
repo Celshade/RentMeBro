@@ -29,7 +29,10 @@ class TestInvoicePaymentIntentView:
     ):
         mocker.patch(
             'payments.views.create_payment_intent_for_invoice',
-            return_value=Mock(client_secret='secret_123'),
+            return_value=Mock(
+                client_secret='secret_123',
+                status='requires_payment_method',
+            ),
         )
         api_client.force_authenticate(user=renter)
 
@@ -39,6 +42,7 @@ class TestInvoicePaymentIntentView:
 
         assert response.status_code == 200
         assert response.data['client_secret'] == 'secret_123'
+        assert response.data['intent_status'] == 'requires_payment_method'
 
     def test_other_user_gets_404_for_someone_elses_invoice(
         self, api_client, invoice
@@ -695,6 +699,25 @@ class TestInvoiceBtcWatchView:
         assert response.status_code == 200
         assert response.data["btc_watch_expires_at"] is not None
         assert response.data["line_items"] == [item.id]
+
+    def test_no_btc_address_returns_409(
+        self, api_client, renter, invoice, mocker
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        InvoiceLineItemFactory(invoice=invoice)
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+        invoice.status = Invoice.Status.SENT
+        invoice.save()
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-watch", args=[invoice.id])
+        )
+
+        assert response.status_code == 409
 
 
 class TestInvoiceBtcCheckView:
