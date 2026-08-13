@@ -169,7 +169,7 @@ function PayInvoiceCashApp({
     try {
       const result = await stripe.confirmCashappPayment(
         payIntent.client_secret,
-        { payment_method: {} },
+        { payment_method: {}, return_url: window.location.href },
         { handleActions: false }
       );
       if (result.error) {
