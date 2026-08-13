@@ -305,6 +305,9 @@ class InvoiceWeekSerializer(serializers.Serializer):
     days = InvoiceWeekDaySerializer(many=True)
 
 
+MAX_FUTURE_INVOICE_MONTHS = 12
+
+
 class InvoiceCreateSerializer(serializers.Serializer):
     renter = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(role=User.Role.RENTER)
@@ -316,6 +319,20 @@ class InvoiceCreateSerializer(serializers.Serializer):
 
     def validate_renter(self, renter: User) -> User:
         return _validate_is_own_renter(renter, self.context['request'].user)
+
+    def validate(self, attrs: dict) -> dict:
+        today = timezone.now().date()
+        latest_year, latest_month = today.year, today.month + (
+            MAX_FUTURE_INVOICE_MONTHS
+        )
+        latest_year += (latest_month - 1) // 12
+        latest_month = (latest_month - 1) % 12 + 1
+        if (attrs['year'], attrs['month']) > (latest_year, latest_month):
+            raise serializers.ValidationError(
+                f'Invoices can only be generated up to '
+                f'{MAX_FUTURE_INVOICE_MONTHS} months ahead.'
+            )
+        return attrs
 
 
 class PeriodPreviewSerializer(serializers.Serializer):
