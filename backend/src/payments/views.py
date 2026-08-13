@@ -17,6 +17,8 @@ from payments.services import (
     CardCancelNotAllowedError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
+    InvalidManualRailError,
+    ManualSettlementError,
     NothingLeftToChargeError,
     PaymentLockError,
     _invoice_usd_owed,
@@ -31,6 +33,7 @@ from payments.services import (
     handle_payment_intent_state_change,
     handle_payment_intent_succeeded,
     initiate_btc_watch,
+    mark_line_item_paid_manually,
     refresh_connect_status,
     set_line_item_payment_lock,
     start_connect_onboarding,
@@ -316,6 +319,39 @@ class InvoiceLineItemPaymentLockView(APIView):
                 {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
         except PaymentLockError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
+            )
+        return Response(InvoiceSerializer(invoice).data)
+
+
+class InvoiceLineItemMarkPaidView(APIView):
+    """Records a landlord-attested payment taken outside either rail.
+
+    Separate from `InvoiceLineItemPaymentLockView` on purpose -- this
+    is a manual settlement, not a rail lock.
+    """
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def post(self, request, invoice_id: int, line_item_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice,
+            id=invoice_id,
+            billing_period__landlord=request.user,
+        )
+        try:
+            invoice = mark_line_item_paid_manually(
+                invoice,
+                line_item_id,
+                request.data.get("rail", ""),
+                request.data.get("note", ""),
+            )
+        except (BtcLineItemError, InvalidManualRailError) as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
+            )
+        except ManualSettlementError as exc:
             return Response(
                 {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
             )
