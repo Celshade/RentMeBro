@@ -252,6 +252,13 @@ def mark_line_item_paid_manually(
     item becomes paid/frozen through the existing model with no
     special-casing.
 
+    A bare `payment_lock` with no round actually in flight doesn't
+    block this -- `frozen_line_item_ids` only freezes an item once a
+    BTC watch/txid or Stripe intent is live for it (see
+    `Invoice.in_flight_line_item_ids`), and a lock by itself is just a
+    rail preference, not money in motion. Only a live round can be
+    stranded by a manual settlement, so only a live round blocks one.
+
     Args:
         invoice: The invoice the line item belongs to.
         line_item_id: The line item being marked paid.

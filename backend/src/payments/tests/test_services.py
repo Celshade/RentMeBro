@@ -1545,6 +1545,16 @@ class TestMarkLineItemPaidManually:
         with pytest.raises(ManualSettlementError):
             mark_line_item_paid_manually(invoice, item.id, "cash")
 
+    def test_a_bare_lock_with_no_round_in_flight_does_not_block(self):
+        invoice = _onboarded_invoice()
+        item = InvoiceLineItemFactory(invoice=invoice, amount=Decimal("10"))
+        item.payment_lock = InvoiceLineItem.Lock.BTC
+        item.save()
+
+        result = mark_line_item_paid_manually(invoice, item.id, "cash")
+
+        assert item.id in result.paid_line_item_ids
+
 
 class TestCheckBtcPayment:
     def test_noop_when_paid(self):
