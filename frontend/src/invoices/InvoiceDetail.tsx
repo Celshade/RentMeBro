@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import {
   formatBillingPeriod,
@@ -13,6 +13,8 @@ import {
   isLineItemPaid,
   lineItemRails,
   paymentRails,
+  railCoverage,
+  railCoverageLabel,
   settlementForLineItem,
 } from '../api/invoice';
 import type {
@@ -226,8 +228,24 @@ function weeksToLogs(weeks: InvoiceWeek[]): DrivenDayLog[] {
     date: day.date,
     kind: day.kind,
     day_fraction: day.day_fraction,
+    half_leg: '',
     note: '',
   }));
+}
+
+
+/** Turns a billed week's price into the `pricedWeekRanges` shape the
+ * calendar's hover text expects. */
+function weeksToPricedRanges(
+  weeks: InvoiceWeek[]
+): { from: string; to: string | null; price_per_gallon: string }[] {
+  return weeks
+    .filter((week) => week.price_per_gallon !== null)
+    .map((week) => ({
+      from: week.week_start,
+      to: week.week_end,
+      price_per_gallon: week.price_per_gallon as string,
+    }));
 }
 
 
@@ -235,9 +253,16 @@ function weeksToLogs(weeks: InvoiceWeek[]): DrivenDayLog[] {
  * Full-page invoice detail: the mileage calendar for the billed month
  * alongside a week-by-week breakdown of miles driven and gas cost, for
  * both the renter and the landlord side of an invoice.
+ * @param props.onBackHandlerChange - Registers the header's "Back to
+ *   dashboard" handler for as long as this page is mounted.
  */
-export function InvoiceDetail() {
+export function InvoiceDetail({
+  onBackHandlerChange,
+}: {
+  onBackHandlerChange: (handler: (() => void) | null) => void;
+}) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [weeks, setWeeks] = useState<InvoiceWeek[]>([]);
@@ -278,6 +303,11 @@ export function InvoiceDetail() {
       setBtcSettings
     );
   }, [user]);
+
+  useEffect(() => {
+    onBackHandlerChange(() => navigate('/'));
+    return () => onBackHandlerChange(null);
+  }, [onBackHandlerChange, navigate]);
 
   /**
    * Adds or removes one line item from the set marked as BTC-billed,
@@ -363,6 +393,7 @@ export function InvoiceDetail() {
   // round -- once it settles the tx lives on the settlement row.
   const btcPending = invoice.btc_txid !== '';
   const rails = paymentRails(invoice);
+  const coverage = railCoverage(invoice);
 
   return (
     <div className="invoice-detail">
@@ -392,8 +423,18 @@ export function InvoiceDetail() {
         <div className="stat-tile">
           <span className="stat-tile__label">Payment options</span>
           <span className="stat-tile__value stat-tile__value--rails">
-            {rails.btc && <PaymentRailGlyph rail="btc" />}
-            {rails.card && <PaymentRailGlyph rail="card" />}
+            {rails.btc && (
+              <PaymentRailGlyph
+                rail="btc"
+                label={railCoverageLabel('btc', coverage.btc)}
+              />
+            )}
+            {rails.card && (
+              <PaymentRailGlyph
+                rail="card"
+                label={railCoverageLabel('card', coverage.card)}
+              />
+            )}
             {!rails.btc && !rails.card && (
               <span className="stat-tile__value--muted">—</span>
             )}
@@ -559,6 +600,7 @@ this invoice`}
             </div>
             <DrivenDaysCalendar
               logs={weeksToLogs(weeks)}
+              pricedWeekRanges={weeksToPricedRanges(weeks)}
               initialYear={invoice.billing_period.year}
               initialMonth={invoice.billing_period.month - 1}
             />
