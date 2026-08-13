@@ -88,7 +88,8 @@ class DrivenDayLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = DrivenDayLog
         fields = [
-            'id', 'landlord', 'renter', 'date', 'kind', 'day_fraction', 'note',
+            'id', 'landlord', 'renter', 'date', 'kind', 'day_fraction',
+            'half_leg', 'note',
         ]
 
     def validate_renter(self, renter: User) -> User:
@@ -98,6 +99,14 @@ class DrivenDayLogSerializer(serializers.ModelSerializer):
         kind = attrs.get('kind', getattr(self.instance, 'kind', None))
         if kind is not None and kind != DrivenDayLog.Kind.DRIVEN:
             attrs['day_fraction'] = Decimal('0')
+
+        day_fraction = attrs.get(
+            'day_fraction', getattr(self.instance, 'day_fraction', None)
+        )
+        if kind != DrivenDayLog.Kind.DRIVEN or (
+            day_fraction is not None and day_fraction >= 1
+        ):
+            attrs['half_leg'] = ''
 
         landlord = self.context['request'].user
         renter = attrs.get('renter', getattr(self.instance, 'renter', None))
