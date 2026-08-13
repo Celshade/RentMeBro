@@ -458,6 +458,25 @@ body {
   max-width: 320px;
 }
 
+.pay-invoice-cashapp {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pay-invoice-cashapp__qr {
+  align-self: center;
+  width: 220px;
+  height: 220px;
+}
+
+.pay-invoice-cashapp__countdown {
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
 .btc-tx-link {
   font-family: monospace;
   font-size: 13px;
