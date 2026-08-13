@@ -26,26 +26,30 @@ const GLYPH_ENTRIES: { glyph: string; glyphClass: string; label: string }[] = [
  * glyph means. */
 export function DrivenDaysCalendarKey() {
   return (
-    <ul className="calendar-key">
-      {SWATCH_ENTRIES.map((entry) => (
-        <li key={entry.label} className="calendar-key__entry">
-          <span className={`calendar-key__swatch ${entry.swatchClass}`} />
-          {entry.label}
-        </li>
-      ))}
-      {GLYPH_ENTRIES.map((entry) => (
-        <li key={entry.label} className="calendar-key__entry">
-          <span
-            className={
-              `calendar-key__glyph driven-days-calendar__half-leg-glyph ` +
-              entry.glyphClass
-            }
-          >
-            {entry.glyph}
-          </span>
-          {entry.label}
-        </li>
-      ))}
-    </ul>
+    <div className="calendar-key-group">
+      <ul className="calendar-key">
+        {SWATCH_ENTRIES.map((entry) => (
+          <li key={entry.label} className="calendar-key__entry">
+            <span className={`calendar-key__swatch ${entry.swatchClass}`} />
+            {entry.label}
+          </li>
+        ))}
+      </ul>
+      <ul className="calendar-key">
+        {GLYPH_ENTRIES.map((entry) => (
+          <li key={entry.label} className="calendar-key__entry">
+            <span
+              className={
+                `calendar-key__glyph driven-days-calendar__half-leg-glyph ` +
+                entry.glyphClass
+              }
+            >
+              {entry.glyph}
+            </span>
+            {entry.label}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
