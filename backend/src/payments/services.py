@@ -79,6 +79,14 @@ class BtcWatchCancelError(Exception):
     """The renter's live BTC quote can't be cancelled."""
 
 
+class InvalidManualRailError(Exception):
+    """The requested rail isn't a valid manual payment method."""
+
+
+class ManualSettlementError(Exception):
+    """The line item is already settled or has a payment in flight."""
+
+
 def resolve_settled_status(invoice: Invoice) -> str:
     """Works out an invoice's status from its settlements so far.
 
@@ -224,6 +232,67 @@ def _settle_btc_leg(
             quoted_usd=quoted_usd,
             received_usd=received_usd,
         )
+
+
+_MANUAL_RAILS = frozenset({
+    InvoiceSettlement.Rail.CASH,
+    InvoiceSettlement.Rail.CHECK,
+    InvoiceSettlement.Rail.OTHER,
+})
+
+
+def mark_line_item_paid_manually(
+    invoice: Invoice, line_item_id: int, rail: str, note: str = ''
+) -> Invoice:
+    """Records a landlord-attested payment taken outside either rail.
+
+    Creates one `InvoiceSettlement` covering just this item and
+    re-resolves the invoice status exactly like `_settle_btc_leg` --
+    `paid_line_item_ids` is derived purely from settlements, so the
+    item becomes paid/frozen through the existing model with no
+    special-casing.
+
+    Args:
+        invoice: The invoice the line item belongs to.
+        line_item_id: The line item being marked paid.
+        rail: 'cash', 'check', or 'other'.
+        note: An optional free-text note (e.g. a check number).
+
+    Returns:
+        The updated invoice.
+
+    Raises:
+        InvalidManualRailError: The rail isn't a manual one.
+        BtcLineItemError: The line item isn't part of this invoice.
+        ManualSettlementError: The item is already paid or has a
+            payment in flight.
+    """
+    if rail not in _MANUAL_RAILS:
+        raise InvalidManualRailError(f"'{rail}' isn't a manual payment rail.")
+    line_item = invoice.line_items.filter(id=line_item_id).first()
+    if line_item is None:
+        raise BtcLineItemError(
+            f"Line item {line_item_id} isn't part of this invoice."
+        )
+    if line_item.id in invoice.frozen_line_item_ids:
+        raise ManualSettlementError(
+            f"Line item {line_item_id} is already settled or has a "
+            "payment in flight and can't be marked paid manually."
+        )
+
+    with transaction.atomic():
+        settlement = InvoiceSettlement.objects.create(
+            invoice=invoice,
+            rail=rail,
+            amount_usd=line_item.amount,
+            note=note,
+            settled_at=timezone.now(),
+        )
+        settlement.line_items.set([line_item])
+        invoice._prefetched_objects_cache = {}
+        invoice.status = resolve_settled_status(invoice)
+        invoice.save(update_fields=["status"])
+    return invoice
 
 
 def _card_round_expiry(payment_intent: dict, now: datetime) -> datetime:
