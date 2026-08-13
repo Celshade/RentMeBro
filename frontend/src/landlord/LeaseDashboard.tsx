@@ -13,7 +13,12 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
-import { gasChargeIsFrozen, paymentRails } from '../api/invoice';
+import {
+  gasChargeIsFrozen,
+  paymentRails,
+  railCoverage,
+  railCoverageLabel,
+} from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
 import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
@@ -22,6 +27,10 @@ import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
 import { LeaseSettings } from './LeaseSettings';
 import { LogDrivenDay } from './LogDrivenDay';
+
+/** How many invoices show before the list collapses behind "Show all". */
+const COLLAPSED_INVOICE_COUNT = 3;
+
 
 /**
  * Manages a single lease: rent/renter summary, optional gas billing
@@ -63,6 +72,7 @@ export function LeaseDashboard({
     from: string;
     to: string;
   } | null>(null);
+  const [showAllInvoices, setShowAllInvoices] = useState(false);
 
   function toggleSelectedDate(date: string) {
     setSelectedDates((prev) => {
@@ -370,6 +380,7 @@ export function LeaseDashboard({
               pricedWeekRanges={priceEntries.map((entry) => ({
                 from: entry.effective_from,
                 to: entry.effective_to,
+                price_per_gallon: entry.price_per_gallon,
               }))}
               lockedMonths={lockedMonths}
             />
@@ -402,19 +413,33 @@ export function LeaseDashboard({
             <p className="empty-state">No invoices yet.</p>
           ) : (
             <ul className="list">
-              {invoices.map((invoice) => {
+              {(showAllInvoices || editingInvoiceId !== null
+                ? invoices
+                : invoices.slice(0, COLLAPSED_INVOICE_COUNT)
+              ).map((invoice) => {
                 const isLocked =
                   invoice.status === 'paid' ||
                   invoice.status === 'void' ||
                   gasChargeIsFrozen(invoice);
                 const isEditing = editingInvoiceId === invoice.id;
                 const rails = paymentRails(invoice);
+                const coverage = railCoverage(invoice);
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
                       <span className="list-row__rails">
-                        {rails.btc && <PaymentRailGlyph rail="btc" />}
-                        {rails.card && <PaymentRailGlyph rail="card" />}
+                        {rails.btc && (
+                          <PaymentRailGlyph
+                            rail="btc"
+                            label={railCoverageLabel('btc', coverage.btc)}
+                          />
+                        )}
+                        {rails.card && (
+                          <PaymentRailGlyph
+                            rail="card"
+                            label={railCoverageLabel('card', coverage.card)}
+                          />
+                        )}
                       </span>
                       <strong>
                         {formatBillingPeriod(
@@ -468,6 +493,17 @@ export function LeaseDashboard({
               })}
             </ul>
           )}
+          {invoices.length > COLLAPSED_INVOICE_COUNT &&
+            editingInvoiceId === null && (
+              <button
+                type="button"
+                onClick={() => setShowAllInvoices((show) => !show)}
+              >
+                {showAllInvoices
+                  ? 'Show fewer'
+                  : `Show all (${invoices.length})`}
+              </button>
+            )}
         </section>
       </div>
     </div>
