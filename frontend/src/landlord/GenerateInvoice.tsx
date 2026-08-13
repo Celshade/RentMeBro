@@ -11,6 +11,24 @@ function defaultDueDate(year: string, month: string): string {
   return `${dueYear}-${String(dueMonth).padStart(2, '0')}-05`;
 }
 
+/** Matches the backend's InvoiceCreateSerializer bound. */
+const MAX_FUTURE_INVOICE_MONTHS = 12;
+
+/** Whether year/month falls strictly after the current calendar month. */
+function isFutureMonth(year: string, month: string, now: Date): boolean {
+  const y = Number(year);
+  const m = Number(month);
+  const nowY = now.getFullYear();
+  const nowM = now.getMonth() + 1;
+  return y > nowY || (y === nowY && m > nowM);
+}
+
+/** The furthest year/month a landlord may generate an invoice for. */
+function maxAllowedMonth(now: Date): { year: number; month: number } {
+  const total = now.getFullYear() * 12 + now.getMonth() + MAX_FUTURE_INVOICE_MONTHS;
+  return { year: Math.floor(total / 12), month: (total % 12) + 1 };
+}
+
 /**
  * Landlord form to preview a period's charges and generate an invoice.
  * @param props.renterId - The renter to generate the invoice for.
@@ -31,9 +49,18 @@ export function GenerateInvoice({
   const [preview, setPreview] = useState<PeriodPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const future = isFutureMonth(year, month, now);
+  const maxAllowed = maxAllowedMonth(now);
+
   useEffect(() => {
     setDueDate(defaultDueDate(year, month));
   }, [year, month]);
+
+  useEffect(() => {
+    if (future && kind !== 'rent_only') {
+      setKind('rent_only');
+    }
+  }, [future, kind]);
 
   async function handlePreview() {
     setError(null);
@@ -81,6 +108,8 @@ export function GenerateInvoice({
         id="year"
         type="number"
         value={year}
+        min={now.getFullYear()}
+        max={maxAllowed.year}
         onChange={(e) => setYear(e.target.value)}
       />
       <label htmlFor="month">Month</label>
@@ -101,10 +130,20 @@ export function GenerateInvoice({
         value={kind}
         onChange={(e) => setKind(e.target.value as InvoiceKind)}
       >
-        <option value="combined">Rent + gas (combined)</option>
+        <option value="combined" disabled={future}>
+          Rent + gas (combined)
+        </option>
         <option value="rent_only">Rent only</option>
-        <option value="gas_only">Gas only</option>
+        <option value="gas_only" disabled={future}>
+          Gas only
+        </option>
       </select>
+      {future && (
+        <p>
+          Future months can only be billed rent-only, up to{' '}
+          {MONTH_NAMES[maxAllowed.month - 1]} {maxAllowed.year}.
+        </p>
+      )}
       <label htmlFor="due_date">Due date</label>
       <input
         id="due_date"
