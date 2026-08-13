@@ -82,8 +82,7 @@ export function GenerateInvoice({
     event.preventDefault();
     const confirmed = window.confirm(
       `Generate the ${MONTH_NAMES[Number(month) - 1]} ${year} invoice? ` +
-        'Make sure the mileage log for that month is accurate first — ' +
-        'this cannot be undone.'
+        'Make sure the mileage log for that month is accurate first.'
     );
     if (!confirmed) return;
     setError(null);
