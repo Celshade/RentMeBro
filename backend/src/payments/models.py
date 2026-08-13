@@ -20,6 +20,9 @@ class InvoiceSettlement(models.Model):
     class Rail(models.TextChoices):
         BTC = 'btc', 'Bitcoin'
         CARD = 'card', 'Card / Cash App'
+        CASH = 'cash', 'Cash'
+        CHECK = 'check', 'Check'
+        OTHER = 'other', 'Other'
 
     invoice = models.ForeignKey(
         'billing.Invoice', on_delete=models.CASCADE,
@@ -40,6 +43,7 @@ class InvoiceSettlement(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True
     )
     stripe_payment_intent_id = models.CharField(max_length=255, blank=True)
+    note = models.CharField(max_length=255, blank=True)
     settled_at = models.DateTimeField()
 
     class Meta:
