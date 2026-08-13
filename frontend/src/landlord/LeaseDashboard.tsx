@@ -188,6 +188,18 @@ export function LeaseDashboard({
       )
   );
 
+  async function handleDeleteInvoice(invoice: Invoice) {
+    const confirmed = window.confirm(
+      `Delete the ${formatBillingPeriod(
+        invoice.billing_period.month,
+        invoice.billing_period.year
+      )} ${formatInvoiceKind(invoice.kind)} invoice? This cannot be undone.`
+    );
+    if (!confirmed) return;
+    await apiFetch(`/api/invoices/${invoice.id}/`, { method: 'DELETE' });
+    setInvoices(invoices.filter((inv) => inv.id !== invoice.id));
+  }
+
   async function handleSendInvoice(invoiceId: number) {
     const updated = await apiFetch<Invoice>(
       `/api/invoices/${invoiceId}/send/`,
@@ -502,6 +514,18 @@ export function LeaseDashboard({
                           Send invoice
                         </button>
                       )}
+                      {(invoice.status === 'draft' ||
+                        invoice.status === 'sent' ||
+                        invoice.status === 'void') &&
+                        invoice.settlements.length === 0 &&
+                        invoice.frozen_line_items.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteInvoice(invoice)}
+                          >
+                            Delete
+                          </button>
+                        )}
                       {!isLocked && invoice.kind !== 'rent_only' && (
                         isEditing ? (
                           <>
