@@ -1347,14 +1347,3 @@ code {
   cursor: help;
 }
 
-/* A landlord-attested settlement taken outside the btc/card rails --
-   named rather than shown as a bare glyph so it doesn't read as just
-   another payable-by icon next to the ones above it. */
-.status-badge--manual {
-  gap: 4px;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 1px solid var(--accent-border);
-  cursor: help;
-}
-

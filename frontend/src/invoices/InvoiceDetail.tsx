@@ -562,26 +562,26 @@ export function InvoiceDetail({
                     <BtcTxLink txid={itemTxid} pending={!settlement} />
                   )}
                   {settlement &&
-                    ['cash', 'check', 'other'].includes(settlement.rail) && (
-                      <span
-                        className="status-badge status-badge--manual"
-                        title={
-                          settlement.note !== ''
-                            ? settlement.note
-                            : undefined
-                        }
-                      >
-                        <span aria-hidden="true">
-                          {MANUAL_RAIL_EMOJI[
-                            settlement.rail as 'cash' | 'check' | 'other'
-                          ]}
+                    ['cash', 'check', 'other'].includes(settlement.rail) &&
+                    (() => {
+                      const manualRail = settlement.rail as
+                        | 'cash'
+                        | 'check'
+                        | 'other';
+                      const manualLabel =
+                        settlement.note !== ''
+                          ? `Paid by ${MANUAL_RAIL_LABEL[manualRail]} — ${settlement.note}`
+                          : `Paid by ${MANUAL_RAIL_LABEL[manualRail]}`;
+                      return (
+                        <span
+                          className="rail-glyph"
+                          title={manualLabel}
+                          aria-label={manualLabel}
+                        >
+                          {MANUAL_RAIL_EMOJI[manualRail]}
                         </span>
-                        Paid &middot;{' '}
-                        {MANUAL_RAIL_LABEL[
-                          settlement.rail as 'cash' | 'check' | 'other'
-                        ]}
-                      </span>
-                    )}
+                      );
+                    })()}
                   {canMarkPaid && !frozen && (
                     <button type="button" onClick={() => openMarkPaid(item.id)}>
                       Mark paid
