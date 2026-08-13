@@ -243,13 +243,21 @@ export function PayInvoiceBtc({
 
   const errorBanner = error && <p role="alert">{error}</p>;
 
-  if (btcStatus.status === 'paid' || Number(btcStatus.btc_owed_usd) === 0) {
+  if (btcStatus.status === 'paid') {
     return (
       <div className="pay-invoice-btc">
         {errorBanner}
         <BtcBroadcastBlocks confirmed />
         <p className="pay-invoice-btc__seen">Payment confirmed</p>
         <BtcTxLink txid={lastTxidRef.current} />
+      </div>
+    );
+  }
+  if (Number(btcStatus.btc_owed_usd) === 0) {
+    return (
+      <div className="pay-invoice-btc">
+        {errorBanner}
+        <p>Nothing is currently owed via Bitcoin on this invoice.</p>
       </div>
     );
   }
@@ -395,7 +403,7 @@ export function PayInvoiceBtc({
       </p>
       <p>{statusCopy(btcStatus, false)}</p>
       <button type="button" onClick={cancelQuote}>
-        Cancel quote
+        Cancel payment
       </button>
     </div>
   );
