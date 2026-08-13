@@ -430,6 +430,7 @@ export function LeaseDashboard({
                 setInvoices(sortInvoices([invoice, ...invoices]));
                 setShowGenerateInvoice(false);
               }}
+              onCancel={() => setShowGenerateInvoice(false)}
             />
           )}
           {invoices.length === 0 ? (
