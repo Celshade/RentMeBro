@@ -129,6 +129,11 @@ export interface Lease {
 export type DrivenDayLogKind = 'driven' | 'day_off' | 'other_ride';
 
 
+/** Which leg of a half day was driven, or '' when unset/not applicable
+ * -- always '' when the log isn't a half-day 'driven' entry. */
+export type DrivenDayHalfLeg = '' | 'drop_off' | 'pick_up';
+
+
 /**
  * @property id - Primary key.
  * @property landlord - User id of the landlord who logged this day.
@@ -138,6 +143,8 @@ export type DrivenDayLogKind = 'driven' | 'day_off' | 'other_ride';
  *   by someone else.
  * @property day_fraction - Fraction of a full day driven (e.g. "0.50").
  *   Always "0.00" when kind isn't 'driven'.
+ * @property half_leg - Which leg of a half day was driven, or '' if
+ *   unknown or not applicable (a full day, or kind isn't 'driven').
  * @property note - Optional free-text note.
  */
 export interface DrivenDayLog {
@@ -147,6 +154,7 @@ export interface DrivenDayLog {
   date: string;
   kind: DrivenDayLogKind;
   day_fraction: string;
+  half_leg: DrivenDayHalfLeg;
   note: string;
 }
 
