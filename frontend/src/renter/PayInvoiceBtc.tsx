@@ -91,15 +91,20 @@ function statusCopy(
  * @param props.invoiceId - The invoice being paid.
  * @param props.lineItems - The invoice's full line-item list, passed
  *   through to `PaymentLegSummary` to look up scoped items.
+ * @param props.fullOwedUsd - Every BTC-payable item's total, as a
+ *   decimal string, ignoring the landlord's BTC scope -- the opt-in
+ *   "pay it all by BTC instead" figure.
  * @param props.onPaid - Called once the whole invoice is paid.
  */
 export function PayInvoiceBtc({
   invoiceId,
   lineItems,
+  fullOwedUsd,
   onPaid,
 }: {
   invoiceId: number;
   lineItems: InvoiceLineItem[];
+  fullOwedUsd: string;
   onPaid: () => void;
 }) {
   const [btcStatus, setBtcStatus] = useState<BtcInvoiceStatus | null>(null);
@@ -108,6 +113,7 @@ export function PayInvoiceBtc({
   // the default idle view from a real price outage, which shows once a
   // requested quote comes back still amount-less.
   const [quoteRequested, setQuoteRequested] = useState(false);
+  const [payFull, setPayFull] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const onPaidRef = useRef(onPaid);
   onPaidRef.current = onPaid;
@@ -133,10 +139,11 @@ export function PayInvoiceBtc({
     setQuoteRequested(true);
     apiFetch<BtcInvoiceStatus>(`/api/invoices/${invoiceId}/btc/watch/`, {
       method: 'POST',
+      body: { pay_full: payFull },
     })
       .then(setBtcStatus)
       .catch(() => setError('Could not start watching for payment.'));
-  }, [invoiceId]);
+  }, [invoiceId, payFull]);
 
   const cancelQuote = useCallback(() => {
     setError(null);
@@ -274,6 +281,8 @@ export function PayInvoiceBtc({
     // That's still useful context: it's why there's a remainder left
     // to quote instead of a fresh invoice with nothing paid yet.
     const priorRoundSettled = btcStatus.btc_settled_at !== null;
+    const canPayFullByBtc =
+      Number(fullOwedUsd) > Number(btcStatus.btc_owed_usd);
     return (
       <div className="pay-invoice-btc">
         {errorBanner}
@@ -289,6 +298,21 @@ export function PayInvoiceBtc({
           totalUsd={btcStatus.btc_owed_usd}
           heading="Available to pay via Bitcoin"
         />
+        {canPayFullByBtc ? (
+          <label className="pay-invoice__pay-full">
+            <input
+              type="checkbox"
+              checked={payFull}
+              onChange={(e) => setPayFull(e.target.checked)}
+            />
+            Pay full balance by BTC instead -- $
+            {formatMoney(fullOwedUsd)}
+          </label>
+        ) : (
+          <p className="pay-invoice__pay-full-note">
+            This covers the full balance.
+          </p>
+        )}
         {quoteRequested ? (
           <>
             <p>BTC price is temporarily unavailable.</p>
