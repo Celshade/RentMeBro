@@ -351,7 +351,8 @@ class InvoiceBtcWatchView(APIView):
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
-        invoice = initiate_btc_watch(invoice)
+        pay_full = bool(request.data.get('pay_full', False))
+        invoice = initiate_btc_watch(invoice, pay_full=pay_full)
         return _btc_status_response(invoice)
 
 
