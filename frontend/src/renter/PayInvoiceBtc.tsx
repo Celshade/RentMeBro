@@ -287,6 +287,7 @@ export function PayInvoiceBtc({
           lineItems={lineItems}
           itemIds={btcStatus.line_items}
           totalUsd={btcStatus.btc_owed_usd}
+          heading="Available to pay via Bitcoin"
         />
         {quoteRequested ? (
           <>
