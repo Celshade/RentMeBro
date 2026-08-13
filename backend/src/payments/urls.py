@@ -11,6 +11,7 @@ from payments.views import (
     InvoiceBtcCheckView,
     InvoiceBtcStatusView,
     InvoiceBtcWatchView,
+    InvoiceLineItemMarkPaidView,
     InvoiceLineItemPaymentLockView,
     InvoicePaymentCancelView,
     InvoicePaymentIntentView,
@@ -86,5 +87,11 @@ urlpatterns = [
         "payment-lock/",
         InvoiceLineItemPaymentLockView.as_view(),
         name="invoice-line-item-payment-lock",
+    ),
+    path(
+        "invoices/<int:invoice_id>/line-items/<int:line_item_id>/"
+        "mark-paid/",
+        InvoiceLineItemMarkPaidView.as_view(),
+        name="invoice-line-item-mark-paid",
     ),
 ]
