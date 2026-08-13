@@ -673,6 +673,29 @@ class TestInvoiceBtcWatchView:
         assert response.status_code == 200
         assert response.data["btc_watch_expires_at"] is not None
 
+    def test_pay_full_quotes_unassigned_item(
+        self, api_client, renter, invoice, mocker
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        item = InvoiceLineItemFactory(invoice=invoice)
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+        invoice.status = Invoice.Status.SENT
+        invoice.btc_address = "bc1qexample"
+        invoice.save()
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-watch", args=[invoice.id]),
+            {"pay_full": True},
+        )
+
+        assert response.status_code == 200
+        assert response.data["btc_watch_expires_at"] is not None
+        assert response.data["line_items"] == [item.id]
+
 
 class TestInvoiceBtcCheckView:
     def test_requires_authentication(self, api_client, invoice):
