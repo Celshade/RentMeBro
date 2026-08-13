@@ -344,6 +344,66 @@ class TestPayFull:
         }
 
 
+class TestPayFullBtcOwedUsd:
+    """`btc_owed_usd` must track a live pay-full round's actual total,
+    not just the (possibly empty) scoped portion -- the bug behind a
+    renter's "Pay with BTC" panel showing "Nothing is currently owed"
+    on an invoice that had an address attached but nothing scoped.
+    """
+
+    def test_owed_usd_reflects_full_total_with_nothing_scoped(
+        self, mocker
+    ):
+        invoice, _gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=None
+        )
+        assert invoice.btc_portion_usd == Decimal("0.00")
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        invoice = initiate_btc_watch(invoice, pay_full=True)
+
+        assert invoice.btc_owed_usd == Decimal("1200.00")
+
+    def test_underpayment_credits_against_full_total_not_zero(
+        self, mocker
+    ):
+        invoice, _gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=None
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+        invoice = initiate_btc_watch(invoice, pay_full=True)
+        invoice.btc_watch_expires_at = timezone.now() - timedelta(minutes=10)
+        invoice.save(update_fields=["btc_watch_expires_at"])
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "short-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {"confirmed": False},
+                }
+            ],
+            first_seen={"short-tx": int(timezone.now().timestamp())},
+        )
+
+        invoice = initiate_btc_watch(invoice)
+
+        assert invoice.status == Invoice.Status.UNDERPAID
+        assert invoice.btc_credited_usd == Decimal("50.00")  # 0.001 @ $50k
+        assert invoice.remainder_owed_usd == Decimal("1150.00")
+
+
 class TestFreezeChecks:
     def test_rejects_touching_a_paid_item(self, mocker):
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
