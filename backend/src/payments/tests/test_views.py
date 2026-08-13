@@ -1096,3 +1096,120 @@ class TestInvoiceLineItemPaymentLockView:
         )
 
         assert response.status_code == 200
+
+
+class TestInvoiceLineItemMarkPaidView:
+    def test_requires_landlord(self, api_client, renter, invoice):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-mark-paid",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"rail": "cash"},
+        )
+
+        assert response.status_code == 403
+
+    def test_other_landlord_gets_404(self, api_client, invoice):
+        from accounts.tests.factories import LandlordFactory
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        other_landlord = LandlordFactory()
+        api_client.force_authenticate(user=other_landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-mark-paid",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"rail": "cash"},
+        )
+
+        assert response.status_code == 404
+
+    def test_owning_landlord_marks_paid_and_returns_full_invoice(
+        self, api_client, landlord, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-mark-paid",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"rail": "cash", "note": "Handed over at the door"},
+        )
+
+        assert response.status_code == 200
+        assert response.data["id"] == invoice.id
+        assert line_item.id in response.data["paid_line_items"]
+        settlement = response.data["settlements"][0]
+        assert settlement["rail"] == "cash"
+
+    def test_invalid_rail_returns_400(self, api_client, landlord, invoice):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-mark-paid",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"rail": "btc"},
+        )
+
+        assert response.status_code == 400
+
+    def test_stray_line_item_returns_400(
+        self, api_client, landlord, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        other_invoice_item = InvoiceLineItemFactory()
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-mark-paid",
+                args=[invoice.id, other_invoice_item.id],
+            ),
+            data={"rail": "cash"},
+        )
+
+        assert response.status_code == 400
+
+    def test_already_paid_item_returns_409(
+        self, api_client, landlord, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        line_item = InvoiceLineItemFactory(invoice=invoice)
+        api_client.force_authenticate(user=landlord)
+        api_client.post(
+            reverse(
+                "invoice-line-item-mark-paid",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"rail": "cash"},
+        )
+
+        response = api_client.post(
+            reverse(
+                "invoice-line-item-mark-paid",
+                args=[invoice.id, line_item.id],
+            ),
+            data={"rail": "check"},
+        )
+
+        assert response.status_code == 409
