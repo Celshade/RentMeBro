@@ -291,6 +291,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
                     if settlement.overpaid_usd is not None
                     else None
                 ),
+                "note": settlement.note,
                 "settled_at": settlement.settled_at.isoformat(),
             }
             for settlement in obj.settlements.all()
