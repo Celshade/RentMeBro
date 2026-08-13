@@ -244,6 +244,61 @@ class TestPaymentLocks:
             set_line_item_payment_lock(invoice, gas.id, "card")
 
 
+class TestDetachClearsRoundState:
+    def test_detach_clears_round_fields_but_not_settled_at(self, mocker):
+        """A lapsed, never-paid quote leaves round fields behind with
+        no settlement and no frozen item -- detach must still clear
+        them, and must leave any earlier settlement stamp alone.
+        """
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice.btc_settled_at = timezone.now() - timedelta(days=1)
+        invoice.save(update_fields=["btc_settled_at"])
+        settled_at = invoice.btc_settled_at
+
+        invoice = attach_btc_payment(
+            invoice, "bc1qexample", line_item_ids=[gas.id]
+        )
+        invoice.btc_watch_expires_at = timezone.now() - timedelta(minutes=5)
+        invoice.btc_amount_sats = 123456
+        invoice.remainder_owed_usd = Decimal("10.00")
+        invoice.save(
+            update_fields=[
+                "btc_watch_expires_at", "btc_amount_sats",
+                "remainder_owed_usd",
+            ]
+        )
+        invoice.btc_round_line_items.set([gas])
+
+        invoice = attach_btc_payment(invoice, "", line_item_ids=[])
+
+        assert invoice.btc_address == ""
+        assert invoice.btc_txid == ""
+        assert invoice.btc_watch_expires_at is None
+        assert invoice.btc_amount_sats is None
+        assert invoice.remainder_owed_usd is None
+        assert list(invoice.btc_round_line_items.all()) == []
+        assert invoice.btc_settled_at == settled_at
+
+    def test_round_is_not_live_and_card_bills_full_after_detach(
+        self, mocker
+    ):
+        """A stray txid/expiry left behind on a detached invoice must
+        not resurrect a live BTC round and zero the card total -- the
+        regression this invoice would trip without the address gate on
+        `btc_round_is_live`.
+        """
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice.btc_txid = "stray-tx"
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        invoice.save(
+            update_fields=["btc_txid", "btc_watch_expires_at"]
+        )
+
+        assert invoice.btc_address == ""
+        assert invoice.btc_round_is_live is False
+        assert invoice.card_full_owed_usd == Decimal("1200.00")
+
+
 class TestPayFull:
     def test_pay_full_bills_and_snapshots_card_full_owed(self, mocker):
         invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
