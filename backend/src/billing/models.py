@@ -383,7 +383,11 @@ class Invoice(models.Model):
         """Whether a BTC round is currently in flight.
 
         True for a live quote window or a seen-but-unconfirmed tx.
+        Always False without an assigned BTC address, so leftover round
+        fields on a detached invoice can't strand it in a live state.
         """
+        if not self.btc_address:
+            return False
         now = timezone.now()
         live_quote = (
             self.btc_watch_expires_at is not None
