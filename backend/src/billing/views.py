@@ -200,6 +200,23 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         methods=['post'],
         permission_classes=[IsAuthenticated, IsLandlord],
     )
+    def send(self, request, pk=None) -> Response:
+        """Promotes a draft invoice to sent, making it visible as due."""
+        invoice = self.get_object()
+        if invoice.status != Invoice.Status.DRAFT:
+            return Response(
+                {'detail': 'Only a draft invoice can be sent.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        invoice.status = Invoice.Status.SENT
+        invoice.save(update_fields=['status'])
+        return Response(InvoiceSerializer(invoice).data)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, IsLandlord],
+    )
     def recompute(self, request, pk=None) -> Response:
         """Re-derives a not-yet-paid invoice's gas total from current logs."""
         invoice = self.get_object()
