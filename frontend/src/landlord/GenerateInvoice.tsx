@@ -33,13 +33,17 @@ function maxAllowedMonth(now: Date): { year: number; month: number } {
  * Landlord form to preview a period's charges and generate an invoice.
  * @param props.renterId - The renter to generate the invoice for.
  * @param props.onGenerated - Called with the created invoice on success.
+ * @param props.onCancel - Called when the landlord backs out without
+ *     generating an invoice.
  */
 export function GenerateInvoice({
   renterId,
   onGenerated,
+  onCancel,
 }: {
   renterId: number;
   onGenerated: (invoice: Invoice) => void;
+  onCancel: () => void;
 }) {
   const now = new Date();
   const [year, setYear] = useState(String(now.getFullYear()));
@@ -162,6 +166,9 @@ export function GenerateInvoice({
       )}
 
       <button type="submit">Generate Invoice</button>
+      <button type="button" onClick={onCancel}>
+        Cancel
+      </button>
       {error && <p role="alert">{error}</p>}
     </form>
   );
