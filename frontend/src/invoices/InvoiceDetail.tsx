@@ -88,11 +88,21 @@ function AttachBtcPaymentForm({
     setSubmitting(true);
     setError(null);
     try {
-      // Keeps whatever line items the toggles assigned; this form only
-      // owns the address.
+      // Scopes every non-frozen item not hard-locked to card, mirroring
+      // the payment-lock select's own Any-method/BTC-only behavior
+      // instead of reproducing whatever (usually empty) scope existed
+      // before an address was attached. A frozen item's scope can't be
+      // touched at all, so it keeps whatever it already had.
+      const lineItems = invoice.line_items
+        .filter((item) =>
+          isLineItemFrozen(invoice, item.id)
+            ? invoice.btc_line_items.includes(item.id)
+            : item.payment_lock !== 'card'
+        )
+        .map((item) => item.id);
       await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
         method: 'POST',
-        body: { address, line_items: invoice.btc_line_items },
+        body: { address, line_items: lineItems },
       });
       // Re-read rather than patching locally: the split portions are
       // derived server-side, so this keeps them authoritative.
@@ -269,8 +279,6 @@ export function InvoiceDetail({
   const [btcSettings, setBtcSettings] = useState<BtcSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [assigningItemId, setAssigningItemId] = useState<number | null>(null);
-  const [assignError, setAssignError] = useState<string | null>(null);
   const [lockingItemId, setLockingItemId] = useState<number | null>(null);
   const [lockError, setLockError] = useState<string | null>(null);
   const [nudgeAttach, setNudgeAttach] = useState(false);
@@ -315,37 +323,6 @@ export function InvoiceDetail({
     onBackHandlerChange(() => navigate('/'));
     return () => onBackHandlerChange(null);
   }, [onBackHandlerChange, navigate]);
-
-  /**
-   * Adds or removes one line item from the set marked as BTC-billed,
-   * leaving the other items' assignments alone. Clearing the last one
-   * leaves the address attached but nothing marked yet -- the invoice
-   * stays payable in BTC, it just isn't billed that way until a
-   * charge is assigned again.
-   * @param lineItemId - The line item being toggled.
-   */
-  async function handleAssignBtc(lineItemId: number) {
-    if (!invoice) return;
-    const assigned = invoice.btc_line_items;
-    const nextItemIds = assigned.includes(lineItemId)
-      ? assigned.filter((id) => id !== lineItemId)
-      : [...assigned, lineItemId];
-    setAssigningItemId(lineItemId);
-    setAssignError(null);
-    try {
-      await apiFetch(`/api/invoices/${invoice.id}/btc/`, {
-        method: 'POST',
-        body: { address: invoice.btc_address, line_items: nextItemIds },
-      });
-      setInvoice(await apiFetch<Invoice>(`/api/invoices/${invoice.id}/`));
-    } catch (err) {
-      setAssignError(
-        errorMessage(err, 'Could not change what BTC covers. Try again.')
-      );
-    } finally {
-      setAssigningItemId(null);
-    }
-  }
 
   /**
    * Sets (or clears, via '') a line item's payment-method lock -- the
@@ -429,7 +406,6 @@ export function InvoiceDetail({
     user?.role === 'landlord' &&
     btcSettings?.enabled === true &&
     !LOCKED_STATUSES.has(invoice.status);
-  const canAssignBtc = canLockPayments && invoice.btc_address !== '';
   // Marking paid manually doesn't need BTC enabled -- it's a landlord
   // recording an off-platform payment, not a rail on the invoice.
   const canMarkPaid =
@@ -525,8 +501,6 @@ export function InvoiceDetail({
             const isAssigned = invoice.btc_line_items.includes(item.id);
             const paid = isLineItemPaid(invoice, item.id);
             const frozen = isLineItemFrozen(invoice, item.id);
-            const cardLocked = item.payment_lock === 'card';
-            const btcLocked = item.payment_lock === 'btc';
             const itemRails = lineItemRails(invoice, item);
             const settlement = settlementForLineItem(invoice, item.id);
             // Paid: the settling tx. Assigned + still pending: the
@@ -589,28 +563,6 @@ export function InvoiceDetail({
                       Mark paid
                     </button>
                   )}
-                  {canAssignBtc && !frozen && (
-                    <button
-                      type="button"
-                      className="button--btc"
-                      disabled={
-                        assigningItemId !== null ||
-                        cardLocked ||
-                        (isAssigned && btcLocked)
-                      }
-                      title={
-                        cardLocked
-                          ? 'This charge is locked to card only'
-                          : isAssigned && btcLocked
-                            ? 'This charge is locked to BTC only and ' +
-                              "can't be unassigned"
-                            : undefined
-                      }
-                      onClick={() => handleAssignBtc(item.id)}
-                    >
-                      {isAssigned ? 'Unassign BTC' : 'Assign BTC'}
-                    </button>
-                  )}
                   {canLockPayments && !frozen && (
                     <select
                       className="payment-lock-select"
@@ -633,7 +585,6 @@ export function InvoiceDetail({
             );
           })}
         </ul>
-        {assignError && <p role="alert">{assignError}</p>}
         {lockError && <p role="alert">{lockError}</p>}
       </section>
 
