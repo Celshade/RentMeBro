@@ -1229,6 +1229,51 @@ class TestInitiateBtcWatch:
         assert result.btc_watch_expires_at is not None
         assert result.btc_amount_sats == 200000  # $100 @ $50k/BTC
 
+    def test_pay_full_quotes_everything_when_nothing_assigned(self, mocker):
+        """With no BTC assignment, `btc_scope_line_items` is empty and
+        the plain watch is a no-op -- `pay_full` must still quote the
+        item, since it ignores the landlord's scope entirely.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice, pay_full=True)
+
+        assert result.btc_watch_expires_at is not None
+        assert result.btc_amount_sats == 200000  # $100 @ $50k/BTC
+        assert list(result.btc_round_line_items.all()) == [item]
+
+    def test_pay_full_quotes_more_than_the_assigned_scope(self, mocker):
+        """A landlord who only assigned one item still lets the renter
+        opt in to covering everything BTC-payable in one round.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        assigned = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        other = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([assigned])
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = initiate_btc_watch(invoice, pay_full=True)
+
+        # $150 total, not the $100 assigned scope.
+        assert result.btc_amount_sats == 300000
+        assert set(result.btc_round_line_items.all()) == {assigned, other}
+
     @pytest.mark.parametrize(
         "status",
         [Invoice.Status.PENDING, Invoice.Status.PAID, Invoice.Status.VOID],
