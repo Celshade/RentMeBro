@@ -12,6 +12,37 @@ function toDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Human-readable label for a driven day's fraction and leg. */
+function fractionLabel(
+  dayFraction: string,
+  halfLeg: DrivenDayLog['half_leg']
+): string {
+  if (Number(dayFraction) >= 1) return 'Full day';
+  return halfLeg === 'drop_off'
+    ? 'Half day (drop-off)'
+    : halfLeg === 'pick_up'
+      ? 'Half day (pick-up)'
+      : 'Half day';
+}
+
+/**
+ * The gas price in effect for a date, from `pricedWeekRanges`.
+ * @param dateKey - The date to look up (YYYY-MM-DD).
+ * @param ranges - Effective date ranges and prices, as passed to
+ *   `DrivenDaysCalendar`.
+ * @returns The matching price per gallon, or undefined if none covers
+ *   the date.
+ */
+function priceForDate(
+  dateKey: string,
+  ranges: { from: string; to: string | null; price_per_gallon: string }[]
+): string | undefined {
+  return ranges.find(
+    (range) =>
+      range.from <= dateKey && (range.to === null || range.to >= dateKey)
+  )?.price_per_gallon;
+}
+
 /**
  * Month-grid calendar highlighting driven days, with a small bar
  * under the date proportional to the fraction of the day logged and a
@@ -33,9 +64,10 @@ function toDateKey(date: Date): string {
  * @param props.onSetWeekPrice - Called with a calendar week's start
  *   and end dates (YYYY-MM-DD, Sunday through Saturday) when its
  *   per-week price button is clicked. Omit to hide that button.
- * @param props.pricedWeekRanges - Effective date ranges of existing
- *   gas price entries, used to color the per-week price button when
- *   a week is already priced.
+ * @param props.pricedWeekRanges - Effective date ranges (and prices) of
+ *   existing gas price entries, used to color the per-week price
+ *   button when a week is already priced and to show that week's
+ *   price in day-cell hover text.
  * @param props.initialYear - Calendar year to open on. Defaults to the
  *   current year.
  * @param props.initialMonth - Calendar month to open on (0-11).
@@ -59,7 +91,11 @@ export function DrivenDaysCalendar({
   selectedDates?: Set<string>;
   onToggleDate?: (date: string) => void;
   onSetWeekPrice?: (weekStart: string, weekEnd: string) => void;
-  pricedWeekRanges?: { from: string; to: string | null }[];
+  pricedWeekRanges?: {
+    from: string;
+    to: string | null;
+    price_per_gallon: string;
+  }[];
   initialYear?: number;
   initialMonth?: number;
   lockedMonths?: Set<string>;
@@ -145,15 +181,16 @@ export function DrivenDaysCalendar({
               const dateKey = toDateKey(cellDate);
               const log = logsByDate.get(dateKey) ?? null;
               const isFullDay = log !== null && Number(log.day_fraction) >= 1;
+              const price = priceForDate(dateKey, pricedWeekRanges ?? []);
+              const priceSuffix = price ? ` — $${price}/gal` : '';
               const title = log
                 ? log.kind === 'day_off'
                   ? `Day off${log.note ? ` — ${log.note}` : ''}`
                   : log.kind === 'other_ride'
                     ? `Other ride${log.note ? ` — ${log.note}` : ''}`
-                    : `${log.day_fraction} day${
-                        log.note ? ` — ${log.note}` : ''
-                      }`
-                : `Log ${dateKey}`;
+                    : `${fractionLabel(log.day_fraction, log.half_leg)}` +
+                      `${priceSuffix}${log.note ? ` — ${log.note}` : ''}`
+                : `Log ${dateKey}${priceSuffix}`;
               const isSelected = selectedDates?.has(dateKey) ?? false;
               const cellClass = [
                 'driven-days-calendar__cell',
@@ -179,6 +216,18 @@ export function DrivenDaysCalendar({
                   style={{ width: `${Number(log.day_fraction) * 100}%` }}
                 />
               );
+              const halfLegGlyph = log?.kind === 'driven' &&
+                !isFullDay &&
+                log.half_leg !== '' && (
+                  <span
+                    className={
+                      'driven-days-calendar__half-leg-glyph ' +
+                      `driven-days-calendar__half-leg-glyph--${log.half_leg}`
+                    }
+                  >
+                    {log.half_leg === 'drop_off' ? '↓' : '↑'}
+                  </span>
+                );
               const otherRideBar = log?.kind === 'other_ride' && (
                 <span className="driven-days-calendar__fraction-bar" />
               );
@@ -193,6 +242,7 @@ export function DrivenDaysCalendar({
                   >
                     {dayNumber}
                     {fractionBar}
+                    {halfLegGlyph}
                     {otherRideBar}
                   </button>
                 );
@@ -202,6 +252,7 @@ export function DrivenDaysCalendar({
                   <div key={dateKey} className={cellClass} title={title}>
                     {dayNumber}
                     {fractionBar}
+                    {halfLegGlyph}
                     {otherRideBar}
                   </div>
                 );
@@ -216,6 +267,7 @@ export function DrivenDaysCalendar({
                 >
                   {dayNumber}
                   {fractionBar}
+                  {halfLegGlyph}
                   {otherRideBar}
                 </button>
               );
