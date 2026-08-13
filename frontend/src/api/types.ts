@@ -233,15 +233,18 @@ export interface InvoiceLineItem {
  * @property overpaid_usd - How much more than quoted a BTC round
  *   received, as a decimal string, or null if it settled on- or
  *   under-quote (always null for a card settlement).
+ * @property note - An optional landlord-entered note, only ever set
+ *   on a manual (cash/check/other) settlement.
  * @property settled_at - When this round settled (ISO 8601).
  */
 export interface InvoiceSettlement {
   id: number;
-  rail: 'btc' | 'card';
+  rail: 'btc' | 'card' | 'cash' | 'check' | 'other';
   txid: string;
   line_items: number[];
   amount_usd: string;
   overpaid_usd: string | null;
+  note: string;
   settled_at: string;
 }
 
