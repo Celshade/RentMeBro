@@ -942,6 +942,75 @@ class TestInvoiceViewSetSend:
         assert response.status_code == 409
 
 
+class TestInvoiceViewSetDestroy:
+    def test_landlord_only(self, renter_client, landlord, renter):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.DRAFT
+        )
+        response = renter_client.delete(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+        assert response.status_code == 403
+        assert Invoice.objects.filter(id=invoice.id).exists()
+
+    def test_draft_invoice_deleted(self, landlord_client, landlord, renter):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.DRAFT
+        )
+        response = landlord_client.delete(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+        assert response.status_code == 204
+        assert not Invoice.objects.filter(id=invoice.id).exists()
+
+    def test_sent_invoice_deleted(self, landlord_client, landlord, renter):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.SENT
+        )
+        response = landlord_client.delete(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+        assert response.status_code == 204
+
+    def test_paid_invoice_rejected(self, landlord_client, landlord, renter):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.PAID
+        )
+        response = landlord_client.delete(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+        assert response.status_code == 409
+        assert Invoice.objects.filter(id=invoice.id).exists()
+
+    def test_invoice_with_settlement_rejected(
+        self, landlord_client, landlord, renter
+    ):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.SENT
+        )
+        InvoiceSettlementFactory(invoice=invoice)
+        response = landlord_client.delete(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+        assert response.status_code == 409
+        assert Invoice.objects.filter(id=invoice.id).exists()
+
+    def test_void_invoice_deleted(self, landlord_client, landlord, renter):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.VOID
+        )
+        response = landlord_client.delete(
+            reverse('invoice-detail', args=[invoice.id])
+        )
+        assert response.status_code == 204
+
+
 # --- LeaseRentRevisionView ----------------------------------------------
 
 class TestLeaseRentRevisionView:
