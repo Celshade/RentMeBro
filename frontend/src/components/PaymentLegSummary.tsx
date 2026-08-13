@@ -25,6 +25,9 @@ const RAIL_HEADING: Record<'btc' | 'card', string> = {
  * @param props.note - Optional explanatory line shown below the
  *   total, e.g. crediting an already-covered amount toward a
  *   remainder quote.
+ * @param props.heading - Overrides the default "you're paying X"
+ *   heading -- used pre-quote, where nothing is locked in yet and the
+ *   default phrasing would overstate commitment.
  */
 export function PaymentLegSummary({
   rail,
@@ -33,6 +36,7 @@ export function PaymentLegSummary({
   totalUsd,
   totalBtc,
   note,
+  heading,
 }: {
   rail: 'btc' | 'card';
   lineItems: InvoiceLineItem[];
@@ -40,6 +44,7 @@ export function PaymentLegSummary({
   totalUsd: string;
   totalBtc?: string;
   note?: string;
+  heading?: string;
 }) {
   if (itemIds.length === 0) return null;
   const scopedItems = lineItems.filter((item) => itemIds.includes(item.id));
@@ -47,8 +52,13 @@ export function PaymentLegSummary({
   return (
     <div className={`payment-leg-summary payment-leg-summary--${rail}`}>
       <p className="payment-leg-summary__heading">
-        <PaymentRailGlyph rail={rail} />
-        {RAIL_HEADING[rail]}
+        <PaymentRailGlyph
+          rail={rail}
+          label={
+            rail === 'btc' ? 'Payable in Bitcoin' : 'Payable by card (Cash App)'
+          }
+        />
+        {heading ?? RAIL_HEADING[rail]}
       </p>
       <ul className="payment-leg-summary__items">
         {scopedItems.map((item) => (
