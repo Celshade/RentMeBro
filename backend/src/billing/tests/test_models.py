@@ -260,9 +260,17 @@ class TestInvoice:
         )
         assert invoice.is_late is False
 
-    def test_is_late_true_for_draft_invoice_past_due(self):
+    def test_is_late_false_for_draft_invoice_past_due(self):
+        """A draft was never sent, so it can't be late yet (#27)."""
         invoice = InvoiceFactory(
             status=Invoice.Status.DRAFT,
+            due_date=timezone.now().date() - timedelta(days=1),
+        )
+        assert invoice.is_late is False
+
+    def test_is_late_true_for_sent_invoice_past_due(self):
+        invoice = InvoiceFactory(
+            status=Invoice.Status.SENT,
             due_date=timezone.now().date() - timedelta(days=1),
         )
         assert invoice.is_late is True
