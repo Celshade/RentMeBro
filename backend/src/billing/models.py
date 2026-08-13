@@ -198,6 +198,10 @@ class DrivenDayLog(models.Model):
         DAY_OFF = 'day_off', 'Day off'
         OTHER_RIDE = 'other_ride', 'Other ride'
 
+    class HalfLeg(models.TextChoices):
+        DROP_OFF = 'drop_off', 'Drop-off'
+        PICK_UP = 'pick_up', 'Pick-up'
+
     landlord = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -214,6 +218,9 @@ class DrivenDayLog(models.Model):
     )
     day_fraction = models.DecimalField(
         max_digits=3, decimal_places=2, default=1
+    )
+    half_leg = models.CharField(
+        max_length=16, choices=HalfLeg.choices, blank=True, default=''
     )
     note = models.CharField(max_length=255, blank=True)
 
