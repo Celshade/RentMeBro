@@ -411,6 +411,69 @@ class TestGenerateInvoice:
         assert Invoice.objects.count() == 1
         assert InvoiceLineItem.objects.count() == line_item_count_before
 
+    def test_combined_then_rent_only_rejected(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        services.generate_invoice(
+            lease.landlord, lease.renter, 2024, 6, Invoice.Kind.COMBINED
+        )
+        with pytest.raises(services.InvoiceAlreadyExistsError):
+            with transaction.atomic():
+                services.generate_invoice(
+                    lease.landlord,
+                    lease.renter,
+                    2024,
+                    6,
+                    Invoice.Kind.RENT_ONLY,
+                )
+
+    def test_combined_then_gas_only_rejected(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        services.generate_invoice(
+            lease.landlord, lease.renter, 2024, 6, Invoice.Kind.COMBINED
+        )
+        with pytest.raises(services.InvoiceAlreadyExistsError):
+            with transaction.atomic():
+                services.generate_invoice(
+                    lease.landlord,
+                    lease.renter,
+                    2024,
+                    6,
+                    Invoice.Kind.GAS_ONLY,
+                )
+
+    def test_rent_only_then_gas_only_allowed(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        services.generate_invoice(
+            lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
+        )
+        invoice = services.generate_invoice(
+            lease.landlord, lease.renter, 2024, 6, Invoice.Kind.GAS_ONLY
+        )
+        assert invoice.line_items.count() == 1
+
+    def test_gas_only_then_gas_only_rejected(self):
+        landlord, renter = LandlordFactory(), UserFactory()
+        services.generate_invoice(
+            landlord, renter, 2024, 6, Invoice.Kind.GAS_ONLY
+        )
+        with pytest.raises(services.InvoiceAlreadyExistsError):
+            with transaction.atomic():
+                services.generate_invoice(
+                    landlord, renter, 2024, 6, Invoice.Kind.GAS_ONLY
+                )
+
+    def test_void_invoice_does_not_block_regeneration(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        voided = services.generate_invoice(
+            lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
+        )
+        voided.status = Invoice.Status.VOID
+        voided.save()
+        invoice = services.generate_invoice(
+            lease.landlord, lease.renter, 2024, 6, Invoice.Kind.COMBINED
+        )
+        assert invoice.line_items.count() == 2
+
     def test_reuses_billing_period_across_kinds(self):
         lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
         services.generate_invoice(
