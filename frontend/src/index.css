@@ -776,6 +776,12 @@ body {
   color: var(--stripe-purple);
 }
 
+.rail-glyph--cash,
+.rail-glyph--check,
+.rail-glyph--other {
+  color: var(--accent);
+}
+
 /* Fixed-width gutter so a line-item description stays aligned whether
    its row shows one glyph or two. */
 .list-row__rails {
