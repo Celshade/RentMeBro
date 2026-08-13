@@ -115,7 +115,7 @@ function PaymentForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <PaymentElement />
+      <PaymentElement options={{ wallets: { link: 'never' } }} />
       {error && <p role="alert">{error}</p>}
       <button type="submit" disabled={!stripe || submitting}>
         {submitting ? 'Paying...' : 'Pay with Cash App'}
