@@ -216,6 +216,57 @@ class TestDrivenDayLogViewSet:
         assert response.status_code == 201
         assert response.data['day_fraction'] == '0.00'
 
+    def test_non_driven_kind_forces_empty_half_leg(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        response = landlord_client.post(
+            reverse('driven-day-list'),
+            {
+                'renter': renter.id,
+                'date': '2024-06-05',
+                'kind': 'day_off',
+                'day_fraction': '1.00',
+                'half_leg': 'drop_off',
+            },
+        )
+        assert response.status_code == 201
+        assert response.data['half_leg'] == ''
+
+    def test_full_day_fraction_forces_empty_half_leg(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        response = landlord_client.post(
+            reverse('driven-day-list'),
+            {
+                'renter': renter.id,
+                'date': '2024-06-05',
+                'kind': 'driven',
+                'day_fraction': '1.00',
+                'half_leg': 'pick_up',
+            },
+        )
+        assert response.status_code == 201
+        assert response.data['half_leg'] == ''
+
+    def test_half_day_fraction_keeps_half_leg(
+        self, landlord_client, landlord, renter
+    ):
+        LeaseFactory(landlord=landlord, renter=renter)
+        response = landlord_client.post(
+            reverse('driven-day-list'),
+            {
+                'renter': renter.id,
+                'date': '2024-06-05',
+                'kind': 'driven',
+                'day_fraction': '0.50',
+                'half_leg': 'drop_off',
+            },
+        )
+        assert response.status_code == 201
+        assert response.data['half_leg'] == 'drop_off'
+
     def test_patch_paid_month_returns_409(
         self, landlord_client, landlord, renter
     ):
