@@ -356,6 +356,11 @@ export type InvoiceStatus =
  *   convention as `btc_scope_line_items`.
  * @property card_full_line_items - What "pay full balance by card
  *   instead" would bill right now, ignoring the BTC expectation.
+ * @property btc_full_owed_usd - Every BTC-payable item's total, as a
+ *   decimal string, ignoring the landlord's BTC scope -- the opt-in
+ *   "pay it all by BTC instead" figure.
+ * @property btc_full_line_items - What "pay full balance by BTC
+ *   instead" would bill right now, ignoring the landlord's BTC scope.
  * @property settlements - Every completed payment round against this
  *   invoice, oldest first.
  */
@@ -391,6 +396,8 @@ export interface Invoice {
   btc_scope_line_items: number[];
   stripe_scope_line_items: number[];
   card_full_line_items: number[];
+  btc_full_owed_usd: string;
+  btc_full_line_items: number[];
   settlements: InvoiceSettlement[];
 }
 
