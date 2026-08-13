@@ -253,7 +253,14 @@ export function PayInvoiceBtc({
       </div>
     );
   }
-  if (Number(btcStatus.btc_owed_usd) === 0) {
+  if (
+    Number(btcStatus.btc_owed_usd) === 0 &&
+    Number(fullOwedUsd) === 0
+  ) {
+    // Nothing is scoped to BTC and there's no pay-full-by-BTC option
+    // either -- distinct from the scoped amount alone being zero,
+    // which just means BTC is still available via the pay-full
+    // checkbox below.
     return (
       <div className="pay-invoice-btc">
         {errorBanner}
