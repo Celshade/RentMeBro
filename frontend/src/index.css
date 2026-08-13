@@ -398,6 +398,36 @@ body {
   box-shadow: var(--shadow);
 }
 
+.mark-paid-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.mark-paid-modal {
+  background: var(--bg);
+  width: min(360px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mark-paid-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mark-paid-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .pay-invoice__mode-toggle {
   display: flex;
   gap: 8px;
