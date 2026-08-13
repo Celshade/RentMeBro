@@ -8,6 +8,30 @@ import { VerifyMagicLink } from './auth/VerifyMagicLink';
 import { InvoiceDetail } from './invoices/InvoiceDetail';
 import { RenterDashboard } from './renter/RenterDashboard';
 import { LandlordDashboard } from './landlord/LandlordDashboard';
+import { ThemeProvider, useTheme, type Theme } from './theme/ThemeContext';
+
+const THEME_CYCLE: Record<Theme, Theme> = {
+  system: 'light',
+  light: 'dark',
+  dark: 'system',
+};
+
+const THEME_LABEL: Record<Theme, string> = {
+  system: 'Theme: System',
+  light: 'Theme: Light',
+  dark: 'Theme: Dark',
+};
+
+
+/** Cycles system -> light -> dark -> system on each click. */
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <button onClick={() => setTheme(THEME_CYCLE[theme])}>
+      {THEME_LABEL[theme]}
+    </button>
+  );
+}
 
 /**
  * Shared signed-in shell: header with identity/back/logout controls,
@@ -42,6 +66,7 @@ function AppShell({
           {backHandler && (
             <button onClick={backHandler}>Back to dashboard</button>
           )}
+          <ThemeToggle />
           <button onClick={logout}>Log Out</button>
         </div>
       </header>
@@ -60,7 +85,7 @@ function Home({
   if (!user) return null;
 
   return user.role === 'renter' ? (
-    <RenterDashboard />
+    <RenterDashboard onBackHandlerChange={onBackHandlerChange} />
   ) : (
     <LandlordDashboard onBackHandlerChange={onBackHandlerChange} />
   );
@@ -91,30 +116,36 @@ function StripeReturn() {
 
 function App() {
   return (
-    <AuthProvider>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <AppShell>
-              {(setBackHandler) => (
-                <Home onBackHandlerChange={setBackHandler} />
-              )}
-            </AppShell>
-          }
-        />
-        <Route
-          path="/invoices/:invoiceId"
-          element={
-            <AppShell>{() => <InvoiceDetail />}</AppShell>
-          }
-        />
-        <Route path="/login" element={<RequestMagicLink />} />
-        <Route path="/auth/verify" element={<VerifyMagicLink />} />
-        <Route path="/landlord/stripe/return" element={<StripeReturn />} />
-        <Route path="/landlord/stripe/refresh" element={<StripeReturn />} />
-      </Routes>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <AppShell>
+                {(setBackHandler) => (
+                  <Home onBackHandlerChange={setBackHandler} />
+                )}
+              </AppShell>
+            }
+          />
+          <Route
+            path="/invoices/:invoiceId"
+            element={
+              <AppShell>
+                {(setBackHandler) => (
+                  <InvoiceDetail onBackHandlerChange={setBackHandler} />
+                )}
+              </AppShell>
+            }
+          />
+          <Route path="/login" element={<RequestMagicLink />} />
+          <Route path="/auth/verify" element={<VerifyMagicLink />} />
+          <Route path="/landlord/stripe/return" element={<StripeReturn />} />
+          <Route path="/landlord/stripe/refresh" element={<StripeReturn />} />
+        </Routes>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
