@@ -454,6 +454,50 @@ class TestGenerateInvoice:
         rent_item = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
         assert preview['rent'] == rent_item.amount
 
+    def test_combined_for_future_month_raises(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        today = timezone.now().date()
+        next_year, next_month = (
+            (today.year + 1, 1) if today.month == 12
+            else (today.year, today.month + 1)
+        )
+        with pytest.raises(services.FutureInvoiceKindError):
+            services.generate_invoice(
+                lease.landlord,
+                lease.renter,
+                next_year,
+                next_month,
+                Invoice.Kind.COMBINED,
+            )
+
+    def test_rent_only_for_future_month_succeeds(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        today = timezone.now().date()
+        next_year, next_month = (
+            (today.year + 1, 1) if today.month == 12
+            else (today.year, today.month + 1)
+        )
+        invoice = services.generate_invoice(
+            lease.landlord,
+            lease.renter,
+            next_year,
+            next_month,
+            Invoice.Kind.RENT_ONLY,
+        )
+        assert invoice.line_items.count() == 1
+
+    def test_rent_only_for_current_month_succeeds(self):
+        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        today = timezone.now().date()
+        invoice = services.generate_invoice(
+            lease.landlord,
+            lease.renter,
+            today.year,
+            today.month,
+            Invoice.Kind.COMBINED,
+        )
+        assert invoice.line_items.count() == 2
+
     def test_explicit_due_date_overrides_default(self):
         lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
         invoice = services.generate_invoice(
