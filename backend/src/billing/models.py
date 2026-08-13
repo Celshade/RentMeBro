@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
@@ -48,9 +49,21 @@ class Lease(models.Model):
     @property
     def current_monthly_rent(self) -> Decimal:
         """The rent in effect today, applying any due rent revision."""
-        today = timezone.now().date()
+        return self._rent_as_of(timezone.now().date())
+
+    def rent_for_month(self, year: int, month: int) -> Decimal:
+        """The rent that applies to a given billed month.
+
+        Uses the latest revision effective on or before the 1st of
+        that month, so a back-dated or future-dated invoice bills the
+        rent that was actually in force for that month rather than
+        whatever happens to be in effect today.
+        """
+        return self._rent_as_of(date(year, month, 1))
+
+    def _rent_as_of(self, cutoff: date) -> Decimal:
         revision = (
-            self.rent_revisions.filter(effective_date__lte=today)
+            self.rent_revisions.filter(effective_date__lte=cutoff)
             .order_by('-effective_date')
             .first()
         )
