@@ -1,18 +1,39 @@
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
-import {
-  Elements,
-  PaymentElement,
-  useElements,
-  useStripe,
-} from '@stripe/react-stripe-js';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../api/client';
-import { formatMoney } from '../api/format';
+import {
+  formatClockTime,
+  formatCountdown,
+  formatMoney,
+} from '../api/format';
 import { isLineItemPaid, lineItemRails } from '../api/invoice';
 import type { Invoice } from '../api/types';
 import { PaymentLegSummary } from '../components/PaymentLegSummary';
 import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
 import { PayInvoiceBtc } from './PayInvoiceBtc';
+
+// How often to poll for the Cash App payment landing while the QR is
+// up. Reuses POST /pay/ itself as the status check -- a still-open
+// intent just gets re-synced and returns 200, while a settled one is
+// reconciled server-side and answers with the "already paid" 400,
+// which is this loop's success signal.
+const CASH_APP_POLL_INTERVAL_MS = 4_000;
+
+/**
+ * The subset of Stripe's Cash App Pay `next_action` payload this app
+ * reads. `@stripe/stripe-js`'s `PaymentIntent.NextAction` type doesn't
+ * cover this action yet, so the raw payload is narrowed to this shape
+ * instead of trusting the SDK's types.
+ */
+interface CashAppNextAction {
+  cashapp_handle_redirect_or_display_qr_code?: {
+    hosted_instructions_url: string;
+    qr_code: {
+      image_url_png: string;
+      expires_at: number;
+    };
+  };
+}
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string;
 
@@ -52,88 +73,14 @@ interface PayIntentResponse {
 
 
 /**
- * The embedded Stripe payment form; renders once a client_secret exists.
- * @param props.invoiceId - The invoice this payment attempt is for.
- * @param props.onDone - Called after a successful payment confirmation.
- * @param props.onCancelled - Called after the renter calls off their
- *   own in-flight attempt, so the caller can fetch a fresh intent.
- */
-function PaymentForm({
-  invoiceId,
-  onDone,
-  onCancelled,
-}: {
-  invoiceId: number;
-  onDone: () => void;
-  onCancelled: () => void;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!stripe || !elements) return;
-
-    setSubmitting(true);
-    setSubmitted(true);
-    setError(null);
-    try {
-      const submitResult = await elements.submit();
-      if (submitResult.error) {
-        setError(submitResult.error.message ?? 'Payment failed.');
-        return;
-      }
-
-      const result = await stripe.confirmPayment({
-        elements,
-        confirmParams: { return_url: window.location.href },
-        redirect: 'if_required',
-      });
-
-      if (result.error) {
-        setError(result.error.message ?? 'Payment failed.');
-      } else {
-        onDone();
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function handleCancel() {
-    setCancelling(true);
-    setError(null);
-    apiFetch(`/api/invoices/${invoiceId}/pay/cancel/`, { method: 'POST' })
-      .then(() => onCancelled())
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setCancelling(false));
-  }
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <PaymentElement options={{ wallets: { link: 'never' } }} />
-      {error && <p role="alert">{error}</p>}
-      <button type="submit" disabled={!stripe || submitting}>
-        {submitting ? 'Paying...' : 'Pay with Cash App'}
-      </button>
-      {submitted && (
-        <button type="button" onClick={handleCancel} disabled={cancelling}>
-          {cancelling ? 'Cancelling...' : "Never mind — don't pay"}
-        </button>
-      )}
-    </form>
-  );
-}
-
-
-/**
- * Fetches a Stripe PaymentIntent for an invoice and renders Cash App
- * Pay checkout.
+ * Fetches a Stripe PaymentIntent for an invoice, confirms it as a
+ * Cash App Pay charge, and renders the resulting QR code inline
+ * instead of handing off to Stripe's hosted overlay -- which used to
+ * make the "Never mind — don't pay" button unreachable once the QR
+ * was up, since the overlay ate all clicks.
  * @param props.invoiceId - The invoice to pay.
+ * @param props.payFull - Bill the full card-payable balance instead
+ *   of just the unscoped portion.
  * @param props.onPaid - Called after the renter successfully pays.
  */
 function PayInvoiceCashApp({
@@ -146,35 +93,153 @@ function PayInvoiceCashApp({
   onPaid: () => void;
 }) {
   const [payIntent, setPayIntent] = useState<PayIntentResponse | null>(null);
+  const [stripe, setStripe] = useState<Stripe | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [qrCode, setQrCode] = useState<{
+    imageUrl: string;
+    expiresAt: number;
+  } | null>(null);
+  const [hostedInstructionsUrl, setHostedInstructionsUrl] = useState<
+    string | null
+  >(null);
+  const [now, setNow] = useState(() => new Date());
   const [refreshKey, setRefreshKey] = useState(0);
+  const onPaidRef = useRef(onPaid);
+  onPaidRef.current = onPaid;
 
   useEffect(() => {
     setPayIntent(null);
+    setStripe(null);
+    setQrCode(null);
+    setHostedInstructionsUrl(null);
     setError(null);
+    setFetchError(null);
     apiFetch<PayIntentResponse>(`/api/invoices/${invoiceId}/pay/`, {
       method: 'POST',
       body: { pay_full: payFull },
     })
-      .then(setPayIntent)
-      .catch((err: Error) => setError(err.message));
+      .then((intent) => {
+        setPayIntent(intent);
+        return loadStripeForAccount(intent.stripe_account_id);
+      })
+      .then(setStripe)
+      .catch((err: Error) => setFetchError(err.message));
   }, [invoiceId, payFull, refreshKey]);
 
-  if (error) return <p role="alert">{error}</p>;
-  if (!payIntent) return <p>Preparing payment...</p>;
+  useEffect(() => {
+    if (!qrCode) return;
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, [qrCode]);
+
+  useEffect(() => {
+    if (!qrCode) return;
+    const timer = setInterval(() => {
+      apiFetch<PayIntentResponse>(`/api/invoices/${invoiceId}/pay/`, {
+        method: 'POST',
+        body: { pay_full: payFull },
+      }).catch((err: Error) => {
+        if (err.message === 'Invoice is already paid.') {
+          onPaidRef.current();
+        }
+      });
+    }, CASH_APP_POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [qrCode, invoiceId, payFull]);
+
+  async function handlePay() {
+    if (!stripe || !payIntent) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await stripe.confirmCashappPayment(
+        payIntent.client_secret,
+        {},
+        { handleActions: false }
+      );
+      if (result.error) {
+        setError(result.error.message ?? 'Payment failed.');
+        return;
+      }
+      if (result.paymentIntent.status === 'succeeded') {
+        onPaidRef.current();
+        return;
+      }
+      const nextAction = result.paymentIntent
+        .next_action as unknown as CashAppNextAction | null;
+      const cashapp = nextAction?.cashapp_handle_redirect_or_display_qr_code;
+      if (!cashapp) {
+        setError('Could not start the Cash App payment.');
+        return;
+      }
+      setQrCode({
+        imageUrl: cashapp.qr_code.image_url_png,
+        expiresAt: cashapp.qr_code.expires_at,
+      });
+      setHostedInstructionsUrl(cashapp.hosted_instructions_url);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleCancel() {
+    setCancelling(true);
+    setError(null);
+    apiFetch(`/api/invoices/${invoiceId}/pay/cancel/`, { method: 'POST' })
+      .then(() => setRefreshKey((key) => key + 1))
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setCancelling(false));
+  }
+
+  if (fetchError) return <p role="alert">{fetchError}</p>;
+  if (!payIntent || !stripe) return <p>Preparing payment...</p>;
+
+  if (qrCode) {
+    const msRemaining = qrCode.expiresAt * 1000 - now.getTime();
+    return (
+      <div className="pay-invoice-cashapp">
+        {error && <p role="alert">{error}</p>}
+        <img
+          className="pay-invoice-cashapp__qr"
+          src={qrCode.imageUrl}
+          alt="Cash App payment QR code"
+        />
+        <p>
+          Scan with the Cash App on your phone, or{' '}
+          <a
+            href={hostedInstructionsUrl ?? undefined}
+            target="_blank"
+            rel="noreferrer"
+          >
+            open the payment page
+          </a>
+          .
+        </p>
+        {msRemaining > 0 && (
+          <p className="pay-invoice-cashapp__countdown">
+            Expires in {formatCountdown(msRemaining)} (
+            {formatClockTime(new Date(qrCode.expiresAt * 1000).toISOString())}
+            )
+          </p>
+        )}
+        <p>Waiting for payment...</p>
+        <button type="button" onClick={handleCancel} disabled={cancelling}>
+          {cancelling ? 'Cancelling...' : "Never mind — don't pay"}
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <Elements
-      key={payIntent.client_secret}
-      stripe={loadStripeForAccount(payIntent.stripe_account_id)}
-      options={{ clientSecret: payIntent.client_secret }}
-    >
-      <PaymentForm
-        invoiceId={invoiceId}
-        onDone={onPaid}
-        onCancelled={() => setRefreshKey((key) => key + 1)}
-      />
-    </Elements>
+    <div>
+      {error && <p role="alert">{error}</p>}
+      <button type="button" onClick={handlePay} disabled={submitting}>
+        {submitting ? 'Starting...' : 'Pay with Cash App'}
+      </button>
+    </div>
   );
 }
 
