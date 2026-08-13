@@ -1,17 +1,17 @@
 # RentMeBro
 
-Rent + utility billing for small and independent landlords. Renters pay by
-Cash App Pay (via Stripe) or on-chain Bitcoin; landlords are paid out through
-Stripe Connect Standard. An optional mileage-based gas/utility add-on bills a
-renter for driving days at a per-week gas price.
+Rent + utility billing for small and independent landlords and contractors. Renters pay Landlords directly through
+Cash App Pay (via Stripe) or on-chain Bitcoin (p2p); landlords are paid out through
+Stripe Connect Standard or applied Bitcoin address. An optional mileage-based gas/utility add-on bills a
+renter (passenger) for days driven to/from a work-site/etc - based on a customizable mileage profile and weekly gas prices.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![Django](https://img.shields.io/badge/Django-6.0-092E20)
 ![React](https://img.shields.io/badge/React-19-61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF)
-![Stripe](https://img.shields.io/badge/Stripe-Cash%20App%20Pay-635BFF)
 ![Bitcoin](https://img.shields.io/badge/Bitcoin-on--chain-F7931A)
+![Stripe](https://img.shields.io/badge/Stripe-Cash%20App%20Pay-635BFF)
 ![Status](https://img.shields.io/badge/Status-Alpha-orange)
 ![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-purple)
 
