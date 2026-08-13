@@ -181,9 +181,35 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
     def get_permissions(self) -> list[BasePermission]:
-        if self.action == 'create':
+        if self.action in ('create', 'destroy'):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
+
+    def destroy(self, request, *args, **kwargs) -> Response:
+        """Hard-deletes an invoice that hasn't taken any money yet.
+
+        Blocked once anything has settled or is mid-flight, or once
+        the invoice reached a paid/partial/underpaid/pending status --
+        those states mean a payment exists or is in progress.
+        """
+        invoice = self.get_object()
+        if invoice.status in (
+            Invoice.Status.PENDING,
+            Invoice.Status.PARTIAL,
+            Invoice.Status.UNDERPAID,
+            Invoice.Status.PAID,
+        ):
+            return Response(
+                {'detail': 'Only an unpaid invoice can be deleted.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if invoice.settlements.exists() or invoice.frozen_line_item_ids:
+            return Response(
+                {'detail': 'Only an unpaid invoice can be deleted.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        invoice.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'])
     def weeks(self, request, pk=None) -> Response:
