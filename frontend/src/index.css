@@ -32,6 +32,15 @@
   --paid-rgb: 21, 128, 61;
   --paid: rgb(var(--paid-rgb));
   --paid-bg: rgba(var(--paid-rgb), 0.12);
+  --sent-rgb: 180, 83, 9;
+  --sent: rgb(var(--sent-rgb));
+  --sent-bg: rgba(var(--sent-rgb), 0.12);
+  --overpaid-rgb: 37, 99, 235;
+  --overpaid: rgb(var(--overpaid-rgb));
+  --overpaid-bg: rgba(var(--overpaid-rgb), 0.12);
+  --connected-rgb: 21, 128, 61;
+  --connected: rgb(var(--connected-rgb));
+  --connected-bg: rgba(var(--connected-rgb), 0.12);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -55,8 +64,15 @@
   }
 }
 
+/*
+ * Dark palette applies in two cases: the OS prefers dark and the user
+ * hasn't overridden the theme (:not([data-theme="light"]), guarding
+ * against the media query alone), or the user explicitly picked dark
+ * via the in-app toggle (:root[data-theme="dark"] below). Both blocks
+ * carry the same variable values so they stay in lockstep.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --text: #9ca3af;
     --text-h: #f3f4f6;
     --bg: #16171d;
@@ -90,14 +106,69 @@
     --paid-rgb: 74, 222, 128;
     --paid: rgb(var(--paid-rgb));
     --paid-bg: rgba(var(--paid-rgb), 0.15);
+    --sent-rgb: 251, 191, 36;
+    --overpaid-rgb: 96, 165, 250;
+    --connected-rgb: 74, 222, 128;
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    color-scheme: dark;
   }
 
-  #social .button-icon {
+  :root:not([data-theme='light']) #social .button-icon {
     filter: invert(1) brightness(2);
   }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --bg: #16171d;
+  --border: #2e303a;
+  --code-bg: #1f2028;
+  --accent: #94a3b8;
+  --accent-bg: rgba(148, 163, 184, 0.15);
+  --accent-border: rgba(148, 163, 184, 0.5);
+  --action: #3b82f6;
+  --action-hover: #60a5fa;
+  --stripe-purple: #c084fc;
+  --stripe-purple-bg: rgba(192, 132, 252, 0.15);
+  --stripe-purple-border: rgba(192, 132, 252, 0.5);
+  --driven-full: #22d3ee;
+  --driven-full-bg: rgba(34, 211, 238, 0.25);
+  --driven-full-border: rgba(34, 211, 238, 0.7);
+  --pending-rgb: 96, 165, 250;
+  --pending: rgb(var(--pending-rgb));
+  --pending-bg: rgba(var(--pending-rgb), 0.19);
+  --pending-border: rgba(var(--pending-rgb), 0.53);
+  --btc-orange: #ffa733;
+  --btc-orange-bg: rgba(255, 167, 51, 0.15);
+  --btc-orange-border: rgba(255, 167, 51, 0.5);
+  --other-ride: #cbd5e1;
+  --other-ride-bg: rgba(203, 213, 225, 0.16);
+  --other-ride-border: rgba(203, 213, 225, 0.45);
+  --late-rgb: 248, 113, 113;
+  --late: rgb(var(--late-rgb));
+  --late-bg: rgba(var(--late-rgb), 0.16);
+  --late-border: rgba(var(--late-rgb), 0.45);
+  --paid-rgb: 74, 222, 128;
+  --paid: rgb(var(--paid-rgb));
+  --paid-bg: rgba(var(--paid-rgb), 0.15);
+  --sent-rgb: 251, 191, 36;
+  --overpaid-rgb: 96, 165, 250;
+  --connected-rgb: 74, 222, 128;
+  --social-bg: rgba(47, 48, 58, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'] #social .button-icon {
+  filter: invert(1) brightness(2);
 }
 
 #root {
@@ -244,9 +315,9 @@ body {
 }
 
 .badge--connected {
-  color: #15803d;
-  background: rgba(21, 128, 61, 0.12);
-  border-color: #15803d;
+  color: var(--connected);
+  background: var(--connected-bg);
+  border-color: var(--connected);
 }
 
 .stat-grid {
@@ -336,15 +407,18 @@ body {
 .pay-invoice-btc {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 8px;
-  text-align: center;
 }
 
 .pay-invoice-btc__qr {
+  align-self: center;
   width: 220px;
   height: 220px;
   image-rendering: pixelated;
+}
+
+.pay-invoice-btc .btc-blocks {
+  align-self: center;
 }
 
 .pay-invoice-btc__address {
@@ -918,9 +992,9 @@ button[type='submit'].button--btc:hover {
 }
 
 .driven-days-calendar__week-price-btn--priced {
-  color: #15803d;
-  border-color: #15803d;
-  background: rgba(21, 128, 61, 0.12);
+  color: var(--connected);
+  border-color: var(--connected);
+  background: var(--connected-bg);
 }
 
 .driven-days-calendar__weekday {
@@ -1016,6 +1090,31 @@ button[type='submit'].button--btc:hover {
   max-width: 12%;
 }
 
+.driven-days-calendar__half-leg-glyph {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.driven-days-calendar__half-leg-glyph--drop_off {
+  color: var(--driven-full);
+}
+
+.driven-days-calendar__half-leg-glyph--pick_up {
+  color: var(--other-ride);
+}
+
+.calendar-key__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  font-size: 11px;
+  line-height: 1;
+}
+
 .calendar-key {
   list-style: none;
   margin: 8px 0 0;
@@ -1102,8 +1201,8 @@ code {
 }
 
 .status-badge--sent {
-  color: #b45309;
-  background: rgba(180, 83, 9, 0.12);
+  color: var(--sent);
+  background: var(--sent-bg);
 }
 
 .status-badge--pending {
@@ -1136,8 +1235,8 @@ code {
    payment methods doesn't. Amber separates the shortfall from the
    orange "Partially Paid" pill. */
 .status-badge--underpaid {
-  color: #b45309;
-  background: rgba(180, 83, 9, 0.12);
+  color: var(--sent);
+  background: var(--sent-bg);
   cursor: help;
 }
 
@@ -1145,51 +1244,8 @@ code {
    keeps it read as informational rather than alarming like the amber
    underpaid pill. */
 .status-badge--overpaid {
-  color: #2563eb;
-  background: rgba(37, 99, 235, 0.12);
+  color: var(--overpaid);
+  background: var(--overpaid-bg);
   cursor: help;
 }
 
-@media (prefers-color-scheme: dark) {
-  .status-badge--paid {
-    color: var(--paid);
-    background: var(--paid-bg);
-  }
-
-  .status-badge--sent {
-    color: #fbbf24;
-    background: rgba(251, 191, 36, 0.15);
-  }
-
-  .status-badge--pending {
-    color: var(--pending);
-    background: rgba(var(--pending-rgb), 0.15);
-  }
-
-  .status-badge--late {
-    color: var(--late);
-    background: rgba(var(--late-rgb), 0.15);
-  }
-
-  .status-badge--underpaid {
-    color: #fbbf24;
-    background: rgba(251, 191, 36, 0.15);
-  }
-
-  .status-badge--overpaid {
-    color: #60a5fa;
-    background: rgba(96, 165, 250, 0.15);
-  }
-
-  .driven-days-calendar__week-price-btn--priced {
-    color: #4ade80;
-    border-color: #4ade80;
-    background: rgba(74, 222, 128, 0.15);
-  }
-
-  .badge--connected {
-    color: #4ade80;
-    background: rgba(74, 222, 128, 0.15);
-    border-color: #4ade80;
-  }
-}
