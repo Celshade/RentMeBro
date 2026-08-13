@@ -188,6 +188,18 @@ export function LeaseDashboard({
       )
   );
 
+  async function handleSendInvoice(invoiceId: number) {
+    const updated = await apiFetch<Invoice>(
+      `/api/invoices/${invoiceId}/send/`,
+      { method: 'POST' }
+    );
+    setInvoices(
+      invoices.map((invoice) =>
+        invoice.id === updated.id ? updated : invoice
+      )
+    );
+  }
+
   async function handleSaveInvoiceEdit(invoiceId: number) {
     setSavingInvoiceEdit(true);
     setInvoiceEditError(null);
@@ -482,6 +494,14 @@ export function LeaseDashboard({
                         overpaidUsd={invoice.btc_overpaid_usd}
                       />
                       <Link to={`/invoices/${invoice.id}`}>Details</Link>
+                      {invoice.status === 'draft' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSendInvoice(invoice.id)}
+                        >
+                          Send invoice
+                        </button>
+                      )}
                       {!isLocked && invoice.kind !== 'rent_only' && (
                         isEditing ? (
                           <>
