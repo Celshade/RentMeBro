@@ -169,7 +169,10 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
             )
-        except services.BillingConfigError as exc:
+        except (
+            services.BillingConfigError,
+            services.FutureInvoiceKindError,
+        ) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
