@@ -243,6 +243,22 @@ class TestPaymentLocks:
         with pytest.raises(PaymentLockError):
             set_line_item_payment_lock(invoice, gas.id, "card")
 
+    def test_any_method_assigns_item_when_address_attached(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+        invoice = attach_btc_payment(invoice, "bc1qexample")
+        assert gas not in invoice.btc_line_items.all()
+
+        invoice = set_line_item_payment_lock(invoice, gas.id, "")
+
+        assert gas in invoice.btc_line_items.all()
+
+    def test_any_method_leaves_item_unassigned_without_address(self):
+        invoice, gas = _two_line_item_invoice(status=Invoice.Status.SENT)
+
+        invoice = set_line_item_payment_lock(invoice, gas.id, "")
+
+        assert gas not in invoice.btc_line_items.all()
+
 
 class TestDetachClearsRoundState:
     def test_detach_clears_round_fields_but_not_settled_at(self, mocker):
