@@ -908,6 +908,40 @@ class TestInvoiceViewSetRecompute:
         assert response.data['id'] == invoice.id
 
 
+class TestInvoiceViewSetSend:
+    def test_landlord_only(self, renter_client, landlord, renter):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.DRAFT
+        )
+        response = renter_client.post(
+            reverse('invoice-send', args=[invoice.id])
+        )
+        assert response.status_code == 403
+
+    def test_draft_becomes_sent(self, landlord_client, landlord, renter):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.DRAFT
+        )
+        response = landlord_client.post(
+            reverse('invoice-send', args=[invoice.id])
+        )
+        assert response.status_code == 200
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.SENT
+
+    def test_non_draft_returns_409(self, landlord_client, landlord, renter):
+        billing_period = BillingPeriodFactory(landlord=landlord, renter=renter)
+        invoice = InvoiceFactory(
+            billing_period=billing_period, status=Invoice.Status.SENT
+        )
+        response = landlord_client.post(
+            reverse('invoice-send', args=[invoice.id])
+        )
+        assert response.status_code == 409
+
+
 # --- LeaseRentRevisionView ----------------------------------------------
 
 class TestLeaseRentRevisionView:
