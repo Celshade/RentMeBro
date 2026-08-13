@@ -44,6 +44,13 @@ const MANUAL_RAIL_LABEL: Record<'cash' | 'check' | 'other', string> = {
   other: 'Other',
 };
 
+/** Emoji identifying a manual settlement's rail in its badge. */
+const MANUAL_RAIL_EMOJI: Record<'cash' | 'check' | 'other', string> = {
+  cash: '💵',
+  check: '🧾',
+  other: '📝',
+};
+
 /** Extracts a server-thrown Error's message, falling back to a generic one. */
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
@@ -564,7 +571,11 @@ export function InvoiceDetail({
                             : undefined
                         }
                       >
-                        <PaymentRailGlyph rail={settlement.rail} />
+                        <span aria-hidden="true">
+                          {MANUAL_RAIL_EMOJI[
+                            settlement.rail as 'cash' | 'check' | 'other'
+                          ]}
+                        </span>
                         Paid &middot;{' '}
                         {MANUAL_RAIL_LABEL[
                           settlement.rail as 'cash' | 'check' | 'other'
