@@ -1073,16 +1073,16 @@ def get_btc_usd_price() -> int | None:
 
 
 def _invoice_usd_owed(invoice: Invoice) -> Decimal:
-    """The USD still owed via BTC: the BTC portion, or whatever's left
-    after a prior underpayment was credited toward it.
+    """The USD still owed via BTC.
 
-    Keys off `remainder_owed_usd` rather than status, so a split
-    invoice whose card leg settled first (PARTIAL, no remainder) still
-    quotes its full BTC portion rather than an empty one.
+    Delegates to `Invoice.btc_owed_usd`, which keys off
+    `remainder_owed_usd` rather than status -- so a split invoice
+    whose card leg settled first (PARTIAL, no remainder) still quotes
+    its full BTC portion rather than an empty one -- and reflects a
+    live round's actual quoted total (full balance or scoped) once
+    one exists.
     """
-    if invoice.remainder_owed_usd is not None:
-        return invoice.remainder_owed_usd
-    return invoice.btc_portion_usd
+    return invoice.btc_owed_usd
 
 
 def _notify_landlord_discrepancy(
