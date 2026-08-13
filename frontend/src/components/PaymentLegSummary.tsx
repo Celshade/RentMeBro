@@ -2,9 +2,15 @@ import { formatMoney } from '../api/format';
 import type { InvoiceLineItem } from '../api/types';
 import { PaymentRailGlyph } from './PaymentRailGlyph';
 
-const RAIL_HEADING: Record<'btc' | 'card', string> = {
+const RAIL_HEADING: Record<
+  'btc' | 'card' | 'cash' | 'check' | 'other',
+  string
+> = {
   btc: "You're paying with Bitcoin",
   card: "You're paying by card",
+  cash: 'Paid in cash',
+  check: 'Paid by check',
+  other: 'Paid by another method',
 };
 
 
@@ -38,7 +44,7 @@ export function PaymentLegSummary({
   note,
   heading,
 }: {
-  rail: 'btc' | 'card';
+  rail: 'btc' | 'card' | 'cash' | 'check' | 'other';
   lineItems: InvoiceLineItem[];
   itemIds: number[];
   totalUsd: string;
@@ -52,12 +58,7 @@ export function PaymentLegSummary({
   return (
     <div className={`payment-leg-summary payment-leg-summary--${rail}`}>
       <p className="payment-leg-summary__heading">
-        <PaymentRailGlyph
-          rail={rail}
-          label={
-            rail === 'btc' ? 'Payable in Bitcoin' : 'Payable by card (Cash App)'
-          }
-        />
+        <PaymentRailGlyph rail={rail} />
         {heading ?? RAIL_HEADING[rail]}
       </p>
       <ul className="payment-leg-summary__items">
