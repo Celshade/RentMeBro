@@ -256,7 +256,7 @@ def compute_period_preview(
     """
     lease = get_active_lease(landlord, renter)
     return {
-        'rent': lease.current_monthly_rent,
+        'rent': lease.rent_for_month(year, month),
         'gas': compute_period_gas_total(landlord, renter, year, month),
     }
 
@@ -324,7 +324,7 @@ def generate_invoice(
         InvoiceLineItem.objects.create(
             invoice=invoice,
             description=f'Rent for {year}-{month:02d}',
-            amount=lease.current_monthly_rent,
+            amount=lease.rent_for_month(year, month),
             kind=InvoiceLineItem.Kind.RENT,
         )
 
