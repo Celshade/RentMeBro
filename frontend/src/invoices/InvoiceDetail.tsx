@@ -37,6 +37,13 @@ import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
 // see `isLineItemFrozen` for the per-item check.
 const LOCKED_STATUSES = new Set(['paid', 'void']);
 
+/** Short label for a manual settlement's rail, shown in its badge. */
+const MANUAL_RAIL_LABEL: Record<'cash' | 'check' | 'other', string> = {
+  cash: 'Cash',
+  check: 'Check',
+  other: 'Other',
+};
+
 /** Extracts a server-thrown Error's message, falling back to a generic one. */
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
@@ -549,14 +556,20 @@ export function InvoiceDetail({
                   )}
                   {settlement &&
                     ['cash', 'check', 'other'].includes(settlement.rail) && (
-                      <PaymentRailGlyph
-                        rail={settlement.rail}
-                        label={
+                      <span
+                        className="status-badge status-badge--manual"
+                        title={
                           settlement.note !== ''
                             ? settlement.note
                             : undefined
                         }
-                      />
+                      >
+                        <PaymentRailGlyph rail={settlement.rail} />
+                        Paid &middot;{' '}
+                        {MANUAL_RAIL_LABEL[
+                          settlement.rail as 'cash' | 'check' | 'other'
+                        ]}
+                      </span>
                     )}
                   {canMarkPaid && !frozen && (
                     <button type="button" onClick={() => openMarkPaid(item.id)}>
