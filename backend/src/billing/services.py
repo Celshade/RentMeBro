@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from accounts.models import User
 from billing.models import (
@@ -28,6 +29,10 @@ class InvoiceAlreadyExistsError(Exception):
 
 class InvoiceLockedError(Exception):
     """Raised when trying to edit an invoice that's already paid/void."""
+
+
+class FutureInvoiceKindError(Exception):
+    """Raised for a non-rent_only invoice kind billed for a future month."""
 
 
 def get_active_lease(landlord: User, renter: User) -> Lease:
@@ -301,7 +306,17 @@ def generate_invoice(
     Raises:
         InvoiceAlreadyExistsError: If an invoice of this kind already
             exists for the pair's billing period.
+        FutureInvoiceKindError: If `kind` isn't rent_only for a month
+            whose 1st hasn't happened yet -- gas totals for a future
+            month aren't knowable, so only rent can be billed ahead.
     """
+    today = timezone.now().date()
+    if date(year, month, 1) > today and kind != Invoice.Kind.RENT_ONLY:
+        raise FutureInvoiceKindError(
+            f'Only rent_only invoices can be generated for a future '
+            f'month ({year}-{month:02d}).'
+        )
+
     if due_date is None:
         due_date = default_invoice_due_date(year, month)
 
