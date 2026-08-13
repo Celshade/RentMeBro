@@ -62,6 +62,9 @@ export function LeaseDashboard({
     null
   );
   const [savingInvoiceEdit, setSavingInvoiceEdit] = useState(false);
+  const [invoiceEditError, setInvoiceEditError] = useState<string | null>(
+    null
+  );
   const [logDayTarget, setLogDayTarget] = useState<{
     dates: string[];
     logs: (DrivenDayLog | null)[];
@@ -172,6 +175,7 @@ export function LeaseDashboard({
 
   async function handleSaveInvoiceEdit(invoiceId: number) {
     setSavingInvoiceEdit(true);
+    setInvoiceEditError(null);
     try {
       const updated = await apiFetch<Invoice>(
         `/api/invoices/${invoiceId}/recompute/`,
@@ -183,6 +187,10 @@ export function LeaseDashboard({
         )
       );
       setEditingInvoiceId(null);
+    } catch (err) {
+      setInvoiceEditError(
+        err instanceof Error ? err.message : 'Failed to apply mileage.'
+      );
     } finally {
       setSavingInvoiceEdit(false);
     }
@@ -468,22 +476,28 @@ export function LeaseDashboard({
                                 handleSaveInvoiceEdit(invoice.id)
                               }
                             >
-                              Save changes
+                              Apply to invoice
                             </button>
                             <button
                               type="button"
                               disabled={savingInvoiceEdit}
-                              onClick={() => setEditingInvoiceId(null)}
+                              onClick={() => {
+                                setEditingInvoiceId(null);
+                                setInvoiceEditError(null);
+                              }}
                             >
                               Cancel
                             </button>
+                            {invoiceEditError && (
+                              <span role="alert">{invoiceEditError}</span>
+                            )}
                           </>
                         ) : (
                           <button
                             type="button"
                             onClick={() => setEditingInvoiceId(invoice.id)}
                           >
-                            Edit
+                            Correct mileage
                           </button>
                         )
                       )}
