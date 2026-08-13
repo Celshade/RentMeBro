@@ -710,6 +710,12 @@ body {
   margin-bottom: 12px;
 }
 
+.pay-invoice__pay-full-note {
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
 .theme-toggle {
   display: inline-flex;
   border: 1px solid var(--border);
