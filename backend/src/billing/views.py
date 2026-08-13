@@ -118,6 +118,8 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             'btc_round_line_items',
             'stripe_round_line_items',
             'settlements__line_items',
+        ).order_by(
+            '-billing_period__year', '-billing_period__month', '-created_at'
         )
 
     def retrieve(self, request, *args, **kwargs) -> Response:
