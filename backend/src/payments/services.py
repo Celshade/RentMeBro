@@ -1004,9 +1004,22 @@ def attach_btc_payment(
                 "in BTC, or a charge is locked to BTC only."
             )
         item_ids = []
+        invoice.btc_txid = ""
+        invoice.btc_watch_expires_at = None
+        invoice.btc_amount_sats = None
+        invoice.remainder_owed_usd = None
+        invoice.btc_round_line_items.set([])
 
     invoice.btc_address = address
-    invoice.save(update_fields=["btc_address"])
+    invoice.save(
+        update_fields=[
+            "btc_address",
+            "btc_txid",
+            "btc_watch_expires_at",
+            "btc_amount_sats",
+            "remainder_owed_usd",
+        ]
+    )
     invoice.btc_line_items.set(item_ids)
     return invoice
 
@@ -1420,11 +1433,18 @@ def initiate_btc_watch(invoice: Invoice, pay_full: bool = False) -> Invoice:
             expectation -- mirrors `create_payment_intent_for_invoice`
             on the card side.
 
+    Raises:
+        BtcNotEnabledError: If the invoice has no BTC address attached.
+
     Returns:
         The updated invoice. If reconciling a lapsed window resolved
         it (PENDING/PAID) or logged a new shortfall (UNDERPAID with no
         price data available), no new quote is generated.
     """
+    if not invoice.btc_address:
+        raise BtcNotEnabledError(
+            "This invoice has no BTC address attached."
+        )
     if invoice.status not in (
         Invoice.Status.DRAFT,
         Invoice.Status.SENT,
