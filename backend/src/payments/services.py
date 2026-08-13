@@ -1321,7 +1321,7 @@ def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
     return invoice
 
 
-def initiate_btc_watch(invoice: Invoice) -> Invoice:
+def initiate_btc_watch(invoice: Invoice, pay_full: bool = False) -> Invoice:
     """Starts (or restarts) the 15-minute window for an initial BTC tx.
 
     Called when the renter opens the "Pay with BTC" panel. A no-op if
@@ -1345,6 +1345,11 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
         invoice: The invoice being watched. Must be DRAFT, SENT,
             PARTIAL or UNDERPAID, with a BTC address already attached
             and something still owed via BTC.
+        pay_full: Quote `btc_full_owed_usd` instead of the BTC-scoped
+            amount, letting the renter pay everything still
+            BTC-payable in one round regardless of the landlord's BTC
+            expectation -- mirrors `create_payment_intent_for_invoice`
+            on the card side.
 
     Returns:
         The updated invoice. If reconciling a lapsed window resolved
@@ -1360,7 +1365,10 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
         return invoice
     if invoice.btc_txid:
         return invoice
-    if _invoice_usd_owed(invoice) <= 0:
+    usd_owed = invoice.btc_full_owed_usd if pay_full else _invoice_usd_owed(
+        invoice
+    )
+    if usd_owed <= 0:
         return invoice
 
     now = timezone.now()
@@ -1375,15 +1383,23 @@ def initiate_btc_watch(invoice: Invoice) -> Invoice:
         invoice = _reconcile_lapsed_watch(invoice, now)
         if invoice.status in (Invoice.Status.PENDING, Invoice.Status.PAID):
             return invoice
+        usd_owed = (
+            invoice.btc_full_owed_usd if pay_full else _invoice_usd_owed(invoice)
+        )
+        if usd_owed <= 0:
+            return invoice
 
     price = get_btc_usd_price()
     if price is None:
         return invoice
 
-    invoice.btc_amount_sats = _usd_to_sats(_invoice_usd_owed(invoice), price)
+    invoice.btc_amount_sats = _usd_to_sats(usd_owed, price)
     invoice.btc_watch_expires_at = now + BTC_WATCH_WINDOW
     invoice.save(update_fields=["btc_amount_sats", "btc_watch_expires_at"])
-    invoice.btc_round_line_items.set(invoice.btc_scope_line_items)
+    billed_items = (
+        invoice.btc_full_line_items if pay_full else invoice.btc_scope_line_items
+    )
+    invoice.btc_round_line_items.set(billed_items)
     return invoice
 
 
