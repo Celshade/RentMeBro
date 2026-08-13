@@ -274,6 +274,13 @@ export function InvoiceDetail({
   const [lockingItemId, setLockingItemId] = useState<number | null>(null);
   const [lockError, setLockError] = useState<string | null>(null);
   const [nudgeAttach, setNudgeAttach] = useState(false);
+  const [markPaidItemId, setMarkPaidItemId] = useState<number | null>(null);
+  const [markPaidRail, setMarkPaidRail] = useState<'cash' | 'check' | 'other'>(
+    'cash'
+  );
+  const [markPaidNote, setMarkPaidNote] = useState('');
+  const [markPaidSubmitting, setMarkPaidSubmitting] = useState(false);
+  const [markPaidError, setMarkPaidError] = useState<string | null>(null);
   const attachRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
@@ -376,6 +383,40 @@ export function InvoiceDetail({
     }
   }
 
+  /** Opens the mark-paid modal for one line item, resetting its form state. */
+  function openMarkPaid(lineItemId: number) {
+    setMarkPaidItemId(lineItemId);
+    setMarkPaidRail('cash');
+    setMarkPaidNote('');
+    setMarkPaidError(null);
+  }
+
+  /**
+   * Records a manual (cash/check/other) settlement for the currently
+   * open mark-paid modal's line item, then refetches the invoice so
+   * the item's paid/frozen state and its settlement note reflect the
+   * result.
+   */
+  async function handleMarkPaid() {
+    if (!invoice || markPaidItemId === null) return;
+    setMarkPaidSubmitting(true);
+    setMarkPaidError(null);
+    try {
+      const updated = await apiFetch<Invoice>(
+        `/api/invoices/${invoice.id}/line-items/${markPaidItemId}/mark-paid/`,
+        { method: 'POST', body: { rail: markPaidRail, note: markPaidNote } }
+      );
+      setInvoice(updated);
+      setMarkPaidItemId(null);
+    } catch (err) {
+      setMarkPaidError(
+        errorMessage(err, 'Could not mark this item paid. Try again.')
+      );
+    } finally {
+      setMarkPaidSubmitting(false);
+    }
+  }
+
   if (loading) return <p className="empty-state">Loading invoice…</p>;
   if (error) return <p className="empty-state">{error}</p>;
   if (!invoice) return <p className="empty-state">Invoice not found.</p>;
@@ -389,6 +430,10 @@ export function InvoiceDetail({
     btcSettings?.enabled === true &&
     !LOCKED_STATUSES.has(invoice.status);
   const canAssignBtc = canLockPayments && invoice.btc_address !== '';
+  // Marking paid manually doesn't need BTC enabled -- it's a landlord
+  // recording an off-platform payment, not a rail on the invoice.
+  const canMarkPaid =
+    user?.role === 'landlord' && !LOCKED_STATUSES.has(invoice.status);
   // A non-empty btc_txid only ever means an in-flight, unconfirmed
   // round -- once it settles the tx lives on the settlement row.
   const btcPending = invoice.btc_txid !== '';
@@ -528,6 +573,22 @@ export function InvoiceDetail({
                   {itemTxid !== '' && (
                     <BtcTxLink txid={itemTxid} pending={!settlement} />
                   )}
+                  {settlement &&
+                    ['cash', 'check', 'other'].includes(settlement.rail) && (
+                      <PaymentRailGlyph
+                        rail={settlement.rail}
+                        label={
+                          settlement.note !== ''
+                            ? settlement.note
+                            : undefined
+                        }
+                      />
+                    )}
+                  {canMarkPaid && !frozen && (
+                    <button type="button" onClick={() => openMarkPaid(item.id)}>
+                      Mark paid
+                    </button>
+                  )}
                   {canAssignBtc && !frozen && (
                     <button
                       type="button"
@@ -575,6 +636,54 @@ export function InvoiceDetail({
         {assignError && <p role="alert">{assignError}</p>}
         {lockError && <p role="alert">{lockError}</p>}
       </section>
+
+      {markPaidItemId !== null && (
+        <div className="mark-paid-modal-overlay">
+          <div className="mark-paid-modal card">
+            <h2>Mark paid</h2>
+            <label>
+              Method
+              <select
+                value={markPaidRail}
+                onChange={(e) =>
+                  setMarkPaidRail(
+                    e.target.value as 'cash' | 'check' | 'other'
+                  )
+                }
+              >
+                <option value="cash">Cash</option>
+                <option value="check">Check</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label>
+              Note (optional)
+              <textarea
+                value={markPaidNote}
+                onChange={(e) => setMarkPaidNote(e.target.value)}
+                rows={2}
+              />
+            </label>
+            {markPaidError && <p role="alert">{markPaidError}</p>}
+            <div className="mark-paid-modal__actions">
+              <button
+                type="button"
+                onClick={() => setMarkPaidItemId(null)}
+                disabled={markPaidSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleMarkPaid}
+                disabled={markPaidSubmitting}
+              >
+                {markPaidSubmitting ? 'Saving…' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {user?.role === 'landlord' &&
         btcSettings?.enabled &&
