@@ -31,6 +31,21 @@ import { LogDrivenDay } from './LogDrivenDay';
 /** How many invoices show before the list collapses behind "Show all". */
 const COLLAPSED_INVOICE_COUNT = 3;
 
+/** Mirrors the API's ordering so a locally-inserted invoice stays in place. */
+function sortInvoices(list: Invoice[]): Invoice[] {
+  return [...list].sort((a, b) => {
+    if (a.billing_period.year !== b.billing_period.year) {
+      return b.billing_period.year - a.billing_period.year;
+    }
+    if (a.billing_period.month !== b.billing_period.month) {
+      return b.billing_period.month - a.billing_period.month;
+    }
+    return (
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  });
+}
+
 
 /**
  * Manages a single lease: rent/renter summary, optional gas billing
@@ -412,7 +427,7 @@ export function LeaseDashboard({
             <GenerateInvoice
               renterId={lease.renter}
               onGenerated={(invoice) => {
-                setInvoices([invoice, ...invoices]);
+                setInvoices(sortInvoices([invoice, ...invoices]));
                 setShowGenerateInvoice(false);
               }}
             />
