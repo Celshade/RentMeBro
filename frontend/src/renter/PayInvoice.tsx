@@ -277,7 +277,9 @@ function PayInvoiceCashApp({
 
 /**
  * Renders a payment option for an invoice: Cash App Pay always, plus a
- * "Pay with BTC" toggle when the landlord has attached a BTC address.
+ * "Pay with BTC" toggle once the landlord has actually assigned BTC to
+ * at least one line item -- an attached address alone isn't enough,
+ * since attaching one with nothing scoped is a real, reachable state.
  *
  * When the landlord has scoped BTC to one line item the two aren't
  * alternatives -- both legs have to be paid to settle the invoice -- so
@@ -294,7 +296,8 @@ export function PayInvoice({
   onPaid: () => void;
 }) {
   const hasBtcOption =
-    invoice.btc_address !== '' && Number(invoice.btc_full_owed_usd) > 0;
+    invoice.btc_scope_line_items.length > 0 &&
+    Number(invoice.btc_full_owed_usd) > 0;
   const [mode, setMode] = useState<'cashapp' | 'btc'>(
     Number(invoice.btc_owed_usd) > 0 &&
       Number(invoice.stripe_portion_usd) === 0
