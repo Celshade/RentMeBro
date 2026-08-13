@@ -23,8 +23,10 @@ from payments.services import (
     BtcWatchCancelError,
     CARD_ROUND_WINDOW,
     CardCancelNotAllowedError,
+    InvalidManualRailError,
     InvoiceAlreadyPaidError,
     LandlordNotOnboardedError,
+    ManualSettlementError,
     NothingLeftToChargeError,
     _card_round_expiry,
     _sats_to_usd,
@@ -40,6 +42,7 @@ from payments.services import (
     handle_payment_intent_state_change,
     handle_payment_intent_succeeded,
     initiate_btc_watch,
+    mark_line_item_paid_manually,
     refresh_card_payment_state,
     resolve_settled_status,
     start_connect_onboarding,
@@ -1452,6 +1455,77 @@ class TestInitiateBtcWatch:
         assert result.status == Invoice.Status.UNDERPAID
         assert result.remainder_owed_usd == Decimal("70.00")
         assert result.btc_amount_sats == 140000
+
+
+class TestMarkLineItemPaidManually:
+    def test_marks_item_paid_and_resolves_partial(self):
+        invoice = _onboarded_invoice()
+        rent = InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100"))
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50"))
+
+        result = mark_line_item_paid_manually(invoice, rent.id, "cash")
+
+        assert result.status == Invoice.Status.PARTIAL
+        assert rent.id in result.paid_line_item_ids
+        settlement = result.settlements.get()
+        assert settlement.rail == "cash"
+        assert settlement.amount_usd == Decimal("100")
+        assert list(settlement.line_items.all()) == [rent]
+
+    def test_marks_last_unpaid_item_paid_and_resolves_paid(self):
+        invoice = _onboarded_invoice()
+        rent = InvoiceLineItemFactory(invoice=invoice, amount=Decimal("100"))
+
+        result = mark_line_item_paid_manually(
+            invoice, rent.id, "check", note="Check #1042"
+        )
+
+        assert result.status == Invoice.Status.PAID
+        assert result.settlements.get().note == "Check #1042"
+
+    def test_other_rail_is_accepted(self):
+        invoice = _onboarded_invoice()
+        item = InvoiceLineItemFactory(invoice=invoice, amount=Decimal("10"))
+
+        result = mark_line_item_paid_manually(invoice, item.id, "other")
+
+        assert result.settlements.get().rail == "other"
+
+    def test_rejects_a_non_manual_rail(self):
+        invoice = _onboarded_invoice()
+        item = InvoiceLineItemFactory(invoice=invoice, amount=Decimal("10"))
+
+        with pytest.raises(InvalidManualRailError):
+            mark_line_item_paid_manually(invoice, item.id, "btc")
+
+    def test_rejects_a_line_item_from_another_invoice(self):
+        invoice = _onboarded_invoice()
+        other_item = InvoiceLineItemFactory(amount=Decimal("10"))
+
+        with pytest.raises(BtcLineItemError):
+            mark_line_item_paid_manually(invoice, other_item.id, "cash")
+
+    def test_rejects_an_already_paid_item(self):
+        invoice = _onboarded_invoice()
+        item = InvoiceLineItemFactory(invoice=invoice, amount=Decimal("10"))
+        mark_line_item_paid_manually(invoice, item.id, "cash")
+
+        with pytest.raises(ManualSettlementError):
+            mark_line_item_paid_manually(invoice, item.id, "cash")
+
+    def test_rejects_an_item_with_a_payment_in_flight(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        item = InvoiceLineItemFactory(invoice=invoice, amount=Decimal("10"))
+        invoice.btc_line_items.set([item])
+        invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
+        invoice.btc_amount_sats = 20000
+        invoice.save()
+        invoice.btc_round_line_items.set([item])
+
+        with pytest.raises(ManualSettlementError):
+            mark_line_item_paid_manually(invoice, item.id, "cash")
 
 
 class TestCheckBtcPayment:
