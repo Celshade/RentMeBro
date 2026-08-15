@@ -252,6 +252,13 @@ def mark_line_item_paid_manually(
     item becomes paid/frozen through the existing model with no
     special-casing.
 
+    A bare `payment_lock` with no round actually in flight doesn't
+    block this -- `frozen_line_item_ids` only freezes an item once a
+    BTC watch/txid or Stripe intent is live for it (see
+    `Invoice.in_flight_line_item_ids`), and a lock by itself is just a
+    rail preference, not money in motion. Only a live round can be
+    stranded by a manual settlement, so only a live round blocks one.
+
     Args:
         invoice: The invoice the line item belongs to.
         line_item_id: The line item being marked paid.
@@ -830,12 +837,15 @@ def set_line_item_payment_lock(
     """Sets (or clears, via '') a line item's payment-method lock.
 
     The one and only way a rail may be taken off a charge -- an
-    explicit landlord action. Locking to 'card' also drops the item
-    from `invoice.btc_line_items`, since leaving it there would show
-    the item as BTC-assigned while no rail is actually free to bill it
-    in BTC. Locking to 'btc' is the mirror: it adds the item to
-    `invoice.btc_line_items`, since locking a charge to BTC-only
-    implies BTC should quote it.
+    explicit landlord action. This is also the sole per-item control
+    over `invoice.btc_line_items` scope now: locking to 'card' drops
+    the item from scope, since leaving it there would show the item as
+    BTC-assigned while no rail is actually free to bill it in BTC.
+    Locking to 'btc' adds the item to scope, since locking a charge to
+    BTC-only implies BTC should quote it. Clearing the lock ('') also
+    adds the item to scope, but only when a BTC address is already
+    attached -- with no address, scope would be meaningless, and every
+    item defaults to '' on invoices that never touch BTC at all.
 
     Args:
         invoice: The invoice the line item belongs to.
@@ -870,7 +880,7 @@ def set_line_item_payment_lock(
     line_item.save(update_fields=["payment_lock"])
     if lock == InvoiceLineItem.Lock.CARD:
         invoice.btc_line_items.remove(line_item)
-    elif lock == InvoiceLineItem.Lock.BTC:
+    elif lock == InvoiceLineItem.Lock.BTC or invoice.btc_address:
         invoice.btc_line_items.add(line_item)
     return invoice
 
@@ -1004,9 +1014,22 @@ def attach_btc_payment(
                 "in BTC, or a charge is locked to BTC only."
             )
         item_ids = []
+        invoice.btc_txid = ""
+        invoice.btc_watch_expires_at = None
+        invoice.btc_amount_sats = None
+        invoice.remainder_owed_usd = None
+        invoice.btc_round_line_items.set([])
 
     invoice.btc_address = address
-    invoice.save(update_fields=["btc_address"])
+    invoice.save(
+        update_fields=[
+            "btc_address",
+            "btc_txid",
+            "btc_watch_expires_at",
+            "btc_amount_sats",
+            "remainder_owed_usd",
+        ]
+    )
     invoice.btc_line_items.set(item_ids)
     return invoice
 
@@ -1060,16 +1083,16 @@ def get_btc_usd_price() -> int | None:
 
 
 def _invoice_usd_owed(invoice: Invoice) -> Decimal:
-    """The USD still owed via BTC: the BTC portion, or whatever's left
-    after a prior underpayment was credited toward it.
+    """The USD still owed via BTC.
 
-    Keys off `remainder_owed_usd` rather than status, so a split
-    invoice whose card leg settled first (PARTIAL, no remainder) still
-    quotes its full BTC portion rather than an empty one.
+    Delegates to `Invoice.btc_owed_usd`, which keys off
+    `remainder_owed_usd` rather than status -- so a split invoice
+    whose card leg settled first (PARTIAL, no remainder) still quotes
+    its full BTC portion rather than an empty one -- and reflects a
+    live round's actual quoted total (full balance or scoped) once
+    one exists.
     """
-    if invoice.remainder_owed_usd is not None:
-        return invoice.remainder_owed_usd
-    return invoice.btc_portion_usd
+    return invoice.btc_owed_usd
 
 
 def _notify_landlord_discrepancy(
@@ -1420,11 +1443,18 @@ def initiate_btc_watch(invoice: Invoice, pay_full: bool = False) -> Invoice:
             expectation -- mirrors `create_payment_intent_for_invoice`
             on the card side.
 
+    Raises:
+        BtcNotEnabledError: If the invoice has no BTC address attached.
+
     Returns:
         The updated invoice. If reconciling a lapsed window resolved
         it (PENDING/PAID) or logged a new shortfall (UNDERPAID with no
         price data available), no new quote is generated.
     """
+    if not invoice.btc_address:
+        raise BtcNotEnabledError(
+            "This invoice has no BTC address attached."
+        )
     if invoice.status not in (
         Invoice.Status.DRAFT,
         Invoice.Status.SENT,

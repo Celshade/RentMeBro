@@ -383,7 +383,11 @@ class Invoice(models.Model):
         """Whether a BTC round is currently in flight.
 
         True for a live quote window or a seen-but-unconfirmed tx.
+        Always False without an assigned BTC address, so leftover round
+        fields on a detached invoice can't strand it in a live state.
         """
+        if not self.btc_address:
+            return False
         now = timezone.now()
         live_quote = (
             self.btc_watch_expires_at is not None
@@ -516,6 +520,30 @@ class Invoice(models.Model):
             (item.amount for item in self.btc_scope_line_items),
             start=Decimal(0),
         )
+
+    @property
+    def btc_owed_usd(self) -> Decimal:
+        """USD still owed via BTC right now.
+
+        `remainder_owed_usd` wins when a prior underpayment left a
+        credited balance. Otherwise, once a round has been quoted
+        (`btc_amount_sats` set), this reflects what that round is
+        actually watching for -- which is the full balance, not just
+        the scoped portion, when the round was started with
+        `pay_full`. Before any round is quoted, it falls back to the
+        scoped portion so the pre-quote summary and the
+        pay-full-instead comparison stay accurate.
+        """
+        if self.remainder_owed_usd is not None:
+            return self.remainder_owed_usd
+        if self.btc_amount_sats is not None:
+            round_total = sum(
+                (item.amount for item in self.btc_round_line_items.all()),
+                start=Decimal(0),
+            )
+            if round_total > 0:
+                return round_total
+        return self.btc_portion_usd
 
     @property
     def stripe_portion_usd(self) -> Decimal:
