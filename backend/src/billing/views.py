@@ -41,7 +41,7 @@ class LeaseViewSet(viewsets.ModelViewSet):
         return Lease.objects.filter(Q(landlord=user) | Q(renter=user))
 
     def get_permissions(self) -> list[BasePermission]:
-        if self.action == 'create':
+        if self.action == "create":
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
 
@@ -57,7 +57,7 @@ class DrivenDayLogViewSet(viewsets.ModelViewSet):
         return DrivenDayLog.objects.filter(Q(landlord=user) | Q(renter=user))
 
     def get_permissions(self) -> list[BasePermission]:
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ("create", "update", "partial_update", "destroy"):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
 
@@ -71,7 +71,7 @@ class DrivenDayLogViewSet(viewsets.ModelViewSet):
         """Maps a frozen gas month to 409, matching InvoiceViewSet.recompute."""
         if isinstance(exc, services.InvoiceLockedError):
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
             )
         return super().handle_exception(exc)
 
@@ -85,7 +85,7 @@ class MileageProfileViewSet(viewsets.ModelViewSet):
         return MileageProfile.objects.filter(Q(landlord=user) | Q(renter=user))
 
     def get_permissions(self) -> list[BasePermission]:
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ("create", "update", "partial_update", "destroy"):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
 
@@ -99,7 +99,7 @@ class GasPriceEntryViewSet(viewsets.ModelViewSet):
         return GasPriceEntry.objects.filter(Q(landlord=user) | Q(renter=user))
 
     def get_permissions(self) -> list[BasePermission]:
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ("create", "update", "partial_update", "destroy"):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
 
@@ -113,13 +113,13 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         return Invoice.objects.filter(
             Q(billing_period__landlord=user) | Q(billing_period__renter=user)
         ).prefetch_related(
-            'line_items',
-            'btc_line_items',
-            'btc_round_line_items',
-            'stripe_round_line_items',
-            'settlements__line_items',
+            "line_items",
+            "btc_line_items",
+            "btc_round_line_items",
+            "stripe_round_line_items",
+            "settlements__line_items",
         ).order_by(
-            '-billing_period__year', '-billing_period__month', '-created_at'
+            "-billing_period__year", "-billing_period__month", "-created_at"
         )
 
     def retrieve(self, request, *args, **kwargs) -> Response:
@@ -153,35 +153,35 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def create(self, request, *args, **kwargs) -> Response:
         serializer = InvoiceCreateSerializer(
-            data=request.data, context={'request': request}
+            data=request.data, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
         try:
             invoice = services.generate_invoice(
                 landlord=request.user,
-                renter=serializer.validated_data['renter'],
-                year=serializer.validated_data['year'],
-                month=serializer.validated_data['month'],
-                kind=serializer.validated_data['kind'],
-                due_date=serializer.validated_data.get('due_date'),
+                renter=serializer.validated_data["renter"],
+                year=serializer.validated_data["year"],
+                month=serializer.validated_data["month"],
+                kind=serializer.validated_data["kind"],
+                due_date=serializer.validated_data.get("due_date"),
             )
         except services.InvoiceAlreadyExistsError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
             )
         except (
             services.BillingConfigError,
             services.FutureInvoiceKindError,
         ) as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
         return Response(
             InvoiceSerializer(invoice).data, status=status.HTTP_201_CREATED
         )
 
     def get_permissions(self) -> list[BasePermission]:
-        if self.action in ('create', 'destroy'):
+        if self.action in ("create", "destroy"):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
 
@@ -200,18 +200,18 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             Invoice.Status.PAID,
         ):
             return Response(
-                {'detail': 'Only an unpaid invoice can be deleted.'},
+                {"detail": "Only an unpaid invoice can be deleted."},
                 status=status.HTTP_409_CONFLICT,
             )
         if invoice.settlements.exists() or invoice.frozen_line_item_ids:
             return Response(
-                {'detail': 'Only an unpaid invoice can be deleted.'},
+                {"detail": "Only an unpaid invoice can be deleted."},
                 status=status.HTTP_409_CONFLICT,
             )
         invoice.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=["get"])
     def weeks(self, request, pk=None) -> Response:
         """Returns the invoice's driven days grouped into billed weeks."""
         invoice = self.get_object()
@@ -223,7 +223,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(
         detail=True,
-        methods=['post'],
+        methods=["post"],
         permission_classes=[IsAuthenticated, IsLandlord],
     )
     def send(self, request, pk=None) -> Response:
@@ -231,16 +231,16 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         invoice = self.get_object()
         if invoice.status != Invoice.Status.DRAFT:
             return Response(
-                {'detail': 'Only a draft invoice can be sent.'},
+                {"detail": "Only a draft invoice can be sent."},
                 status=status.HTTP_409_CONFLICT,
             )
         invoice.status = Invoice.Status.SENT
-        invoice.save(update_fields=['status'])
+        invoice.save(update_fields=["status"])
         return Response(InvoiceSerializer(invoice).data)
 
     @action(
         detail=True,
-        methods=['post'],
+        methods=["post"],
         permission_classes=[IsAuthenticated, IsLandlord],
     )
     def recompute(self, request, pk=None) -> Response:
@@ -250,7 +250,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             invoice = services.recompute_invoice_gas(invoice)
         except services.InvoiceLockedError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
             )
         return Response(InvoiceSerializer(invoice).data)
 
@@ -288,14 +288,14 @@ class RenterLookupView(APIView):
     def get(self, request) -> Response:
         serializer = RenterLookupQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
-        email = serializer.validated_data['email']
+        email = serializer.validated_data["email"]
 
         renter = User.objects.filter(
             email__iexact=email, role=User.Role.RENTER
         ).first()
         if renter is None:
             return Response(
-                {'detail': 'No matching renter found.'},
+                {"detail": "No matching renter found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(UserSerializer(renter).data)
@@ -322,6 +322,6 @@ class BillingPeriodPreviewView(APIView):
             )
         except services.BillingConfigError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
         return Response(PeriodPreviewSerializer(preview).data)

@@ -11,18 +11,18 @@ class Lease(models.Model):
     """Links one landlord to one renter for billing purposes."""
 
     class LeaseType(models.TextChoices):
-        CUSTOM = 'custom', 'Custom'
-        DEFAULT = 'default', 'Default'
+        CUSTOM = "custom", "Custom"
+        DEFAULT = "default", "Default"
 
     landlord = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='leases_as_landlord',
+        related_name="leases_as_landlord",
     )
     renter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='leases_as_renter',
+        related_name="leases_as_renter",
     )
     monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
     start_date = models.DateField()
@@ -31,19 +31,19 @@ class Lease(models.Model):
         max_length=16, choices=LeaseType.choices, default=LeaseType.DEFAULT
     )
     document = models.FileField(
-        upload_to='lease_documents/', null=True, blank=True
+        upload_to="lease_documents/", null=True, blank=True
     )
     term_months = models.PositiveIntegerField(null=True, blank=True)
 
     @property
     def default_terms_text(self) -> str:
         return (
-            f'This lease sets monthly rent at ${self.monthly_rent} for a '
-            f'term of {self.term_months} months beginning '
-            f'{self.start_date}. This agreement is subject to change '
-            'based on future circumstances. Any revisions will be '
-            'provided to the renter in writing at least 30 days before '
-            'taking effect.'
+            f"This lease sets monthly rent at ${self.monthly_rent} for a "
+            f"term of {self.term_months} months beginning "
+            f"{self.start_date}. This agreement is subject to change "
+            "based on future circumstances. Any revisions will be "
+            "provided to the renter in writing at least 30 days before "
+            "taking effect."
         )
 
     @property
@@ -64,23 +64,23 @@ class Lease(models.Model):
     def _rent_as_of(self, cutoff: date) -> Decimal:
         revision = (
             self.rent_revisions.filter(effective_date__lte=cutoff)
-            .order_by('-effective_date')
+            .order_by("-effective_date")
             .first()
         )
         return revision.new_monthly_rent if revision else self.monthly_rent
 
     @property
-    def pending_rent_revision(self) -> 'LeaseRentRevision | None':
+    def pending_rent_revision(self) -> "LeaseRentRevision | None":
         """The nearest scheduled revision not yet in effect, if any."""
         today = timezone.now().date()
         return (
             self.rent_revisions.filter(effective_date__gt=today)
-            .order_by('effective_date')
+            .order_by("effective_date")
             .first()
         )
 
     def __str__(self) -> str:
-        return f'Lease({self.landlord} -> {self.renter})'
+        return f"Lease({self.landlord} -> {self.renter})"
 
 
 class LeaseRentRevision(models.Model):
@@ -95,19 +95,19 @@ class LeaseRentRevision(models.Model):
     """
 
     lease = models.ForeignKey(
-        Lease, on_delete=models.CASCADE, related_name='rent_revisions'
+        Lease, on_delete=models.CASCADE, related_name="rent_revisions"
     )
     new_monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
     effective_date = models.DateField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-effective_date']
+        ordering = ["-effective_date"]
 
     def __str__(self) -> str:
         return (
-            f'LeaseRentRevision(lease={self.lease_id}, '
-            f'${self.new_monthly_rent}, {self.effective_date})'
+            f"LeaseRentRevision(lease={self.lease_id}, "
+            f"${self.new_monthly_rent}, {self.effective_date})"
         )
 
     def save(self, *args, **kwargs) -> None:
@@ -118,11 +118,11 @@ class LeaseRentRevision(models.Model):
 
     def _notify_renter(self) -> None:
         send_mail(
-            subject='Your RentMeBro rent is changing',
+            subject="Your RentMeBro rent is changing",
             message=(
-                f'Your monthly rent will change to '
-                f'${self.new_monthly_rent}, effective '
-                f'{self.effective_date}.'
+                f"Your monthly rent will change to "
+                f"${self.new_monthly_rent}, effective "
+                f"{self.effective_date}."
             ),
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[self.lease.renter.email],
@@ -142,19 +142,19 @@ class MileageProfile(models.Model):
     landlord = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='mileage_profiles_as_landlord',
+        related_name="mileage_profiles_as_landlord",
     )
     renter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='mileage_profiles_as_renter',
+        related_name="mileage_profiles_as_renter",
     )
     one_way_miles = models.DecimalField(max_digits=6, decimal_places=2)
     mpg = models.DecimalField(max_digits=6, decimal_places=2)
     effective_from = models.DateField()
 
     class Meta:
-        ordering = ['-effective_from']
+        ordering = ["-effective_from"]
 
     @property
     def full_day_miles(self) -> Decimal:
@@ -162,8 +162,8 @@ class MileageProfile(models.Model):
 
     def __str__(self) -> str:
         return (
-            f'MileageProfile(landlord={self.landlord_id}, '
-            f'renter={self.renter_id}, from={self.effective_from})'
+            f"MileageProfile(landlord={self.landlord_id}, "
+            f"renter={self.renter_id}, from={self.effective_from})"
         )
 
 
@@ -178,25 +178,25 @@ class GasPriceEntry(models.Model):
     landlord = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='gas_price_entries_as_landlord',
+        related_name="gas_price_entries_as_landlord",
     )
     renter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='gas_price_entries_as_renter',
+        related_name="gas_price_entries_as_renter",
     )
     price_per_gallon = models.DecimalField(max_digits=6, decimal_places=3)
     effective_from = models.DateField()
     effective_to = models.DateField(null=True, blank=True)
 
     class Meta:
-        ordering = ['-effective_from']
+        ordering = ["-effective_from"]
 
     def __str__(self) -> str:
         return (
-            f'GasPriceEntry(landlord={self.landlord_id}, '
-            f'renter={self.renter_id}, ${self.price_per_gallon}, '
-            f'from={self.effective_from})'
+            f"GasPriceEntry(landlord={self.landlord_id}, "
+            f"renter={self.renter_id}, ${self.price_per_gallon}, "
+            f"from={self.effective_from})"
         )
 
 
@@ -207,23 +207,23 @@ class DrivenDayLog(models.Model):
     """
 
     class Kind(models.TextChoices):
-        DRIVEN = 'driven', 'Driven'
-        DAY_OFF = 'day_off', 'Day off'
-        OTHER_RIDE = 'other_ride', 'Other ride'
+        DRIVEN = "driven", "Driven"
+        DAY_OFF = "day_off", "Day off"
+        OTHER_RIDE = "other_ride", "Other ride"
 
     class HalfLeg(models.TextChoices):
-        DROP_OFF = 'drop_off', 'Drop-off'
-        PICK_UP = 'pick_up', 'Pick-up'
+        DROP_OFF = "drop_off", "Drop-off"
+        PICK_UP = "pick_up", "Pick-up"
 
     landlord = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='driven_day_logs_as_landlord',
+        related_name="driven_day_logs_as_landlord",
     )
     renter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='driven_day_logs_as_renter',
+        related_name="driven_day_logs_as_renter",
     )
     date = models.DateField()
     kind = models.CharField(
@@ -233,19 +233,19 @@ class DrivenDayLog(models.Model):
         max_digits=3, decimal_places=2, default=1
     )
     half_leg = models.CharField(
-        max_length=16, choices=HalfLeg.choices, blank=True, default=''
+        max_length=16, choices=HalfLeg.choices, blank=True, default=""
     )
     note = models.CharField(max_length=255, blank=True)
 
     class Meta:
-        ordering = ['date']
-        unique_together = ('landlord', 'renter', 'date')
+        ordering = ["date"]
+        unique_together = ("landlord", "renter", "date")
 
     def __str__(self) -> str:
         return (
-            f'DrivenDayLog(landlord={self.landlord_id}, '
-            f'renter={self.renter_id}, {self.date}, {self.kind}, '
-            f'{self.day_fraction})'
+            f"DrivenDayLog(landlord={self.landlord_id}, "
+            f"renter={self.renter_id}, {self.date}, {self.kind}, "
+            f"{self.day_fraction})"
         )
 
 
@@ -255,48 +255,48 @@ class BillingPeriod(models.Model):
     landlord = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='billing_periods_as_landlord',
+        related_name="billing_periods_as_landlord",
     )
     renter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='billing_periods_as_renter',
+        related_name="billing_periods_as_renter",
     )
     year = models.PositiveSmallIntegerField()
     month = models.PositiveSmallIntegerField()
 
     class Meta:
-        ordering = ['-year', '-month']
-        unique_together = ('landlord', 'renter', 'year', 'month')
+        ordering = ["-year", "-month"]
+        unique_together = ("landlord", "renter", "year", "month")
 
     def __str__(self) -> str:
         return (
-            f'BillingPeriod(landlord={self.landlord_id}, '
-            f'renter={self.renter_id}, {self.year}-{self.month:02d})'
+            f"BillingPeriod(landlord={self.landlord_id}, "
+            f"renter={self.renter_id}, {self.year}-{self.month:02d})"
         )
 
 
 class Invoice(models.Model):
     class Kind(models.TextChoices):
-        COMBINED = 'combined', 'Combined'
-        RENT_ONLY = 'rent_only', 'Rent only'
-        GAS_ONLY = 'gas_only', 'Gas only'
+        COMBINED = "combined", "Combined"
+        RENT_ONLY = "rent_only", "Rent only"
+        GAS_ONLY = "gas_only", "Gas only"
 
     class Status(models.TextChoices):
-        DRAFT = 'draft', 'Draft'
-        SENT = 'sent', 'Sent'
-        PENDING = 'pending', 'Pending'
+        DRAFT = "draft", "Draft"
+        SENT = "sent", "Sent"
+        PENDING = "pending", "Pending"
         # PARTIAL and UNDERPAID both mean "some money arrived" but call
         # for different responses: a split invoice is progressing
         # normally and just needs its other leg, while an underpaid one
         # is short and needs chasing.
-        PARTIAL = 'partial', 'Partially Paid'
-        UNDERPAID = 'underpaid', 'Underpaid'
-        PAID = 'paid', 'Paid'
-        VOID = 'void', 'Void'
+        PARTIAL = "partial", "Partially Paid"
+        UNDERPAID = "underpaid", "Underpaid"
+        PAID = "paid", "Paid"
+        VOID = "void", "Void"
 
     billing_period = models.ForeignKey(
-        BillingPeriod, on_delete=models.CASCADE, related_name='invoices'
+        BillingPeriod, on_delete=models.CASCADE, related_name="invoices"
     )
     kind = models.CharField(max_length=16, choices=Kind.choices)
     status = models.CharField(
@@ -321,24 +321,24 @@ class Invoice(models.Model):
     # It sizes and gates the BTC leg, but still doesn't remove the
     # card rail from an item; only `payment_lock` does that.
     btc_line_items = models.ManyToManyField(
-        'InvoiceLineItem', blank=True, related_name='+'
+        "InvoiceLineItem", blank=True, related_name="+"
     )
     btc_settled_at = models.DateTimeField(null=True, blank=True)
     stripe_settled_at = models.DateTimeField(null=True, blank=True)
     btc_round_line_items = models.ManyToManyField(
-        'InvoiceLineItem', blank=True, related_name='+'
+        "InvoiceLineItem", blank=True, related_name="+"
     )
     stripe_round_line_items = models.ManyToManyField(
-        'InvoiceLineItem', blank=True, related_name='+'
+        "InvoiceLineItem", blank=True, related_name="+"
     )
     stripe_intent_status = models.CharField(max_length=32, blank=True)
     stripe_round_expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = ('billing_period', 'kind')
+        unique_together = ("billing_period", "kind")
 
     def __str__(self) -> str:
-        return f'Invoice({self.billing_period}, {self.kind})'
+        return f"Invoice({self.billing_period}, {self.kind})"
 
     @property
     def total(self) -> Decimal:
@@ -374,7 +374,7 @@ class Invoice(models.Model):
         return ids
 
     @property
-    def unpaid_line_items(self) -> list['InvoiceLineItem']:
+    def unpaid_line_items(self) -> list["InvoiceLineItem"]:
         paid = self.paid_line_item_ids
         return [item for item in self.line_items.all() if item.id not in paid]
 
@@ -410,9 +410,9 @@ class Invoice(models.Model):
         `requires_payment_method` (the renter opened the tab and
         walked away), blocks nothing.
         """
-        if self.stripe_intent_status == 'processing':
+        if self.stripe_intent_status == "processing":
             return True
-        if self.stripe_intent_status != 'requires_action':
+        if self.stripe_intent_status != "requires_action":
             return False
         if self.stripe_round_expires_at is None:
             return True
@@ -427,7 +427,7 @@ class Invoice(models.Model):
         itself never calls Stripe.
         """
         return (
-            self.stripe_intent_status in ('processing', 'requires_action')
+            self.stripe_intent_status in ("processing", "requires_action")
             and (
                 self.stripe_round_expires_at is None
                 or timezone.now() > self.stripe_round_expires_at
@@ -468,7 +468,7 @@ class Invoice(models.Model):
         return frozen
 
     @property
-    def _btc_candidates(self) -> list['InvoiceLineItem']:
+    def _btc_candidates(self) -> list["InvoiceLineItem"]:
         return [
             item for item in self.unpaid_line_items
             if item.payment_lock != InvoiceLineItem.Lock.CARD
@@ -476,7 +476,7 @@ class Invoice(models.Model):
         ]
 
     @property
-    def _card_candidates(self) -> list['InvoiceLineItem']:
+    def _card_candidates(self) -> list["InvoiceLineItem"]:
         return [
             item for item in self.unpaid_line_items
             if item.payment_lock != InvoiceLineItem.Lock.BTC
@@ -484,7 +484,7 @@ class Invoice(models.Model):
         ]
 
     @property
-    def btc_scope_line_items(self) -> list['InvoiceLineItem']:
+    def btc_scope_line_items(self) -> list["InvoiceLineItem"]:
         """What a fresh BTC quote would cover right now.
 
         The landlord's expectation (`btc_line_items`) intersected with
@@ -503,7 +503,7 @@ class Invoice(models.Model):
         return scoped or candidates
 
     @property
-    def stripe_scope_line_items(self) -> list['InvoiceLineItem']:
+    def stripe_scope_line_items(self) -> list["InvoiceLineItem"]:
         """What the card leg bills by default: card-payable items the
         landlord hasn't expressed a BTC preference for.
         """
@@ -553,7 +553,7 @@ class Invoice(models.Model):
         )
 
     @property
-    def btc_full_line_items(self) -> list['InvoiceLineItem']:
+    def btc_full_line_items(self) -> list["InvoiceLineItem"]:
         """Every BTC-payable item, ignoring the landlord's BTC scope.
 
         Public alias for `_btc_candidates` -- lets a renter pay the
@@ -573,7 +573,7 @@ class Invoice(models.Model):
         )
 
     @property
-    def card_full_line_items(self) -> list['InvoiceLineItem']:
+    def card_full_line_items(self) -> list["InvoiceLineItem"]:
         """Every card-payable item, ignoring the BTC expectation.
 
         Public alias for `_card_candidates` -- other modules (e.g.
@@ -625,22 +625,22 @@ class Invoice(models.Model):
 
 class InvoiceLineItem(models.Model):
     class Kind(models.TextChoices):
-        RENT = 'rent', 'Rent'
-        GAS = 'gas', 'Gas'
+        RENT = "rent", "Rent"
+        GAS = "gas", "Gas"
 
     class Lock(models.TextChoices):
-        BTC = 'btc', 'BTC only'
-        CARD = 'card', 'Card only'
+        BTC = "btc", "BTC only"
+        CARD = "card", "Card only"
 
     invoice = models.ForeignKey(
-        Invoice, on_delete=models.CASCADE, related_name='line_items'
+        Invoice, on_delete=models.CASCADE, related_name="line_items"
     )
     description = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     kind = models.CharField(max_length=16, choices=Kind.choices)
     payment_lock = models.CharField(
-        max_length=8, blank=True, choices=Lock.choices, default=''
+        max_length=8, blank=True, choices=Lock.choices, default=""
     )
 
     def __str__(self) -> str:
-        return f'InvoiceLineItem({self.kind}, ${self.amount})'
+        return f"InvoiceLineItem({self.kind}, ${self.amount})"

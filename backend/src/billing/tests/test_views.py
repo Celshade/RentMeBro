@@ -29,10 +29,10 @@ class TestLeaseViewSet:
         own_lease = LeaseFactory(landlord=landlord)
         LeaseFactory()  # someone else's lease
 
-        response = landlord_client.get(reverse('lease-list'))
+        response = landlord_client.get(reverse("lease-list"))
 
         assert response.status_code == 200
-        ids = [item['id'] for item in response.data]
+        ids = [item["id"] for item in response.data]
         assert ids == [own_lease.id]
 
     def test_serializes_pending_rent_revision(
@@ -41,15 +41,15 @@ class TestLeaseViewSet:
         lease = LeaseFactory(landlord=landlord)
         LeaseRentRevisionFactory(
             lease=lease,
-            new_monthly_rent=Decimal('1200.00'),
+            new_monthly_rent=Decimal("1200.00"),
             effective_date=date.today() + timedelta(days=30),
         )
 
-        response = landlord_client.get(reverse('lease-list'))
+        response = landlord_client.get(reverse("lease-list"))
 
-        pending = response.data[0]['pending_rent_revision']
-        assert pending['new_monthly_rent'] == '1200.00'
-        assert pending['effective_date'] == (
+        pending = response.data[0]["pending_rent_revision"]
+        assert pending["new_monthly_rent"] == "1200.00"
+        assert pending["effective_date"] == (
             date.today() + timedelta(days=30)
         ).isoformat()
 
@@ -58,53 +58,53 @@ class TestLeaseViewSet:
     ):
         LeaseFactory(landlord=landlord)
 
-        response = landlord_client.get(reverse('lease-list'))
+        response = landlord_client.get(reverse("lease-list"))
 
-        assert response.data[0]['pending_rent_revision'] is None
+        assert response.data[0]["pending_rent_revision"] is None
 
     def test_create_requires_landlord(self, renter_client, renter):
         response = renter_client.post(
-            reverse('lease-list'),
+            reverse("lease-list"),
             {
-                'renter': renter.id,
-                'monthly_rent': '1000.00',
-                'start_date': '2024-01-01',
-                'lease_type': 'default',
-                'term_months': 12,
+                "renter": renter.id,
+                "monthly_rent": "1000.00",
+                "start_date": "2024-01-01",
+                "lease_type": "default",
+                "term_months": 12,
             },
         )
         assert response.status_code == 403
 
     def test_create_requires_authentication(self, api_client):
-        response = api_client.post(reverse('lease-list'), {})
+        response = api_client.post(reverse("lease-list"), {})
         assert response.status_code == 401
 
     def test_create_forces_landlord_to_requesting_user(
         self, landlord_client, landlord, renter
     ):
         response = landlord_client.post(
-            reverse('lease-list'),
+            reverse("lease-list"),
             {
-                'renter': renter.id,
-                'monthly_rent': '1000.00',
-                'start_date': '2024-01-01',
-                'lease_type': 'default',
-                'term_months': 12,
+                "renter": renter.id,
+                "monthly_rent": "1000.00",
+                "start_date": "2024-01-01",
+                "lease_type": "default",
+                "term_months": 12,
             },
         )
         assert response.status_code == 201
-        assert response.data['landlord'] == landlord.id
+        assert response.data["landlord"] == landlord.id
 
     def test_default_lease_without_term_months_rejected(
         self, landlord_client, renter
     ):
         response = landlord_client.post(
-            reverse('lease-list'),
+            reverse("lease-list"),
             {
-                'renter': renter.id,
-                'monthly_rent': '1000.00',
-                'start_date': '2024-01-01',
-                'lease_type': 'default',
+                "renter": renter.id,
+                "monthly_rent": "1000.00",
+                "start_date": "2024-01-01",
+                "lease_type": "default",
             },
         )
         assert response.status_code == 400
@@ -113,12 +113,12 @@ class TestLeaseViewSet:
         self, landlord_client, renter
     ):
         response = landlord_client.post(
-            reverse('lease-list'),
+            reverse("lease-list"),
             {
-                'renter': renter.id,
-                'monthly_rent': '1000.00',
-                'start_date': '2024-01-01',
-                'lease_type': 'custom',
+                "renter": renter.id,
+                "monthly_rent": "1000.00",
+                "start_date": "2024-01-01",
+                "lease_type": "custom",
             },
         )
         assert response.status_code == 400
@@ -129,21 +129,21 @@ class TestLeaseViewSet:
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         document = SimpleUploadedFile(
-            'lease.pdf', b'%PDF-1.4', content_type='application/pdf'
+            "lease.pdf", b"%PDF-1.4", content_type="application/pdf"
         )
         response = landlord_client.post(
-            reverse('lease-list'),
+            reverse("lease-list"),
             {
-                'renter': renter.id,
-                'monthly_rent': '1000.00',
-                'start_date': '2024-01-01',
-                'lease_type': 'custom',
-                'document': document,
+                "renter": renter.id,
+                "monthly_rent": "1000.00",
+                "start_date": "2024-01-01",
+                "lease_type": "custom",
+                "document": document,
             },
-            format='multipart',
+            format="multipart",
         )
         assert response.status_code == 201
-        assert response.data['terms_text'] is None
+        assert response.data["terms_text"] is None
 
 
 # --- DrivenDayLogViewSet ------------------------------------------------
@@ -155,16 +155,16 @@ class TestDrivenDayLogViewSet:
         LeaseFactory(landlord=landlord, renter=renter)
         DrivenDayLogFactory(landlord=landlord, renter=renter)
 
-        list_response = renter_client.get(reverse('driven-day-list'))
+        list_response = renter_client.get(reverse("driven-day-list"))
         assert list_response.status_code == 200
 
         create_response = renter_client.post(
-            reverse('driven-day-list'),
+            reverse("driven-day-list"),
             {
-                'renter': renter.id,
-                'date': '2024-06-05',
-                'kind': 'driven',
-                'day_fraction': '1.00',
+                "renter": renter.id,
+                "date": "2024-06-05",
+                "kind": "driven",
+                "day_fraction": "1.00",
             },
         )
         assert create_response.status_code == 403
@@ -174,12 +174,12 @@ class TestDrivenDayLogViewSet:
     ):
         # No lease created between landlord_client's landlord and renter.
         response = landlord_client.post(
-            reverse('driven-day-list'),
+            reverse("driven-day-list"),
             {
-                'renter': renter.id,
-                'date': '2024-06-05',
-                'kind': 'driven',
-                'day_fraction': '1.00',
+                "renter": renter.id,
+                "date": "2024-06-05",
+                "kind": "driven",
+                "day_fraction": "1.00",
             },
         )
         assert response.status_code == 400
@@ -189,83 +189,83 @@ class TestDrivenDayLogViewSet:
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         response = landlord_client.post(
-            reverse('driven-day-list'),
+            reverse("driven-day-list"),
             {
-                'renter': renter.id,
-                'date': '2024-06-05',
-                'kind': 'driven',
-                'day_fraction': '1.00',
+                "renter": renter.id,
+                "date": "2024-06-05",
+                "kind": "driven",
+                "day_fraction": "1.00",
             },
         )
         assert response.status_code == 201
-        assert response.data['landlord'] == landlord.id
+        assert response.data["landlord"] == landlord.id
 
     def test_non_driven_kind_forces_zero_day_fraction(
         self, landlord_client, landlord, renter
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         response = landlord_client.post(
-            reverse('driven-day-list'),
+            reverse("driven-day-list"),
             {
-                'renter': renter.id,
-                'date': '2024-06-05',
-                'kind': 'day_off',
-                'day_fraction': '1.00',
+                "renter": renter.id,
+                "date": "2024-06-05",
+                "kind": "day_off",
+                "day_fraction": "1.00",
             },
         )
         assert response.status_code == 201
-        assert response.data['day_fraction'] == '0.00'
+        assert response.data["day_fraction"] == "0.00"
 
     def test_non_driven_kind_forces_empty_half_leg(
         self, landlord_client, landlord, renter
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         response = landlord_client.post(
-            reverse('driven-day-list'),
+            reverse("driven-day-list"),
             {
-                'renter': renter.id,
-                'date': '2024-06-05',
-                'kind': 'day_off',
-                'day_fraction': '1.00',
-                'half_leg': 'drop_off',
+                "renter": renter.id,
+                "date": "2024-06-05",
+                "kind": "day_off",
+                "day_fraction": "1.00",
+                "half_leg": "drop_off",
             },
         )
         assert response.status_code == 201
-        assert response.data['half_leg'] == ''
+        assert response.data["half_leg"] == ""
 
     def test_full_day_fraction_forces_empty_half_leg(
         self, landlord_client, landlord, renter
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         response = landlord_client.post(
-            reverse('driven-day-list'),
+            reverse("driven-day-list"),
             {
-                'renter': renter.id,
-                'date': '2024-06-05',
-                'kind': 'driven',
-                'day_fraction': '1.00',
-                'half_leg': 'pick_up',
+                "renter": renter.id,
+                "date": "2024-06-05",
+                "kind": "driven",
+                "day_fraction": "1.00",
+                "half_leg": "pick_up",
             },
         )
         assert response.status_code == 201
-        assert response.data['half_leg'] == ''
+        assert response.data["half_leg"] == ""
 
     def test_half_day_fraction_keeps_half_leg(
         self, landlord_client, landlord, renter
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         response = landlord_client.post(
-            reverse('driven-day-list'),
+            reverse("driven-day-list"),
             {
-                'renter': renter.id,
-                'date': '2024-06-05',
-                'kind': 'driven',
-                'day_fraction': '0.50',
-                'half_leg': 'drop_off',
+                "renter": renter.id,
+                "date": "2024-06-05",
+                "kind": "driven",
+                "day_fraction": "0.50",
+                "half_leg": "drop_off",
             },
         )
         assert response.status_code == 201
-        assert response.data['half_leg'] == 'drop_off'
+        assert response.data["half_leg"] == "drop_off"
 
     def test_patch_paid_month_returns_409(
         self, landlord_client, landlord, renter
@@ -287,11 +287,11 @@ class TestDrivenDayLogViewSet:
         settlement.line_items.set([gas_item])
 
         response = landlord_client.patch(
-            reverse('driven-day-detail', args=[log.id]), {'note': 'edit'}
+            reverse("driven-day-detail", args=[log.id]), {"note": "edit"}
         )
 
         assert response.status_code == 409
-        assert 'detail' in response.data
+        assert "detail" in response.data
 
     def test_post_paid_month_returns_409(
         self, landlord_client, landlord, renter
@@ -310,17 +310,17 @@ class TestDrivenDayLogViewSet:
         settlement.line_items.set([gas_item])
 
         response = landlord_client.post(
-            reverse('driven-day-list'),
+            reverse("driven-day-list"),
             {
-                'renter': renter.id,
-                'date': '2024-06-05',
-                'kind': 'driven',
-                'day_fraction': '1.00',
+                "renter": renter.id,
+                "date": "2024-06-05",
+                "kind": "driven",
+                "day_fraction": "1.00",
             },
         )
 
         assert response.status_code == 409
-        assert 'detail' in response.data
+        assert "detail" in response.data
 
     def test_delete_paid_month_returns_409(
         self, landlord_client, landlord, renter
@@ -342,11 +342,11 @@ class TestDrivenDayLogViewSet:
         settlement.line_items.set([gas_item])
 
         response = landlord_client.delete(
-            reverse('driven-day-detail', args=[log.id])
+            reverse("driven-day-detail", args=[log.id])
         )
 
         assert response.status_code == 409
-        assert 'detail' in response.data
+        assert "detail" in response.data
 
     def test_writes_against_unpaid_month_still_succeed(
         self, landlord_client, landlord, renter
@@ -360,12 +360,12 @@ class TestDrivenDayLogViewSet:
         )
 
         patch_response = landlord_client.patch(
-            reverse('driven-day-detail', args=[log.id]), {'note': 'edit'}
+            reverse("driven-day-detail", args=[log.id]), {"note": "edit"}
         )
         assert patch_response.status_code == 200
 
         delete_response = landlord_client.delete(
-            reverse('driven-day-detail', args=[log.id])
+            reverse("driven-day-detail", args=[log.id])
         )
         assert delete_response.status_code == 204
 
@@ -389,12 +389,12 @@ class TestDrivenDayLogViewSet:
         settlement.line_items.set([gas_item])
 
         response = landlord_client.patch(
-            reverse('driven-day-detail', args=[log.id]),
-            {'date': '2024-06-05'},
+            reverse("driven-day-detail", args=[log.id]),
+            {"date": "2024-06-05"},
         )
 
         assert response.status_code == 409
-        assert 'detail' in response.data
+        assert "detail" in response.data
 
 
 # --- MileageProfileViewSet / GasPriceEntryViewSet -----------------------
@@ -402,24 +402,24 @@ class TestDrivenDayLogViewSet:
 class TestMileageProfileViewSet:
     def test_renter_write_forbidden(self, renter_client, renter):
         response = renter_client.post(
-            reverse('mileage-profile-list'),
+            reverse("mileage-profile-list"),
             {
-                'renter': renter.id,
-                'one_way_miles': '10.00',
-                'mpg': '25.00',
-                'effective_from': '2024-01-01',
+                "renter": renter.id,
+                "one_way_miles": "10.00",
+                "mpg": "25.00",
+                "effective_from": "2024-01-01",
             },
         )
         assert response.status_code == 403
 
     def test_landlord_write_requires_lease(self, landlord_client, renter):
         response = landlord_client.post(
-            reverse('mileage-profile-list'),
+            reverse("mileage-profile-list"),
             {
-                'renter': renter.id,
-                'one_way_miles': '10.00',
-                'mpg': '25.00',
-                'effective_from': '2024-01-01',
+                "renter": renter.id,
+                "one_way_miles": "10.00",
+                "mpg": "25.00",
+                "effective_from": "2024-01-01",
             },
         )
         assert response.status_code == 400
@@ -429,16 +429,16 @@ class TestMileageProfileViewSet:
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         response = landlord_client.post(
-            reverse('mileage-profile-list'),
+            reverse("mileage-profile-list"),
             {
-                'renter': renter.id,
-                'one_way_miles': '10.00',
-                'mpg': '25.00',
-                'effective_from': '2024-01-01',
+                "renter": renter.id,
+                "one_way_miles": "10.00",
+                "mpg": "25.00",
+                "effective_from": "2024-01-01",
             },
         )
         assert response.status_code == 201
-        assert response.data['landlord'] == landlord.id
+        assert response.data["landlord"] == landlord.id
 
     def test_list_scoped_to_own_profiles_and_readable_by_renter(
         self, renter_client, landlord, renter
@@ -446,21 +446,21 @@ class TestMileageProfileViewSet:
         own_profile = MileageProfileFactory(landlord=landlord, renter=renter)
         MileageProfileFactory()  # someone else's profile
 
-        response = renter_client.get(reverse('mileage-profile-list'))
+        response = renter_client.get(reverse("mileage-profile-list"))
 
         assert response.status_code == 200
-        ids = [item['id'] for item in response.data]
+        ids = [item["id"] for item in response.data]
         assert ids == [own_profile.id]
 
 
 class TestGasPriceEntryViewSet:
     def test_renter_write_forbidden(self, renter_client, renter):
         response = renter_client.post(
-            reverse('gas-price-entry-list'),
+            reverse("gas-price-entry-list"),
             {
-                'renter': renter.id,
-                'price_per_gallon': '3.50',
-                'effective_from': '2024-01-01',
+                "renter": renter.id,
+                "price_per_gallon": "3.50",
+                "effective_from": "2024-01-01",
             },
         )
         assert response.status_code == 403
@@ -470,15 +470,15 @@ class TestGasPriceEntryViewSet:
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         response = landlord_client.post(
-            reverse('gas-price-entry-list'),
+            reverse("gas-price-entry-list"),
             {
-                'renter': renter.id,
-                'price_per_gallon': '3.50',
-                'effective_from': '2024-01-01',
+                "renter": renter.id,
+                "price_per_gallon": "3.50",
+                "effective_from": "2024-01-01",
             },
         )
         assert response.status_code == 201
-        assert response.data['landlord'] == landlord.id
+        assert response.data["landlord"] == landlord.id
 
     def test_list_scoped_to_own_entries_and_readable_by_renter(
         self, renter_client, landlord, renter
@@ -486,10 +486,10 @@ class TestGasPriceEntryViewSet:
         own_entry = GasPriceEntryFactory(landlord=landlord, renter=renter)
         GasPriceEntryFactory()  # someone else's entry
 
-        response = renter_client.get(reverse('gas-price-entry-list'))
+        response = renter_client.get(reverse("gas-price-entry-list"))
 
         assert response.status_code == 200
-        ids = [item['id'] for item in response.data]
+        ids = [item["id"] for item in response.data]
         assert ids == [own_entry.id]
 
 
@@ -498,25 +498,25 @@ class TestGasPriceEntryViewSet:
 class TestInvoiceViewSetCreate:
     def test_create_happy_path(self, landlord_client, landlord, renter):
         LeaseFactory(
-            landlord=landlord, renter=renter, monthly_rent=Decimal('1000.00')
+            landlord=landlord, renter=renter, monthly_rent=Decimal("1000.00")
         )
         response = landlord_client.post(
-            reverse('invoice-list'),
-            {'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'rent_only'},
+            reverse("invoice-list"),
+            {"renter": renter.id, "year": 2024, "month": 6, "kind": "rent_only"},
         )
         assert response.status_code == 201
-        assert response.data['total'] == '1000.00'
+        assert response.data["total"] == "1000.00"
 
     def test_create_conflict_on_duplicate(
         self, landlord_client, landlord, renter
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         payload = {
-            'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'rent_only'
+            "renter": renter.id, "year": 2024, "month": 6, "kind": "rent_only"
         }
-        landlord_client.post(reverse('invoice-list'), payload)
+        landlord_client.post(reverse("invoice-list"), payload)
 
-        response = landlord_client.post(reverse('invoice-list'), payload)
+        response = landlord_client.post(reverse("invoice-list"), payload)
 
         assert response.status_code == 409
 
@@ -525,8 +525,8 @@ class TestInvoiceViewSetCreate:
     ):
         LeaseFactory(landlord=landlord, renter=renter)
         response = landlord_client.post(
-            reverse('invoice-list'),
-            {'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'gas_only'},
+            reverse("invoice-list"),
+            {"renter": renter.id, "year": 2024, "month": 6, "kind": "gas_only"},
         )
         # No mileage profile/gas price configured -- gas total is $0, so
         # this should actually succeed; assert the happy path instead.
@@ -534,8 +534,8 @@ class TestInvoiceViewSetCreate:
 
     def test_create_requires_landlord(self, renter_client, renter):
         response = renter_client.post(
-            reverse('invoice-list'),
-            {'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'rent_only'},
+            reverse("invoice-list"),
+            {"renter": renter.id, "year": 2024, "month": 6, "kind": "rent_only"},
         )
         assert response.status_code == 403
 
@@ -548,8 +548,8 @@ class TestInvoiceViewSetCreate:
         """
         LeaseFactory(landlord=landlord, renter=renter, active=False)
         response = landlord_client.post(
-            reverse('invoice-list'),
-            {'renter': renter.id, 'year': 2024, 'month': 6, 'kind': 'rent_only'},
+            reverse("invoice-list"),
+            {"renter": renter.id, "year": 2024, "month": 6, "kind": "rent_only"},
         )
         assert response.status_code == 400
 
@@ -559,7 +559,7 @@ class TestInvoiceViewSetCreateFutureMonths:
         self, landlord_client, landlord, renter
     ):
         LeaseFactory(
-            landlord=landlord, renter=renter, monthly_rent=Decimal('1000.00')
+            landlord=landlord, renter=renter, monthly_rent=Decimal("1000.00")
         )
         today = timezone.now().date()
         next_year, next_month = (
@@ -567,12 +567,12 @@ class TestInvoiceViewSetCreateFutureMonths:
             else (today.year, today.month + 1)
         )
         response = landlord_client.post(
-            reverse('invoice-list'),
+            reverse("invoice-list"),
             {
-                'renter': renter.id,
-                'year': next_year,
-                'month': next_month,
-                'kind': 'rent_only',
+                "renter": renter.id,
+                "year": next_year,
+                "month": next_month,
+                "kind": "rent_only",
             },
         )
         assert response.status_code == 201
@@ -587,12 +587,12 @@ class TestInvoiceViewSetCreateFutureMonths:
             else (today.year, today.month + 1)
         )
         response = landlord_client.post(
-            reverse('invoice-list'),
+            reverse("invoice-list"),
             {
-                'renter': renter.id,
-                'year': next_year,
-                'month': next_month,
-                'kind': 'combined',
+                "renter": renter.id,
+                "year": next_year,
+                "month": next_month,
+                "kind": "combined",
             },
         )
         assert response.status_code == 400
@@ -607,12 +607,12 @@ class TestInvoiceViewSetCreateFutureMonths:
             else (today.year, today.month + 1)
         )
         response = landlord_client.post(
-            reverse('invoice-list'),
+            reverse("invoice-list"),
             {
-                'renter': renter.id,
-                'year': next_year,
-                'month': next_month,
-                'kind': 'gas_only',
+                "renter": renter.id,
+                "year": next_year,
+                "month": next_month,
+                "kind": "gas_only",
             },
         )
         assert response.status_code == 400
@@ -623,12 +623,12 @@ class TestInvoiceViewSetCreateFutureMonths:
         LeaseFactory(landlord=landlord, renter=renter)
         today = timezone.now().date()
         response = landlord_client.post(
-            reverse('invoice-list'),
+            reverse("invoice-list"),
             {
-                'renter': renter.id,
-                'year': today.year + 2,
-                'month': today.month,
-                'kind': 'rent_only',
+                "renter": renter.id,
+                "year": today.year + 2,
+                "month": today.month,
+                "kind": "rent_only",
             },
         )
         assert response.status_code == 400
@@ -637,18 +637,18 @@ class TestInvoiceViewSetCreateFutureMonths:
         self, landlord_client, landlord, renter
     ):
         LeaseFactory(
-            landlord=landlord, renter=renter, monthly_rent=Decimal('1000.00')
+            landlord=landlord, renter=renter, monthly_rent=Decimal("1000.00")
         )
         today = timezone.now().date()
         boundary_month = today.month
         boundary_year = today.year + 1
         response = landlord_client.post(
-            reverse('invoice-list'),
+            reverse("invoice-list"),
             {
-                'renter': renter.id,
-                'year': boundary_year,
-                'month': boundary_month,
-                'kind': 'rent_only',
+                "renter": renter.id,
+                "year": boundary_year,
+                "month": boundary_month,
+                "kind": "rent_only",
             },
         )
         assert response.status_code == 201
@@ -676,7 +676,7 @@ class TestInvoiceViewSetRetrieve:
         )
 
         response = landlord_client.get(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
 
         assert response.status_code == 200
@@ -698,7 +698,7 @@ class TestInvoiceViewSetRetrieve:
         mock_check = mocker.patch("billing.views.check_btc_payment")
 
         response = landlord_client.get(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
 
         assert response.status_code == 200
@@ -718,7 +718,7 @@ class TestInvoiceViewSetRetrieve:
         mock_check = mocker.patch("billing.views.check_btc_payment")
 
         response = landlord_client.get(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
 
         assert response.status_code == 200
@@ -745,7 +745,7 @@ class TestInvoiceViewSetRetrieve:
         )
 
         response = landlord_client.get(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
 
         assert response.status_code == 200
@@ -769,7 +769,7 @@ class TestInvoiceViewSetRetrieve:
         )
 
         response = landlord_client.get(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
 
         assert response.status_code == 200
@@ -793,7 +793,7 @@ class TestInvoiceViewSetRetrieve:
         )
 
         response = landlord_client.get(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
 
         assert response.status_code == 200
@@ -815,7 +815,7 @@ class TestInvoiceViewSetRetrieve:
         )
 
         response = landlord_client.get(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
 
         assert response.status_code == 200
@@ -838,7 +838,7 @@ class TestInvoiceViewSetRetrieve:
             "billing.views.refresh_card_payment_state"
         )
 
-        response = landlord_client.get(reverse('invoice-list'))
+        response = landlord_client.get(reverse("invoice-list"))
 
         assert response.status_code == 200
         mock_refresh.assert_not_called()
@@ -854,7 +854,7 @@ class TestInvoiceViewSetWeeks:
         invoice = InvoiceFactory(billing_period=billing_period)
 
         response = landlord_client.get(
-            reverse('invoice-weeks', args=[invoice.id])
+            reverse("invoice-weeks", args=[invoice.id])
         )
 
         assert response.status_code == 200
@@ -865,7 +865,7 @@ class TestInvoiceViewSetWeeks:
         invoice = InvoiceFactory(billing_period=other_period)
 
         response = landlord_client.get(
-            reverse('invoice-weeks', args=[invoice.id])
+            reverse("invoice-weeks", args=[invoice.id])
         )
 
         assert response.status_code == 404
@@ -878,7 +878,7 @@ class TestInvoiceViewSetRecompute:
             billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
         )
         response = renter_client.post(
-            reverse('invoice-recompute', args=[invoice.id])
+            reverse("invoice-recompute", args=[invoice.id])
         )
         assert response.status_code == 403
 
@@ -888,7 +888,7 @@ class TestInvoiceViewSetRecompute:
             billing_period=billing_period, status=Invoice.Status.PAID
         )
         response = landlord_client.post(
-            reverse('invoice-recompute', args=[invoice.id])
+            reverse("invoice-recompute", args=[invoice.id])
         )
         assert response.status_code == 409
 
@@ -902,10 +902,10 @@ class TestInvoiceViewSetRecompute:
             status=Invoice.Status.DRAFT,
         )
         response = landlord_client.post(
-            reverse('invoice-recompute', args=[invoice.id])
+            reverse("invoice-recompute", args=[invoice.id])
         )
         assert response.status_code == 200
-        assert response.data['id'] == invoice.id
+        assert response.data["id"] == invoice.id
 
 
 class TestInvoiceViewSetSend:
@@ -915,7 +915,7 @@ class TestInvoiceViewSetSend:
             billing_period=billing_period, status=Invoice.Status.DRAFT
         )
         response = renter_client.post(
-            reverse('invoice-send', args=[invoice.id])
+            reverse("invoice-send", args=[invoice.id])
         )
         assert response.status_code == 403
 
@@ -925,7 +925,7 @@ class TestInvoiceViewSetSend:
             billing_period=billing_period, status=Invoice.Status.DRAFT
         )
         response = landlord_client.post(
-            reverse('invoice-send', args=[invoice.id])
+            reverse("invoice-send", args=[invoice.id])
         )
         assert response.status_code == 200
         invoice.refresh_from_db()
@@ -937,7 +937,7 @@ class TestInvoiceViewSetSend:
             billing_period=billing_period, status=Invoice.Status.SENT
         )
         response = landlord_client.post(
-            reverse('invoice-send', args=[invoice.id])
+            reverse("invoice-send", args=[invoice.id])
         )
         assert response.status_code == 409
 
@@ -949,7 +949,7 @@ class TestInvoiceViewSetDestroy:
             billing_period=billing_period, status=Invoice.Status.DRAFT
         )
         response = renter_client.delete(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
         assert response.status_code == 403
         assert Invoice.objects.filter(id=invoice.id).exists()
@@ -960,7 +960,7 @@ class TestInvoiceViewSetDestroy:
             billing_period=billing_period, status=Invoice.Status.DRAFT
         )
         response = landlord_client.delete(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
         assert response.status_code == 204
         assert not Invoice.objects.filter(id=invoice.id).exists()
@@ -971,7 +971,7 @@ class TestInvoiceViewSetDestroy:
             billing_period=billing_period, status=Invoice.Status.SENT
         )
         response = landlord_client.delete(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
         assert response.status_code == 204
 
@@ -981,7 +981,7 @@ class TestInvoiceViewSetDestroy:
             billing_period=billing_period, status=Invoice.Status.PAID
         )
         response = landlord_client.delete(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
         assert response.status_code == 409
         assert Invoice.objects.filter(id=invoice.id).exists()
@@ -995,7 +995,7 @@ class TestInvoiceViewSetDestroy:
         )
         InvoiceSettlementFactory(invoice=invoice)
         response = landlord_client.delete(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
         assert response.status_code == 409
         assert Invoice.objects.filter(id=invoice.id).exists()
@@ -1006,7 +1006,7 @@ class TestInvoiceViewSetDestroy:
             billing_period=billing_period, status=Invoice.Status.VOID
         )
         response = landlord_client.delete(
-            reverse('invoice-detail', args=[invoice.id])
+            reverse("invoice-detail", args=[invoice.id])
         )
         assert response.status_code == 204
 
@@ -1017,10 +1017,10 @@ class TestLeaseRentRevisionView:
     def test_404_for_lease_of_other_landlord(self, landlord_client):
         lease = LeaseFactory()  # different landlord
         response = landlord_client.post(
-            reverse('lease-rent-revision', args=[lease.id]),
+            reverse("lease-rent-revision", args=[lease.id]),
             {
-                'new_monthly_rent': '1200.00',
-                'effective_date': (
+                "new_monthly_rent": "1200.00",
+                "effective_date": (
                     date.today() + timedelta(days=60)
                 ).isoformat(),
             },
@@ -1030,10 +1030,10 @@ class TestLeaseRentRevisionView:
     def test_too_soon_effective_date_rejected(self, landlord_client, landlord):
         lease = LeaseFactory(landlord=landlord)
         response = landlord_client.post(
-            reverse('lease-rent-revision', args=[lease.id]),
+            reverse("lease-rent-revision", args=[lease.id]),
             {
-                'new_monthly_rent': '1200.00',
-                'effective_date': (
+                "new_monthly_rent": "1200.00",
+                "effective_date": (
                     date.today() + timedelta(days=5)
                 ).isoformat(),
             },
@@ -1047,10 +1047,10 @@ class TestLeaseRentRevisionView:
 
         lease = LeaseFactory(landlord=landlord)
         response = landlord_client.post(
-            reverse('lease-rent-revision', args=[lease.id]),
+            reverse("lease-rent-revision", args=[lease.id]),
             {
-                'new_monthly_rent': '1200.00',
-                'effective_date': (
+                "new_monthly_rent": "1200.00",
+                "effective_date": (
                     date.today() + timedelta(days=60)
                 ).isoformat(),
             },
@@ -1063,30 +1063,30 @@ class TestLeaseRentRevisionView:
 
 class TestRenterLookupView:
     def test_exact_match_returns_renter(self, landlord_client):
-        renter = UserFactory(email='exact@example.com')
+        renter = UserFactory(email="exact@example.com")
         response = landlord_client.get(
-            reverse('renter-lookup'), {'email': renter.email}
+            reverse("renter-lookup"), {"email": renter.email}
         )
         assert response.status_code == 200
-        assert response.data['id'] == renter.id
+        assert response.data["id"] == renter.id
 
     def test_partial_match_not_found(self, landlord_client):
-        UserFactory(email='exact@example.com')
+        UserFactory(email="exact@example.com")
         response = landlord_client.get(
-            reverse('renter-lookup'), {'email': 'exact'}
+            reverse("renter-lookup"), {"email": "exact"}
         )
         assert response.status_code == 400
 
     def test_landlord_email_not_returned_as_renter(self, landlord_client):
-        LandlordFactory(email='dual@example.com')
+        LandlordFactory(email="dual@example.com")
         response = landlord_client.get(
-            reverse('renter-lookup'), {'email': 'dual@example.com'}
+            reverse("renter-lookup"), {"email": "dual@example.com"}
         )
         assert response.status_code == 404
 
     def test_requires_landlord(self, renter_client):
         response = renter_client.get(
-            reverse('renter-lookup'), {'email': 'a@example.com'}
+            reverse("renter-lookup"), {"email": "a@example.com"}
         )
         assert response.status_code == 403
 
@@ -1096,16 +1096,16 @@ class TestRenterLookupView:
 class TestBillingPeriodPreviewView:
     def test_requires_landlord(self, renter_client, renter):
         url = reverse(
-            'billing-period-preview',
-            kwargs={'renter_id': renter.id, 'year': 2024, 'month': 6},
+            "billing-period-preview",
+            kwargs={"renter_id": renter.id, "year": 2024, "month": 6},
         )
         response = renter_client.get(url)
         assert response.status_code == 403
 
     def test_404_without_lease(self, landlord_client, renter):
         url = reverse(
-            'billing-period-preview',
-            kwargs={'renter_id': renter.id, 'year': 2024, 'month': 6},
+            "billing-period-preview",
+            kwargs={"renter_id": renter.id, "year": 2024, "month": 6},
         )
         response = landlord_client.get(url)
         assert response.status_code == 404
@@ -1117,8 +1117,8 @@ class TestBillingPeriodPreviewView:
         # compute fine (no gas config needed for gas total to be $0).
         LeaseFactory(landlord=landlord, renter=renter)
         url = reverse(
-            'billing-period-preview',
-            kwargs={'renter_id': renter.id, 'year': 2024, 'month': 6},
+            "billing-period-preview",
+            kwargs={"renter_id": renter.id, "year": 2024, "month": 6},
         )
         response = landlord_client.get(url)
         assert response.status_code == 200
@@ -1130,8 +1130,8 @@ class TestBillingPeriodPreviewView:
         """
         LeaseFactory(landlord=landlord, renter=renter, active=False)
         url = reverse(
-            'billing-period-preview',
-            kwargs={'renter_id': renter.id, 'year': 2024, 'month': 6},
+            "billing-period-preview",
+            kwargs={"renter_id": renter.id, "year": 2024, "month": 6},
         )
         response = landlord_client.get(url)
         assert response.status_code == 400

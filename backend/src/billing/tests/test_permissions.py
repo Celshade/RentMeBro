@@ -11,7 +11,7 @@ pytestmark = pytest.mark.django_db
 
 class TestIsLandlord:
     def _request_for(self, user, rf):
-        request = rf.get('/')
+        request = rf.get("/")
         request.user = user
         return request
 
