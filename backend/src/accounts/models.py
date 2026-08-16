@@ -15,6 +15,8 @@ class User(AbstractUser):
     """
 
     class Role(models.TextChoices):
+        """Which side of a lease a user is on."""
+
         LANDLORD = "landlord", "Landlord"
         RENTER = "renter", "Renter"
 
