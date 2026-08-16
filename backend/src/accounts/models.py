@@ -15,8 +15,8 @@ class User(AbstractUser):
     """
 
     class Role(models.TextChoices):
-        LANDLORD = 'landlord', 'Landlord'
-        RENTER = 'renter', 'Renter'
+        LANDLORD = "landlord", "Landlord"
+        RENTER = "renter", "Renter"
 
     role = models.CharField(max_length=16, choices=Role.choices)
     stripe_account_id = models.CharField(max_length=255, blank=True)
@@ -27,7 +27,7 @@ class User(AbstractUser):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['email', 'role'], name='unique_email_role'
+                fields=["email", "role"], name="unique_email_role"
             ),
         ]
 
@@ -46,7 +46,7 @@ class MagicLinkToken(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='magic_link_tokens',
+        related_name="magic_link_tokens",
     )
     token = models.CharField(
         max_length=64, unique=True, default=_generate_token

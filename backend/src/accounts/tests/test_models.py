@@ -12,17 +12,17 @@ pytestmark = pytest.mark.django_db
 
 class TestUser:
     def test_same_email_different_role_allowed(self):
-        UserFactory(email='shared@example.com', role=User.Role.LANDLORD)
-        UserFactory(email='shared@example.com', role=User.Role.RENTER)
-        assert User.objects.filter(email='shared@example.com').count() == 2
+        UserFactory(email="shared@example.com", role=User.Role.LANDLORD)
+        UserFactory(email="shared@example.com", role=User.Role.RENTER)
+        assert User.objects.filter(email="shared@example.com").count() == 2
 
     def test_same_email_same_role_rejected(self):
         UserFactory(
-            username='a', email='dup@example.com', role=User.Role.RENTER
+            username="a", email="dup@example.com", role=User.Role.RENTER
         )
         with pytest.raises(IntegrityError):
             UserFactory(
-                username='b', email='dup@example.com', role=User.Role.RENTER
+                username="b", email="dup@example.com", role=User.Role.RENTER
             )
 
 

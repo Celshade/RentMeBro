@@ -9,10 +9,10 @@ class UserFactory(DjangoModelFactory):
         model = User
         skip_postgeneration_save = True
 
-    username = factory.Sequence(lambda n: f'user{n}')
-    email = factory.Sequence(lambda n: f'user{n}@example.com')
-    first_name = 'Test'
-    last_name = 'User'
+    username = factory.Sequence(lambda n: f"user{n}")
+    email = factory.Sequence(lambda n: f"user{n}@example.com")
+    first_name = "Test"
+    last_name = "User"
     role = User.Role.RENTER
 
 
