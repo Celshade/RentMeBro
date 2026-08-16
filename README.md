@@ -1,9 +1,9 @@
 # RentMeBro
 
-Rent + utility billing for small and independent landlords and contractors. Renters pay Landlords directly through
-Cash App Pay (via Stripe) or on-chain Bitcoin (p2p); landlords are paid out through
-Stripe Connect Standard or applied Bitcoin address. An optional mileage-based gas/utility add-on bills a
-renter (passenger) for days driven to/from a work-site/etc - based on a customizable mileage profile and weekly gas prices.
+Rent + utility billing for small and independent landlords and contractors. Renters pay Landlords
+directly through Cash App Pay (via Stripe Connect) or on-chain Bitcoin (p2p) if bitcoin address is
+provided. An optional mileage-based gas/utility add-on bills a renter (passenger) for days driven
+to/from a work-site/etc - based on a customizable mileage profile and weekly gas prices.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![Django](https://img.shields.io/badge/Django-6.0-092E20)
