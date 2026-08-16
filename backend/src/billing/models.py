@@ -12,6 +12,10 @@ class Lease(models.Model):
     """Links one landlord to one renter for billing purposes."""
 
     class LeaseType(models.TextChoices):
+        """Whether a lease uses the platform default terms or a
+        landlord-uploaded document.
+        """
+
         CUSTOM = "custom", "Custom"
         DEFAULT = "default", "Default"
 
@@ -208,11 +212,19 @@ class DrivenDayLog(models.Model):
     """
 
     class Kind(models.TextChoices):
+        """Whether a logged day was driven, a day off, or a day someone
+        else drove the renter.
+        """
+
         DRIVEN = "driven", "Driven"
         DAY_OFF = "day_off", "Day off"
         OTHER_RIDE = "other_ride", "Other ride"
 
     class HalfLeg(models.TextChoices):
+        """Marks a partial driven day as only its drop-off or only its
+        pick-up leg.
+        """
+
         DROP_OFF = "drop_off", "Drop-off"
         PICK_UP = "pick_up", "Pick-up"
 
@@ -278,12 +290,22 @@ class BillingPeriod(models.Model):
 
 
 class Invoice(models.Model):
+    """A billed period's rent and/or gas charges, and the state of
+    collecting payment for them across the card and BTC rails.
+    """
+
     class Kind(models.TextChoices):
+        """Which charges an invoice bills: rent, gas, or both."""
+
         COMBINED = "combined", "Combined"
         RENT_ONLY = "rent_only", "Rent only"
         GAS_ONLY = "gas_only", "Gas only"
 
     class Status(models.TextChoices):
+        """An invoice's lifecycle state, from draft through paid or
+        void.
+        """
+
         DRAFT = "draft", "Draft"
         SENT = "sent", "Sent"
         PENDING = "pending", "Pending"
@@ -625,11 +647,19 @@ class Invoice(models.Model):
 
 
 class InvoiceLineItem(models.Model):
+    """A single rent or gas charge on an `Invoice`, optionally
+    restricted to one payment rail via `payment_lock`.
+    """
+
     class Kind(models.TextChoices):
+        """Whether a line item is a rent or a gas charge."""
+
         RENT = "rent", "Rent"
         GAS = "gas", "Gas"
 
     class Lock(models.TextChoices):
+        """Restricts a line item to one payment rail, if set."""
+
         BTC = "btc", "BTC only"
         CARD = "card", "Card only"
 
