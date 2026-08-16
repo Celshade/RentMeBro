@@ -1483,7 +1483,9 @@ def initiate_btc_watch(invoice: Invoice, pay_full: bool = False) -> Invoice:
         if invoice.status in (Invoice.Status.PENDING, Invoice.Status.PAID):
             return invoice
         usd_owed = (
-            invoice.btc_full_owed_usd if pay_full else _invoice_usd_owed(invoice)
+            invoice.btc_full_owed_usd
+            if pay_full
+            else _invoice_usd_owed(invoice)
         )
         if usd_owed <= 0:
             return invoice
@@ -1496,7 +1498,9 @@ def initiate_btc_watch(invoice: Invoice, pay_full: bool = False) -> Invoice:
     invoice.btc_watch_expires_at = now + BTC_WATCH_WINDOW
     invoice.save(update_fields=["btc_amount_sats", "btc_watch_expires_at"])
     billed_items = (
-        invoice.btc_full_line_items if pay_full else invoice.btc_scope_line_items
+        invoice.btc_full_line_items
+        if pay_full
+        else invoice.btc_scope_line_items
     )
     invoice.btc_round_line_items.set(billed_items)
     return invoice
