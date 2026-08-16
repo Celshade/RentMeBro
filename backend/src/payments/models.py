@@ -18,6 +18,8 @@ class InvoiceSettlement(models.Model):
     """
 
     class Rail(models.TextChoices):
+        """Which payment method settled this round."""
+
         BTC = "btc", "Bitcoin"
         CARD = "card", "Card / Cash App"
         CASH = "cash", "Cash"
