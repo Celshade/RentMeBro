@@ -3,6 +3,7 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -44,10 +45,10 @@ from payments.services import (
 # stripe_round_expires_at stays accurate without waiting on a poll.
 _INTENT_STATE_CHANGE_EVENTS = frozenset(
     {
-        'payment_intent.requires_action',
-        'payment_intent.processing',
-        'payment_intent.payment_failed',
-        'payment_intent.canceled',
+        "payment_intent.requires_action",
+        "payment_intent.processing",
+        "payment_intent.payment_failed",
+        "payment_intent.canceled",
     }
 )
 
@@ -57,40 +58,40 @@ class InvoicePaymentIntentView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
         if invoice.status == Invoice.Status.PAID:
             return Response(
-                {'detail': 'Invoice is already paid.'},
+                {"detail": "Invoice is already paid."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        pay_full = bool(request.data.get('pay_full', False))
+        pay_full = bool(request.data.get("pay_full", False))
         try:
             intent = create_payment_intent_for_invoice(
                 invoice, pay_full=pay_full
             )
         except LandlordNotOnboardedError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
         except InvoiceAlreadyPaidError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
             )
         except NothingLeftToChargeError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
             )
         landlord = invoice.billing_period.landlord
         return Response(
             {
-                'client_secret': intent.client_secret,
-                'publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
-                'stripe_account_id': landlord.stripe_account_id,
-                'intent_status': intent.status,
+                "client_secret": intent.client_secret,
+                "publishable_key": settings.STRIPE_PUBLISHABLE_KEY,
+                "stripe_account_id": landlord.stripe_account_id,
+                "intent_status": intent.status,
             }
         )
 
@@ -105,7 +106,7 @@ class InvoicePaymentCancelView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
@@ -113,7 +114,7 @@ class InvoicePaymentCancelView(APIView):
             invoice = cancel_card_payment_attempt(invoice)
         except CardCancelNotAllowedError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
             )
         return Response(InvoiceSerializer(invoice).data)
 
@@ -123,9 +124,9 @@ class ConnectOnboardingView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         url = start_connect_onboarding(request.user)
-        return Response({'onboarding_url': url})
+        return Response({"onboarding_url": url})
 
 
 class ConnectStatusView(APIView):
@@ -139,14 +140,14 @@ class ConnectStatusView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def get(self, request) -> Response:
-        if request.query_params.get('refresh') == 'true':
+    def get(self, request: Request) -> Response:
+        if request.query_params.get("refresh") == "true":
             refresh_connect_status(request.user)
-            request.user.refresh_from_db(fields=['stripe_charges_enabled'])
+            request.user.refresh_from_db(fields=["stripe_charges_enabled"])
         return Response(
             {
-                'connected': bool(request.user.stripe_account_id),
-                'charges_enabled': request.user.stripe_charges_enabled,
+                "connected": bool(request.user.stripe_account_id),
+                "charges_enabled": request.user.stripe_charges_enabled,
             }
         )
 
@@ -159,9 +160,9 @@ class StripeWebhookView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         payload = request.body
-        sig_header = request.META.get('HTTP_STRIPE_SIGNATURE', '')
+        sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
 
         try:
             event = stripe.Webhook.construct_event(
@@ -170,15 +171,15 @@ class StripeWebhookView(APIView):
         except (ValueError, stripe.SignatureVerificationError):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
-        if event['type'] == 'payment_intent.succeeded':
+        if event["type"] == "payment_intent.succeeded":
             handle_payment_intent_succeeded(
-                event['data']['object'],
-                connected_account_id=event.get('account'),
+                event["data"]["object"],
+                connected_account_id=event.get("account"),
             )
-        elif event['type'] in _INTENT_STATE_CHANGE_EVENTS:
+        elif event["type"] in _INTENT_STATE_CHANGE_EVENTS:
             handle_payment_intent_state_change(
-                event['data']['object'],
-                connected_account_id=event.get('account'),
+                event["data"]["object"],
+                connected_account_id=event.get("account"),
             )
 
         return Response(status=status.HTTP_200_OK)
@@ -196,9 +197,9 @@ class ConnectWebhookView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         payload = request.body
-        sig_header = request.META.get('HTTP_STRIPE_SIGNATURE', '')
+        sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
 
         try:
             event = stripe.Webhook.construct_event(
@@ -207,18 +208,18 @@ class ConnectWebhookView(APIView):
         except (ValueError, stripe.SignatureVerificationError):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
-        if event['type'] == 'payment_intent.succeeded':
+        if event["type"] == "payment_intent.succeeded":
             handle_payment_intent_succeeded(
-                event['data']['object'],
-                connected_account_id=event.get('account'),
+                event["data"]["object"],
+                connected_account_id=event.get("account"),
             )
-        elif event['type'] in _INTENT_STATE_CHANGE_EVENTS:
+        elif event["type"] in _INTENT_STATE_CHANGE_EVENTS:
             handle_payment_intent_state_change(
-                event['data']['object'],
-                connected_account_id=event.get('account'),
+                event["data"]["object"],
+                connected_account_id=event.get("account"),
             )
-        elif event['type'] == 'account.updated':
-            handle_account_updated(event['data']['object'])
+        elif event["type"] == "account.updated":
+            handle_account_updated(event["data"]["object"])
 
         return Response(status=status.HTTP_200_OK)
 
@@ -228,10 +229,10 @@ class BtcSettingsView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def get(self, request) -> Response:
+    def get(self, request: Request) -> Response:
         return Response({"enabled": request.user.btc_payments_enabled})
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         if request.data.get("agree") is not True:
             return Response(
                 {"detail": "You must confirm before enabling BTC payments."},
@@ -246,7 +247,7 @@ class BtcPriceView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def get(self, request) -> Response:
+    def get(self, request: Request) -> Response:
         price = get_btc_usd_price()
         if price is None:
             return Response(
@@ -266,7 +267,7 @@ class InvoiceBtcAttachView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice,
             id=invoice_id,
@@ -305,7 +306,9 @@ class InvoiceLineItemPaymentLockView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request, invoice_id: int, line_item_id: int) -> Response:
+    def post(
+        self, request: Request, invoice_id: int, line_item_id: int
+    ) -> Response:
         invoice = get_object_or_404(
             Invoice,
             id=invoice_id,
@@ -335,7 +338,9 @@ class InvoiceLineItemMarkPaidView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request, invoice_id: int, line_item_id: int) -> Response:
+    def post(
+        self, request: Request, invoice_id: int, line_item_id: int
+    ) -> Response:
         invoice = get_object_or_404(
             Invoice,
             id=invoice_id,
@@ -384,16 +389,16 @@ class InvoiceBtcWatchView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
-        pay_full = bool(request.data.get('pay_full', False))
+        pay_full = bool(request.data.get("pay_full", False))
         try:
             invoice = initiate_btc_watch(invoice, pay_full=pay_full)
         except BtcNotEnabledError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
             )
         return _btc_status_response(invoice)
 
@@ -410,7 +415,7 @@ class InvoiceBtcStatusView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, invoice_id: int) -> Response:
+    def get(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
@@ -426,7 +431,7 @@ class InvoiceBtcCancelView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
@@ -448,7 +453,7 @@ class InvoiceBtcCheckView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )

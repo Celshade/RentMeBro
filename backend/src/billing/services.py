@@ -50,13 +50,13 @@ def get_active_lease(landlord: User, renter: User) -> Lease:
     """
     lease = (
         Lease.objects.filter(landlord=landlord, renter=renter, active=True)
-        .order_by('-start_date')
+        .order_by("-start_date")
         .first()
     )
     if lease is None:
         raise BillingConfigError(
-            f'No active lease between landlord {landlord.id} and '
-            f'renter {renter.id}'
+            f"No active lease between landlord {landlord.id} and "
+            f"renter {renter.id}"
         )
     return lease
 
@@ -81,13 +81,13 @@ def get_mileage_profile_for_date(
         MileageProfile.objects.filter(
             landlord=landlord, renter=renter, effective_from__lte=on_date
         )
-        .order_by('-effective_from')
+        .order_by("-effective_from")
         .first()
     )
     if profile is None:
         raise BillingConfigError(
-            f'No MileageProfile in effect for landlord {landlord.id}, '
-            f'renter {renter.id} on {on_date}'
+            f"No MileageProfile in effect for landlord {landlord.id}, "
+            f"renter {renter.id} on {on_date}"
         )
     return profile
 
@@ -113,15 +113,15 @@ def get_gas_price_for_date(
             landlord=landlord, renter=renter, effective_from__lte=on_date
         )
         .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=on_date))
-        .order_by('-effective_from')
+        .order_by("-effective_from")
         .first()
     )
     if entry is None:
         week_start = on_date - timedelta(days=(on_date.weekday() + 1) % 7)
         week_end = week_start + timedelta(days=6)
         raise BillingConfigError(
-            f'No gas price is set for the week of {week_start} to '
-            f'{week_end}. Add one before generating this invoice.'
+            f"No gas price is set for the week of {week_start} to "
+            f"{week_end}. Add one before generating this invoice."
         )
     return entry
 
@@ -141,13 +141,13 @@ def compute_gas_cost_for_log(log: DrivenDayLog) -> Decimal:
         The gas cost for that day, rounded to the nearest cent.
     """
     if log.kind != DrivenDayLog.Kind.DRIVEN:
-        return Decimal('0.00')
+        return Decimal("0.00")
     profile = get_mileage_profile_for_date(log.landlord, log.renter, log.date)
     gas_price = get_gas_price_for_date(log.landlord, log.renter, log.date)
     miles = log.day_fraction * profile.full_day_miles
     gallons = miles / profile.mpg
     cost = gallons * gas_price.price_per_gallon
-    return cost.quantize(Decimal('0.01'))
+    return cost.quantize(Decimal("0.01"))
 
 
 def compute_period_gas_total(
@@ -169,7 +169,7 @@ def compute_period_gas_total(
     )
     return sum(
         (compute_gas_cost_for_log(log) for log in logs),
-        start=Decimal('0.00'),
+        start=Decimal("0.00"),
     )
 
 
@@ -200,7 +200,7 @@ def compute_period_weekly_breakdown(
     """
     logs = DrivenDayLog.objects.filter(
         landlord=landlord, renter=renter, date__year=year, date__month=month
-    ).order_by('date')
+    ).order_by("date")
 
     weeks: dict[date, dict] = {}
     for log in logs:
@@ -208,17 +208,17 @@ def compute_period_weekly_breakdown(
         week = weeks.setdefault(
             week_start,
             {
-                'week_start': week_start,
-                'week_end': week_start + timedelta(days=6),
-                'total_miles': Decimal('0.00'),
-                'total_gas_cost': Decimal('0.00'),
-                'price_per_gallon': None,
-                'days': [],
+                "week_start": week_start,
+                "week_end": week_start + timedelta(days=6),
+                "total_miles": Decimal("0.00"),
+                "total_gas_cost": Decimal("0.00"),
+                "price_per_gallon": None,
+                "days": [],
             },
         )
         is_driven = log.kind == DrivenDayLog.Kind.DRIVEN
-        miles = Decimal('0.00')
-        gas_cost = Decimal('0.00')
+        miles = Decimal("0.00")
+        gas_cost = Decimal("0.00")
         if is_driven:
             profile = get_mileage_profile_for_date(
                 landlord, renter, log.date
@@ -226,21 +226,21 @@ def compute_period_weekly_breakdown(
             gas_price = get_gas_price_for_date(landlord, renter, log.date)
             gas_cost = compute_gas_cost_for_log(log)
             miles = (log.day_fraction * profile.full_day_miles).quantize(
-                Decimal('0.01')
+                Decimal("0.01")
             )
-            if week['price_per_gallon'] is None:
-                week['price_per_gallon'] = gas_price.price_per_gallon
-        week['days'].append(
+            if week["price_per_gallon"] is None:
+                week["price_per_gallon"] = gas_price.price_per_gallon
+        week["days"].append(
             {
-                'date': log.date,
-                'kind': log.kind,
-                'day_fraction': log.day_fraction,
-                'miles': miles,
-                'gas_cost': gas_cost,
+                "date": log.date,
+                "kind": log.kind,
+                "day_fraction": log.day_fraction,
+                "miles": miles,
+                "gas_cost": gas_cost,
             }
         )
-        week['total_miles'] += miles
-        week['total_gas_cost'] += gas_cost
+        week["total_miles"] += miles
+        week["total_gas_cost"] += gas_cost
 
     return [weeks[key] for key in sorted(weeks)]
 
@@ -261,8 +261,8 @@ def compute_period_preview(
     """
     lease = get_active_lease(landlord, renter)
     return {
-        'rent': lease.rent_for_month(year, month),
-        'gas': compute_period_gas_total(landlord, renter, year, month),
+        "rent": lease.rent_for_month(year, month),
+        "gas": compute_period_gas_total(landlord, renter, year, month),
     }
 
 
@@ -284,9 +284,9 @@ def default_invoice_due_date(year: int, month: int) -> date:
 # invoice whose components overlap an already-generated one for the
 # same billing period.
 _KIND_COMPONENTS = {
-    Invoice.Kind.COMBINED: frozenset({'rent', 'gas'}),
-    Invoice.Kind.RENT_ONLY: frozenset({'rent'}),
-    Invoice.Kind.GAS_ONLY: frozenset({'gas'}),
+    Invoice.Kind.COMBINED: frozenset({"rent", "gas"}),
+    Invoice.Kind.RENT_ONLY: frozenset({"rent"}),
+    Invoice.Kind.GAS_ONLY: frozenset({"gas"}),
 }
 
 
@@ -325,8 +325,8 @@ def generate_invoice(
     today = timezone.now().date()
     if date(year, month, 1) > today and kind != Invoice.Kind.RENT_ONLY:
         raise FutureInvoiceKindError(
-            f'Only rent_only invoices can be generated for a future '
-            f'month ({year}-{month:02d}).'
+            f"Only rent_only invoices can be generated for a future "
+            f"month ({year}-{month:02d})."
         )
 
     if due_date is None:
@@ -344,10 +344,10 @@ def generate_invoice(
         existing_components |= _KIND_COMPONENTS[existing.kind]
     if requested_components & existing_components:
         raise InvoiceAlreadyExistsError(
-            f'An invoice already covers '
-            f'{sorted(requested_components & existing_components)} for '
-            f'landlord {landlord.id}, renter {renter.id} in '
-            f'{year}-{month:02d}.'
+            f"An invoice already covers "
+            f"{sorted(requested_components & existing_components)} for "
+            f"landlord {landlord.id}, renter {renter.id} in "
+            f"{year}-{month:02d}."
         )
 
     try:
@@ -357,15 +357,15 @@ def generate_invoice(
             )
     except IntegrityError as exc:
         raise InvoiceAlreadyExistsError(
-            f'An invoice of kind {kind!r} already exists for landlord '
-            f'{landlord.id}, renter {renter.id} in {year}-{month:02d}.'
+            f"An invoice of kind {kind!r} already exists for landlord "
+            f"{landlord.id}, renter {renter.id} in {year}-{month:02d}."
         ) from exc
 
     if kind in (Invoice.Kind.COMBINED, Invoice.Kind.RENT_ONLY):
         lease = get_active_lease(landlord, renter)
         InvoiceLineItem.objects.create(
             invoice=invoice,
-            description=f'Rent for {year}-{month:02d}',
+            description=f"Rent for {year}-{month:02d}",
             amount=lease.rent_for_month(year, month),
             kind=InvoiceLineItem.Kind.RENT,
         )
@@ -374,7 +374,7 @@ def generate_invoice(
         gas_total = compute_period_gas_total(landlord, renter, year, month)
         InvoiceLineItem.objects.create(
             invoice=invoice,
-            description=f'Gas for {year}-{month:02d}',
+            description=f"Gas for {year}-{month:02d}",
             amount=gas_total,
             kind=InvoiceLineItem.Kind.GAS,
         )
@@ -413,8 +413,8 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
 
     if invoice.status in (Invoice.Status.PAID, Invoice.Status.VOID):
         raise InvoiceLockedError(
-            f'Invoice {invoice.id} is {invoice.status} and can no longer '
-            'be edited.'
+            f"Invoice {invoice.id} is {invoice.status} and can no longer "
+            "be edited."
         )
 
     gas_line_item = invoice.line_items.filter(
@@ -424,8 +424,8 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
         return invoice
     if gas_line_item.id in invoice.frozen_line_item_ids:
         raise InvoiceLockedError(
-            f'Invoice {invoice.id}\'s gas charge is already settled or '
-            'has a payment in flight and can no longer be recomputed.'
+            f"Invoice {invoice.id}'s gas charge is already settled or "
+            "has a payment in flight and can no longer be recomputed."
         )
 
     period = invoice.billing_period
@@ -436,7 +436,7 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
         return invoice
 
     gas_line_item.amount = new_amount
-    gas_line_item.save(update_fields=['amount'])
+    gas_line_item.save(update_fields=["amount"])
 
     invoice.btc_address = ""
     invoice.btc_amount_sats = None
@@ -458,7 +458,7 @@ def recompute_invoice_gas(invoice: Invoice) -> Invoice:
     )
     invoice.btc_line_items.clear()
     invoice.line_items.filter(payment_lock=InvoiceLineItem.Lock.BTC).update(
-        payment_lock=''
+        payment_lock=""
     )
     return invoice
 

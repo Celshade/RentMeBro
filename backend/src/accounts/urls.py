@@ -5,18 +5,18 @@ from accounts.views import MagicLinkRequestView, MagicLinkVerifyView
 
 urlpatterns = [
     path(
-        'magic-link/',
+        "magic-link/",
         MagicLinkRequestView.as_view(),
-        name='magic-link-request',
+        name="magic-link-request",
     ),
     path(
-        'magic-link/verify/',
+        "magic-link/verify/",
         MagicLinkVerifyView.as_view(),
-        name='magic-link-verify',
+        name="magic-link-verify",
     ),
     path(
-        'token/refresh/',
+        "token/refresh/",
         TokenRefreshView.as_view(),
-        name='token-refresh',
+        name="token-refresh",
     ),
 ]

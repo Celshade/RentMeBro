@@ -32,18 +32,18 @@ SATS_PER_BTC = 100_000_000
 # PaymentIntent statuses that can't back a new Elements confirmation;
 # Stripe rejects Elements.create() with a client_secret pointing at
 # one of these ("terminal state" error).
-_TERMINAL_INTENT_STATUSES = frozenset({'succeeded', 'canceled'})
+_TERMINAL_INTENT_STATUSES = frozenset({"succeeded", "canceled"})
 
 # Statuses that mean "the renter has actually started paying" -- see
 # `Invoice.card_round_is_live`. A PaymentIntent merely sitting at
 # requires_payment_method blocks nothing.
-_CARD_IN_FLIGHT_STATUSES = frozenset({'processing', 'requires_action'})
+_CARD_IN_FLIGHT_STATUSES = frozenset({"processing", "requires_action"})
 
 # Statuses `create_payment_intent_for_invoice`'s reuse branch may
 # safely re-price a stale intent for; anything else (e.g. `processing`)
 # is real money in flight and must be left alone.
 _REPRICEABLE_INTENT_STATUSES = frozenset(
-    {'requires_payment_method', 'requires_confirmation'}
+    {"requires_payment_method", "requires_confirmation"}
 )
 
 
@@ -126,7 +126,7 @@ def _excluded_txids(invoice: Invoice) -> set[str]:
     ):
         excluded.add(settlement.txid)
         excluded.add(settlement.credited_txid)
-    excluded.discard('')
+    excluded.discard("")
     return excluded
 
 
@@ -242,7 +242,7 @@ _MANUAL_RAILS = frozenset({
 
 
 def mark_line_item_paid_manually(
-    invoice: Invoice, line_item_id: int, rail: str, note: str = ''
+    invoice: Invoice, line_item_id: int, rail: str, note: str = ""
 ) -> Invoice:
     """Records a landlord-attested payment taken outside either rail.
 
@@ -321,12 +321,12 @@ def _card_round_expiry(payment_intent: dict, now: datetime) -> datetime:
     Returns:
         The expiry to store on `stripe_round_expires_at`.
     """
-    next_action = payment_intent.get('next_action') or {}
+    next_action = payment_intent.get("next_action") or {}
     cashapp = next_action.get(
-        'cashapp_handle_redirect_or_display_qr_code'
+        "cashapp_handle_redirect_or_display_qr_code"
     ) or {}
-    qr_code = cashapp.get('qr_code') or {}
-    raw = qr_code.get('expires_at')
+    qr_code = cashapp.get("qr_code") or {}
+    raw = qr_code.get("expires_at")
     if isinstance(raw, int):
         try:
             expiry = datetime.fromtimestamp(raw, tz=dt_timezone.utc)
@@ -353,7 +353,7 @@ def _sync_card_intent_state(
             set once Stripe has confirmed a terminal cancel, never
             speculatively.
     """
-    intent_status = payment_intent.get('status', '')
+    intent_status = payment_intent.get("status", "")
     invoice.stripe_intent_status = intent_status
     if intent_status in _CARD_IN_FLIGHT_STATUSES:
         invoice.stripe_round_expires_at = _card_round_expiry(
@@ -362,7 +362,7 @@ def _sync_card_intent_state(
     else:
         invoice.stripe_round_expires_at = None
     invoice.save(
-        update_fields=['stripe_intent_status', 'stripe_round_expires_at']
+        update_fields=["stripe_intent_status", "stripe_round_expires_at"]
     )
     if clear_round:
         invoice.stripe_round_line_items.clear()
@@ -445,7 +445,7 @@ def create_payment_intent_for_invoice(
     )
     amount_cents = int(amount_usd * 100)
 
-    idempotency_key = f'invoice-{invoice.id}-intent'
+    idempotency_key = f"invoice-{invoice.id}-intent"
     if invoice.stripe_payment_intent_id:
         intent = stripe.PaymentIntent.retrieve(
             invoice.stripe_payment_intent_id,
@@ -471,33 +471,33 @@ def create_payment_intent_for_invoice(
                 )
             _sync_card_intent_state(invoice, intent.to_dict())
             return intent
-        if intent.status == 'succeeded':
+        if intent.status == "succeeded":
             handle_payment_intent_succeeded(
                 intent.to_dict(),
                 connected_account_id=landlord.stripe_account_id,
             )
             raise InvoiceAlreadyPaidError(
-                'This invoice was already paid.'
+                "This invoice was already paid."
             )
         idempotency_key = (
-            f'invoice-{invoice.id}-intent-retry-'
-            f'{invoice.stripe_payment_intent_id}'
+            f"invoice-{invoice.id}-intent-retry-"
+            f"{invoice.stripe_payment_intent_id}"
         )
 
     if amount_cents <= 0:
         raise NothingLeftToChargeError(
-            'The landlord has set this invoice to be paid in BTC.'
+            "The landlord has set this invoice to be paid in BTC."
         )
     intent = stripe.PaymentIntent.create(
         amount=amount_cents,
-        currency='usd',
-        payment_method_types=['cashapp'],
-        metadata={'invoice_id': str(invoice.id)},
+        currency="usd",
+        payment_method_types=["cashapp"],
+        metadata={"invoice_id": str(invoice.id)},
         stripe_account=landlord.stripe_account_id,
         idempotency_key=idempotency_key,
     )
     invoice.stripe_payment_intent_id = intent.id
-    invoice.save(update_fields=['stripe_payment_intent_id'])
+    invoice.save(update_fields=["stripe_payment_intent_id"])
     invoice.stripe_round_line_items.set(billed_items)
     _sync_card_intent_state(invoice, intent.to_dict())
     return intent
@@ -533,12 +533,12 @@ def handle_payment_intent_succeeded(
             on (event['account']), or None for a platform-account
             event.
     """
-    invoice_id = payment_intent.get('metadata', {}).get('invoice_id')
+    invoice_id = payment_intent.get("metadata", {}).get("invoice_id")
     if not invoice_id:
         return
     invoice = (
         Invoice.objects.filter(id=invoice_id)
-        .select_related('billing_period__landlord')
+        .select_related("billing_period__landlord")
         .first()
     )
     if invoice is None:
@@ -551,7 +551,7 @@ def handle_payment_intent_succeeded(
         billed_items = list(invoice.stripe_round_line_items.all())
         if not billed_items:
             billed_items = invoice.stripe_scope_line_items
-        intent_id = payment_intent.get('id') or invoice.stripe_payment_intent_id
+        intent_id = payment_intent.get("id") or invoice.stripe_payment_intent_id
 
         settlement, created = InvoiceSettlement.objects.get_or_create(
             invoice=invoice,
@@ -569,7 +569,7 @@ def handle_payment_intent_succeeded(
 
         if invoice.stripe_settled_at is None:
             invoice.stripe_settled_at = timezone.now()
-        invoice.stripe_intent_status = 'succeeded'
+        invoice.stripe_intent_status = "succeeded"
         invoice.stripe_round_expires_at = None
         invoice.stripe_round_line_items.clear()
         invoice._prefetched_objects_cache = {}
@@ -600,12 +600,12 @@ def handle_payment_intent_state_change(
             on (event['account']), or None for a platform-account
             event.
     """
-    invoice_id = payment_intent.get('metadata', {}).get('invoice_id')
+    invoice_id = payment_intent.get("metadata", {}).get("invoice_id")
     if not invoice_id:
         return
     invoice = (
         Invoice.objects.filter(id=invoice_id)
-        .select_related('billing_period__landlord')
+        .select_related("billing_period__landlord")
         .first()
     )
     if invoice is None:
@@ -613,11 +613,11 @@ def handle_payment_intent_state_change(
     landlord = invoice.billing_period.landlord
     if connected_account_id != landlord.stripe_account_id:
         return
-    if payment_intent.get('id') != invoice.stripe_payment_intent_id:
+    if payment_intent.get("id") != invoice.stripe_payment_intent_id:
         return
     _sync_card_intent_state(
         invoice, payment_intent,
-        clear_round=payment_intent.get('status') == 'canceled',
+        clear_round=payment_intent.get("status") == "canceled",
     )
 
 
@@ -632,15 +632,15 @@ def start_connect_onboarding(landlord: User) -> str:
         The onboarding URL to redirect the landlord to.
     """
     if not landlord.stripe_account_id:
-        account = stripe.Account.create(type='standard')
+        account = stripe.Account.create(type="standard")
         landlord.stripe_account_id = account.id
-        landlord.save(update_fields=['stripe_account_id'])
+        landlord.save(update_fields=["stripe_account_id"])
 
     account_link = stripe.AccountLink.create(
         account=landlord.stripe_account_id,
-        type='account_onboarding',
-        refresh_url=f'{settings.FRONTEND_URL}/landlord/stripe/refresh',
-        return_url=f'{settings.FRONTEND_URL}/landlord/stripe/return',
+        type="account_onboarding",
+        refresh_url=f"{settings.FRONTEND_URL}/landlord/stripe/refresh",
+        return_url=f"{settings.FRONTEND_URL}/landlord/stripe/return",
     )
     return account_link.url
 
@@ -672,8 +672,8 @@ def handle_account_updated(account: dict) -> None:
             account (event['data']['object']).
     """
     try:
-        User.objects.filter(stripe_account_id=account['id']).update(
-            stripe_charges_enabled=bool(account['charges_enabled'])
+        User.objects.filter(stripe_account_id=account["id"]).update(
+            stripe_charges_enabled=bool(account["charges_enabled"])
         )
     except KeyError:
         logger.warning(
@@ -759,7 +759,7 @@ def refresh_card_payment_state(invoice: Invoice) -> Invoice:
             exc_info=True,
         )
         return invoice
-    if intent.status == 'succeeded':
+    if intent.status == "succeeded":
         handle_payment_intent_succeeded(
             intent.to_dict(), connected_account_id=landlord.stripe_account_id,
         )
@@ -773,7 +773,7 @@ def refresh_card_payment_state(invoice: Invoice) -> Invoice:
 # Pay intent from. `processing` is excluded -- Cash App Pay doesn't
 # support cancelling a push payment already in flight.
 _CANCELABLE_INTENT_STATUSES = frozenset(
-    {'requires_payment_method', 'requires_confirmation', 'requires_action'}
+    {"requires_payment_method", "requires_confirmation", "requires_action"}
 )
 
 
@@ -799,24 +799,24 @@ def cancel_card_payment_attempt(invoice: Invoice) -> Invoice:
             approved between our retrieve and our cancel).
     """
     if not invoice.stripe_payment_intent_id:
-        raise CardCancelNotAllowedError('There is no payment to cancel.')
+        raise CardCancelNotAllowedError("There is no payment to cancel.")
     landlord = invoice.billing_period.landlord
     intent = stripe.PaymentIntent.retrieve(
         invoice.stripe_payment_intent_id,
         stripe_account=landlord.stripe_account_id,
     )
-    if intent.status == 'succeeded':
+    if intent.status == "succeeded":
         handle_payment_intent_succeeded(
             intent.to_dict(), connected_account_id=landlord.stripe_account_id,
         )
         raise CardCancelNotAllowedError(
-            'This payment already went through and can\'t be cancelled.'
+            "This payment already went through and can't be cancelled."
         )
     if intent.status not in _CANCELABLE_INTENT_STATUSES:
         _sync_card_intent_state(invoice, intent.to_dict())
         raise CardCancelNotAllowedError(
-            'This payment is already going through and can\'t be'
-            ' called off.'
+            "This payment is already going through and can't be"
+            " called off."
         )
     try:
         intent = stripe.PaymentIntent.cancel(
@@ -825,7 +825,7 @@ def cancel_card_payment_attempt(invoice: Invoice) -> Invoice:
         )
     except stripe.InvalidRequestError as exc:
         raise CardCancelNotAllowedError(
-            'This payment could not be cancelled.'
+            "This payment could not be cancelled."
         ) from exc
     _sync_card_intent_state(invoice, intent.to_dict(), clear_round=True)
     return invoice
@@ -1120,11 +1120,11 @@ def _notify_landlord_discrepancy(
     txid = invoice.btc_txid or invoice.btc_credited_txid
     try:
         send_mail(
-            subject=f'BTC {kind} payment on invoice #{invoice.id}',
+            subject=f"BTC {kind} payment on invoice #{invoice.id}",
             message=(
-                f'{renter.email} paid ${received_usd} in BTC toward '
-                f'invoice #{invoice.id}, quoted at ${quoted_usd} '
-                f'(${difference} {kind}).\nTransaction: {txid}'
+                f"{renter.email} paid ${received_usd} in BTC toward "
+                f"invoice #{invoice.id}, quoted at ${quoted_usd} "
+                f"(${difference} {kind}).\nTransaction: {txid}"
             ),
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[landlord.email],
@@ -1315,7 +1315,7 @@ def _find_largest_output(
     return best
 
 
-def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
+def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
     """Takes one last look at a just-lapsed watch window before its quote
     is replaced.
 
@@ -1483,7 +1483,9 @@ def initiate_btc_watch(invoice: Invoice, pay_full: bool = False) -> Invoice:
         if invoice.status in (Invoice.Status.PENDING, Invoice.Status.PAID):
             return invoice
         usd_owed = (
-            invoice.btc_full_owed_usd if pay_full else _invoice_usd_owed(invoice)
+            invoice.btc_full_owed_usd
+            if pay_full
+            else _invoice_usd_owed(invoice)
         )
         if usd_owed <= 0:
             return invoice
@@ -1496,7 +1498,9 @@ def initiate_btc_watch(invoice: Invoice, pay_full: bool = False) -> Invoice:
     invoice.btc_watch_expires_at = now + BTC_WATCH_WINDOW
     invoice.save(update_fields=["btc_amount_sats", "btc_watch_expires_at"])
     billed_items = (
-        invoice.btc_full_line_items if pay_full else invoice.btc_scope_line_items
+        invoice.btc_full_line_items
+        if pay_full
+        else invoice.btc_scope_line_items
     )
     invoice.btc_round_line_items.set(billed_items)
     return invoice

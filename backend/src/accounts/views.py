@@ -3,6 +3,7 @@ from django.core.mail import send_mail
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -25,24 +26,24 @@ class MagicLinkRequestView(APIView):
 
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'magic_link_request'
+    throttle_scope = "magic_link_request"
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         serializer = MagicLinkRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        email = serializer.validated_data['email']
-        role = serializer.validated_data['role']
+        email = serializer.validated_data["email"]
+        role = serializer.validated_data["role"]
 
         user = User.objects.filter(email__iexact=email, role=role).first()
         if user is not None:
             magic_link = MagicLinkToken.objects.create(user=user)
             verify_url = (
-                f'{settings.FRONTEND_URL}/auth/verify'
-                f'?token={magic_link.token}'
+                f"{settings.FRONTEND_URL}/auth/verify"
+                f"?token={magic_link.token}"
             )
             send_mail(
-                subject='Your RentMeBro sign-in link',
-                message=f'Sign in here: {verify_url}',
+                subject="Your RentMeBro sign-in link",
+                message=f"Sign in here: {verify_url}",
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],
             )
@@ -55,28 +56,28 @@ class MagicLinkVerifyView(APIView):
 
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'magic_link_verify'
+    throttle_scope = "magic_link_verify"
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         serializer = MagicLinkVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        token = serializer.validated_data['token']
+        token = serializer.validated_data["token"]
 
         magic_link = MagicLinkToken.objects.filter(token=token).first()
         if magic_link is None or not magic_link.is_valid():
             return Response(
-                {'detail': 'Invalid or expired token.'},
+                {"detail": "Invalid or expired token."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         magic_link.used_at = timezone.now()
-        magic_link.save(update_fields=['used_at'])
+        magic_link.save(update_fields=["used_at"])
 
         refresh = RefreshToken.for_user(magic_link.user)
         return Response(
             {
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
-                'user': UserSerializer(magic_link.user).data,
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": UserSerializer(magic_link.user).data,
             }
         )

@@ -22,9 +22,13 @@ MIN_RENT_REVISION_NOTICE_DAYS = 30
 
 
 class LeaseSerializer(serializers.ModelSerializer):
+    """Validates and serializes a lease, including its rent-revision
+    and terms-text derived fields.
+    """
+
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
-    landlord_detail = UserSerializer(source='landlord', read_only=True)
-    renter_detail = UserSerializer(source='renter', read_only=True)
+    landlord_detail = UserSerializer(source="landlord", read_only=True)
+    renter_detail = UserSerializer(source="renter", read_only=True)
     terms_text = serializers.SerializerMethodField()
     current_monthly_rent = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
@@ -34,10 +38,10 @@ class LeaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lease
         fields = [
-            'id', 'landlord', 'landlord_detail', 'renter', 'renter_detail',
-            'monthly_rent', 'current_monthly_rent', 'pending_rent_revision',
-            'start_date', 'active', 'lease_type', 'document', 'term_months',
-            'terms_text',
+            "id", "landlord", "landlord_detail", "renter", "renter_detail",
+            "monthly_rent", "current_monthly_rent", "pending_rent_revision",
+            "start_date", "active", "lease_type", "document", "term_months",
+            "terms_text",
         ]
 
     def get_terms_text(self, obj: Lease) -> str | None:
@@ -50,26 +54,26 @@ class LeaseSerializer(serializers.ModelSerializer):
         if revision is None:
             return None
         return {
-            'new_monthly_rent': str(revision.new_monthly_rent),
-            'effective_date': revision.effective_date.isoformat(),
+            "new_monthly_rent": str(revision.new_monthly_rent),
+            "effective_date": revision.effective_date.isoformat(),
         }
 
     def validate(self, attrs: dict) -> dict:
-        lease_type = attrs.get('lease_type', Lease.LeaseType.DEFAULT)
-        if lease_type == Lease.LeaseType.CUSTOM and not attrs.get('document'):
+        lease_type = attrs.get("lease_type", Lease.LeaseType.DEFAULT)
+        if lease_type == Lease.LeaseType.CUSTOM and not attrs.get("document"):
             raise serializers.ValidationError(
-                'A document is required for a custom lease.'
+                "A document is required for a custom lease."
             )
         if lease_type == Lease.LeaseType.DEFAULT and not attrs.get(
-            'term_months'
+            "term_months"
         ):
             raise serializers.ValidationError(
-                'term_months is required for a default lease.'
+                "term_months is required for a default lease."
             )
         return attrs
 
     def create(self, validated_data: dict) -> Lease:
-        validated_data['landlord'] = self.context['request'].user
+        validated_data["landlord"] = self.context["request"].user
         return super().create(validated_data)
 
 
@@ -77,40 +81,42 @@ def _validate_is_own_renter(renter: User, landlord: User) -> User:
     """Confirms a landlord has (or had) a lease with the given renter."""
     if not Lease.objects.filter(landlord=landlord, renter=renter).exists():
         raise serializers.ValidationError(
-            'You can only do this for a renter you have a lease with.'
+            "You can only do this for a renter you have a lease with."
         )
     return renter
 
 
 class DrivenDayLogSerializer(serializers.ModelSerializer):
+    """Validates and serializes a single logged driven day."""
+
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = DrivenDayLog
         fields = [
-            'id', 'landlord', 'renter', 'date', 'kind', 'day_fraction',
-            'half_leg', 'note',
+            "id", "landlord", "renter", "date", "kind", "day_fraction",
+            "half_leg", "note",
         ]
 
     def validate_renter(self, renter: User) -> User:
-        return _validate_is_own_renter(renter, self.context['request'].user)
+        return _validate_is_own_renter(renter, self.context["request"].user)
 
     def validate(self, attrs: dict) -> dict:
-        kind = attrs.get('kind', getattr(self.instance, 'kind', None))
+        kind = attrs.get("kind", getattr(self.instance, "kind", None))
         if kind is not None and kind != DrivenDayLog.Kind.DRIVEN:
-            attrs['day_fraction'] = Decimal('0')
+            attrs["day_fraction"] = Decimal("0")
 
         day_fraction = attrs.get(
-            'day_fraction', getattr(self.instance, 'day_fraction', None)
+            "day_fraction", getattr(self.instance, "day_fraction", None)
         )
         if kind != DrivenDayLog.Kind.DRIVEN or (
             day_fraction is not None and day_fraction >= 1
         ):
-            attrs['half_leg'] = ''
+            attrs["half_leg"] = ""
 
-        landlord = self.context['request'].user
-        renter = attrs.get('renter', getattr(self.instance, 'renter', None))
-        target_date = attrs.get('date', getattr(self.instance, 'date', None))
+        landlord = self.context["request"].user
+        renter = attrs.get("renter", getattr(self.instance, "renter", None))
+        target_date = attrs.get("date", getattr(self.instance, "date", None))
         # InvoiceLockedError deliberately isn't caught here -- it bubbles
         # up so the view can map it to a 409, distinguishing a lock from
         # a plain validation error.
@@ -122,11 +128,13 @@ class DrivenDayLogSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data: dict) -> DrivenDayLog:
-        validated_data['landlord'] = self.context['request'].user
+        validated_data["landlord"] = self.context["request"].user
         return super().create(validated_data)
 
 
 class MileageProfileSerializer(serializers.ModelSerializer):
+    """Validates and serializes a renter's mileage profile."""
+
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
     full_day_miles = serializers.DecimalField(
         max_digits=6, decimal_places=2, read_only=True
@@ -135,50 +143,62 @@ class MileageProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = MileageProfile
         fields = [
-            'id', 'landlord', 'renter', 'one_way_miles', 'mpg',
-            'effective_from', 'full_day_miles',
+            "id", "landlord", "renter", "one_way_miles", "mpg",
+            "effective_from", "full_day_miles",
         ]
 
     def validate_renter(self, renter: User) -> User:
-        return _validate_is_own_renter(renter, self.context['request'].user)
+        return _validate_is_own_renter(renter, self.context["request"].user)
 
     def create(self, validated_data: dict) -> MileageProfile:
-        validated_data['landlord'] = self.context['request'].user
+        validated_data["landlord"] = self.context["request"].user
         return super().create(validated_data)
 
 
 class GasPriceEntrySerializer(serializers.ModelSerializer):
+    """Validates and serializes a gas price effective over a date
+    range.
+    """
+
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = GasPriceEntry
         fields = [
-            'id', 'landlord', 'renter', 'price_per_gallon',
-            'effective_from', 'effective_to',
+            "id", "landlord", "renter", "price_per_gallon",
+            "effective_from", "effective_to",
         ]
 
     def validate_renter(self, renter: User) -> User:
-        return _validate_is_own_renter(renter, self.context['request'].user)
+        return _validate_is_own_renter(renter, self.context["request"].user)
 
     def create(self, validated_data: dict) -> GasPriceEntry:
-        validated_data['landlord'] = self.context['request'].user
+        validated_data["landlord"] = self.context["request"].user
         return super().create(validated_data)
 
 
 class InvoiceLineItemSerializer(serializers.ModelSerializer):
+    """Serializes a single rent or gas line item on an invoice."""
+
     class Meta:
         model = InvoiceLineItem
-        fields = ['id', 'description', 'amount', 'kind', 'payment_lock']
-        read_only_fields = ['payment_lock']
+        fields = ["id", "description", "amount", "kind", "payment_lock"]
+        read_only_fields = ["payment_lock"]
 
 
 class BillingPeriodSerializer(serializers.ModelSerializer):
+    """Serializes the year/month a billing period covers."""
+
     class Meta:
         model = BillingPeriod
-        fields = ['id', 'landlord', 'renter', 'year', 'month']
+        fields = ["id", "landlord", "renter", "year", "month"]
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
+    """Serializes an invoice, including its line items, payment
+    progress across both rails, and settlement history.
+    """
+
     line_items = InvoiceLineItemSerializer(many=True, read_only=True)
     billing_period = BillingPeriodSerializer(read_only=True)
     total = serializers.DecimalField(
@@ -290,6 +310,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
 
 class InvoiceWeekDaySerializer(serializers.Serializer):
+    """Serializes one day's gas cost within an invoice week preview."""
+
     date = serializers.DateField()
     kind = serializers.ChoiceField(choices=DrivenDayLog.Kind.choices)
     day_fraction = serializers.DecimalField(max_digits=3, decimal_places=2)
@@ -298,6 +320,10 @@ class InvoiceWeekDaySerializer(serializers.Serializer):
 
 
 class InvoiceWeekSerializer(serializers.Serializer):
+    """Serializes one week's driven days and gas cost totals within
+    an invoice preview.
+    """
+
     week_start = serializers.DateField()
     week_end = serializers.DateField()
     total_miles = serializers.DecimalField(max_digits=6, decimal_places=2)
@@ -312,6 +338,11 @@ MAX_FUTURE_INVOICE_MONTHS = 12
 
 
 class InvoiceCreateSerializer(serializers.Serializer):
+    """Validates a request to generate an invoice for a renter's
+    billing period, bounded to a maximum of
+    `MAX_FUTURE_INVOICE_MONTHS` ahead.
+    """
+
     renter = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(role=User.Role.RENTER)
     )
@@ -321,7 +352,7 @@ class InvoiceCreateSerializer(serializers.Serializer):
     due_date = serializers.DateField(required=False)
 
     def validate_renter(self, renter: User) -> User:
-        return _validate_is_own_renter(renter, self.context['request'].user)
+        return _validate_is_own_renter(renter, self.context["request"].user)
 
     def validate(self, attrs: dict) -> dict:
         today = timezone.now().date()
@@ -330,28 +361,38 @@ class InvoiceCreateSerializer(serializers.Serializer):
         )
         latest_year += (latest_month - 1) // 12
         latest_month = (latest_month - 1) % 12 + 1
-        if (attrs['year'], attrs['month']) > (latest_year, latest_month):
+        if (attrs["year"], attrs["month"]) > (latest_year, latest_month):
             raise serializers.ValidationError(
-                f'Invoices can only be generated up to '
-                f'{MAX_FUTURE_INVOICE_MONTHS} months ahead.'
+                f"Invoices can only be generated up to "
+                f"{MAX_FUTURE_INVOICE_MONTHS} months ahead."
             )
         return attrs
 
 
 class PeriodPreviewSerializer(serializers.Serializer):
+    """Serializes the projected rent and gas totals for a not-yet-
+    generated billing period.
+    """
+
     rent = serializers.DecimalField(max_digits=10, decimal_places=2)
     gas = serializers.DecimalField(max_digits=10, decimal_places=2)
 
 
 class RenterLookupQuerySerializer(serializers.Serializer):
+    """Validates an email address used to look up a landlord's
+    renter.
+    """
+
     email = serializers.EmailField()
 
 
 class LeaseRentRevisionSerializer(serializers.ModelSerializer):
+    """Validates and serializes a scheduled rent change on a lease."""
+
     class Meta:
         model = LeaseRentRevision
-        fields = ['id', 'lease', 'new_monthly_rent', 'effective_date']
-        read_only_fields = ['lease']
+        fields = ["id", "lease", "new_monthly_rent", "effective_date"]
+        read_only_fields = ["lease"]
 
     def validate_effective_date(self, value: date) -> date:
         min_date = timezone.now().date() + timedelta(
@@ -359,7 +400,7 @@ class LeaseRentRevisionSerializer(serializers.ModelSerializer):
         )
         if value < min_date:
             raise serializers.ValidationError(
-                f'Effective date must be at least '
-                f'{MIN_RENT_REVISION_NOTICE_DAYS} days from today.'
+                f"Effective date must be at least "
+                f"{MIN_RENT_REVISION_NOTICE_DAYS} days from today."
             )
         return value

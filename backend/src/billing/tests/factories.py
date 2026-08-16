@@ -23,7 +23,7 @@ class LeaseFactory(DjangoModelFactory):
 
     landlord = factory.SubFactory(LandlordFactory)
     renter = factory.SubFactory(UserFactory)
-    monthly_rent = Decimal('1000.00')
+    monthly_rent = Decimal("1000.00")
     start_date = date(2024, 1, 1)
     active = True
     lease_type = Lease.LeaseType.DEFAULT
@@ -38,7 +38,7 @@ class LeaseRentRevisionFactory(DjangoModelFactory):
     # test using this factory produces that side effect (harmless with
     # the locmem backend django's test runner forces).
     lease = factory.SubFactory(LeaseFactory)
-    new_monthly_rent = Decimal('1100.00')
+    new_monthly_rent = Decimal("1100.00")
     effective_date = date(2024, 6, 1)
 
 
@@ -48,8 +48,8 @@ class MileageProfileFactory(DjangoModelFactory):
 
     landlord = factory.SubFactory(LandlordFactory)
     renter = factory.SubFactory(UserFactory)
-    one_way_miles = Decimal('10.00')
-    mpg = Decimal('25.00')
+    one_way_miles = Decimal("10.00")
+    mpg = Decimal("25.00")
     effective_from = date(2024, 1, 1)
 
 
@@ -59,7 +59,7 @@ class GasPriceEntryFactory(DjangoModelFactory):
 
     landlord = factory.SubFactory(LandlordFactory)
     renter = factory.SubFactory(UserFactory)
-    price_per_gallon = Decimal('3.500')
+    price_per_gallon = Decimal("3.500")
     effective_from = date(2024, 1, 1)
     effective_to = None
 
@@ -72,7 +72,7 @@ class DrivenDayLogFactory(DjangoModelFactory):
     renter = factory.SubFactory(UserFactory)
     date = date(2024, 6, 3)
     kind = DrivenDayLog.Kind.DRIVEN
-    day_fraction = Decimal('1.00')
+    day_fraction = Decimal("1.00")
 
 
 class BillingPeriodFactory(DjangoModelFactory):
@@ -103,6 +103,6 @@ class InvoiceLineItemFactory(DjangoModelFactory):
         model = InvoiceLineItem
 
     invoice = factory.SubFactory(InvoiceFactory)
-    description = 'Rent for 2024-06'
-    amount = Decimal('1000.00')
+    description = "Rent for 2024-06"
+    amount = Decimal("1000.00")
     kind = InvoiceLineItem.Kind.RENT

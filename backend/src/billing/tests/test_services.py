@@ -83,13 +83,13 @@ class TestGetMileageProfileForDate:
             landlord=landlord,
             renter=renter,
             effective_from=date(2024, 1, 1),
-            one_way_miles=Decimal('5.00'),
+            one_way_miles=Decimal("5.00"),
         )
         newer = MileageProfileFactory(
             landlord=landlord,
             renter=renter,
             effective_from=date(2024, 6, 1),
-            one_way_miles=Decimal('10.00'),
+            one_way_miles=Decimal("10.00"),
         )
         result = services.get_mileage_profile_for_date(
             landlord, renter, date(2024, 7, 1)
@@ -146,25 +146,25 @@ class TestGetGasPriceForDate:
 class TestComputeGasCostForLog:
     def test_day_off_costs_nothing_even_without_config(self):
         log = DrivenDayLogFactory(kind=DrivenDayLog.Kind.DAY_OFF)
-        assert services.compute_gas_cost_for_log(log) == Decimal('0.00')
+        assert services.compute_gas_cost_for_log(log) == Decimal("0.00")
 
     def test_other_ride_costs_nothing_even_without_config(self):
         log = DrivenDayLogFactory(kind=DrivenDayLog.Kind.OTHER_RIDE)
-        assert services.compute_gas_cost_for_log(log) == Decimal('0.00')
+        assert services.compute_gas_cost_for_log(log) == Decimal("0.00")
 
     def test_driven_full_day_computes_expected_cost(self):
         landlord, renter = LandlordFactory(), UserFactory()
         MileageProfileFactory(
             landlord=landlord,
             renter=renter,
-            one_way_miles=Decimal('10.00'),
-            mpg=Decimal('25.00'),
+            one_way_miles=Decimal("10.00"),
+            mpg=Decimal("25.00"),
             effective_from=date(2024, 1, 1),
         )
         GasPriceEntryFactory(
             landlord=landlord,
             renter=renter,
-            price_per_gallon=Decimal('3.500'),
+            price_per_gallon=Decimal("3.500"),
             effective_from=date(2024, 1, 1),
         )
         log = DrivenDayLogFactory(
@@ -172,24 +172,24 @@ class TestComputeGasCostForLog:
             renter=renter,
             date=date(2024, 6, 3),
             kind=DrivenDayLog.Kind.DRIVEN,
-            day_fraction=Decimal('1.00'),
+            day_fraction=Decimal("1.00"),
         )
         # 1 * (10*4) miles = 40 miles / 25 mpg = 1.6 gal * $3.50 = $5.60
-        assert services.compute_gas_cost_for_log(log) == Decimal('5.60')
+        assert services.compute_gas_cost_for_log(log) == Decimal("5.60")
 
     def test_driven_fractional_day_computes_expected_cost(self):
         landlord, renter = LandlordFactory(), UserFactory()
         MileageProfileFactory(
             landlord=landlord,
             renter=renter,
-            one_way_miles=Decimal('10.00'),
-            mpg=Decimal('25.00'),
+            one_way_miles=Decimal("10.00"),
+            mpg=Decimal("25.00"),
             effective_from=date(2024, 1, 1),
         )
         GasPriceEntryFactory(
             landlord=landlord,
             renter=renter,
-            price_per_gallon=Decimal('3.500'),
+            price_per_gallon=Decimal("3.500"),
             effective_from=date(2024, 1, 1),
         )
         log = DrivenDayLogFactory(
@@ -197,10 +197,10 @@ class TestComputeGasCostForLog:
             renter=renter,
             date=date(2024, 6, 3),
             kind=DrivenDayLog.Kind.DRIVEN,
-            day_fraction=Decimal('0.50'),
+            day_fraction=Decimal("0.50"),
         )
         # 0.5 * 40 miles = 20 miles / 25 mpg = 0.8 gal * $3.50 = $2.80
-        assert services.compute_gas_cost_for_log(log) == Decimal('2.80')
+        assert services.compute_gas_cost_for_log(log) == Decimal("2.80")
 
     def test_driven_without_mileage_profile_raises(self):
         landlord, renter = LandlordFactory(), UserFactory()
@@ -222,14 +222,14 @@ class TestComputePeriodGasTotal:
         MileageProfileFactory(
             landlord=landlord,
             renter=renter,
-            one_way_miles=Decimal('10.00'),
-            mpg=Decimal('25.00'),
+            one_way_miles=Decimal("10.00"),
+            mpg=Decimal("25.00"),
             effective_from=date(2024, 1, 1),
         )
         GasPriceEntryFactory(
             landlord=landlord,
             renter=renter,
-            price_per_gallon=Decimal('3.500'),
+            price_per_gallon=Decimal("3.500"),
             effective_from=date(2024, 1, 1),
         )
         DrivenDayLogFactory(
@@ -237,14 +237,14 @@ class TestComputePeriodGasTotal:
             renter=renter,
             date=date(2024, 6, 3),
             kind=DrivenDayLog.Kind.DRIVEN,
-            day_fraction=Decimal('1.00'),
+            day_fraction=Decimal("1.00"),
         )
         DrivenDayLogFactory(
             landlord=landlord,
             renter=renter,
             date=date(2024, 6, 4),
             kind=DrivenDayLog.Kind.DAY_OFF,
-            day_fraction=Decimal('0'),
+            day_fraction=Decimal("0"),
         )
         # Outside the target month -- must not be counted.
         DrivenDayLogFactory(
@@ -252,16 +252,16 @@ class TestComputePeriodGasTotal:
             renter=renter,
             date=date(2024, 7, 1),
             kind=DrivenDayLog.Kind.DRIVEN,
-            day_fraction=Decimal('1.00'),
+            day_fraction=Decimal("1.00"),
         )
         total = services.compute_period_gas_total(landlord, renter, 2024, 6)
-        assert total == Decimal('5.60')
+        assert total == Decimal("5.60")
 
     def test_empty_period_returns_zero(self):
         landlord, renter = LandlordFactory(), UserFactory()
         assert services.compute_period_gas_total(
             landlord, renter, 2024, 6
-        ) == Decimal('0.00')
+        ) == Decimal("0.00")
 
 
 # --- compute_period_weekly_breakdown -------------------------------------
@@ -272,14 +272,14 @@ class TestComputePeriodWeeklyBreakdown:
         MileageProfileFactory(
             landlord=landlord,
             renter=renter,
-            one_way_miles=Decimal('10.00'),
-            mpg=Decimal('25.00'),
+            one_way_miles=Decimal("10.00"),
+            mpg=Decimal("25.00"),
             effective_from=date(2024, 1, 1),
         )
         GasPriceEntryFactory(
             landlord=landlord,
             renter=renter,
-            price_per_gallon=Decimal('3.500'),
+            price_per_gallon=Decimal("3.500"),
             effective_from=date(2024, 1, 1),
         )
         # 2024-06-01 is a Saturday; 2024-06-02 is a Sunday (new week).
@@ -301,10 +301,10 @@ class TestComputePeriodWeeklyBreakdown:
         )
 
         assert len(weeks) == 2
-        assert weeks[0]['week_start'] == date(2024, 5, 26)
-        assert len(weeks[0]['days']) == 1
-        assert weeks[1]['week_start'] == date(2024, 6, 2)
-        assert len(weeks[1]['days']) == 1
+        assert weeks[0]["week_start"] == date(2024, 5, 26)
+        assert len(weeks[0]["days"]) == 1
+        assert weeks[1]["week_start"] == date(2024, 6, 2)
+        assert len(weeks[1]["days"]) == 1
 
     def test_week_price_per_gallon_none_when_no_driven_day(self):
         landlord, renter = LandlordFactory(), UserFactory()
@@ -313,24 +313,24 @@ class TestComputePeriodWeeklyBreakdown:
             renter=renter,
             date=date(2024, 6, 3),
             kind=DrivenDayLog.Kind.DAY_OFF,
-            day_fraction=Decimal('0'),
+            day_fraction=Decimal("0"),
         )
         weeks = services.compute_period_weekly_breakdown(
             landlord, renter, 2024, 6
         )
-        assert weeks[0]['price_per_gallon'] is None
-        assert weeks[0]['total_gas_cost'] == Decimal('0.00')
+        assert weeks[0]["price_per_gallon"] is None
+        assert weeks[0]["total_gas_cost"] == Decimal("0.00")
 
 
 # --- compute_period_preview ----------------------------------------------
 
 class TestComputePeriodPreview:
     def test_combines_rent_and_gas(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         preview = services.compute_period_preview(
             lease.landlord, lease.renter, 2024, 6
         )
-        assert preview == {'rent': Decimal('1000.00'), 'gas': Decimal('0.00')}
+        assert preview == {"rent": Decimal("1000.00"), "gas": Decimal("0.00")}
 
     def test_raises_without_active_lease(self):
         landlord, renter = LandlordFactory(), UserFactory()
@@ -338,16 +338,16 @@ class TestComputePeriodPreview:
             services.compute_period_preview(landlord, renter, 2024, 6)
 
     def test_honors_revision_effective_for_the_billed_month(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         LeaseRentRevisionFactory(
             lease=lease,
-            new_monthly_rent=Decimal('1100.00'),
+            new_monthly_rent=Decimal("1100.00"),
             effective_date=date(2024, 6, 1),
         )
         preview = services.compute_period_preview(
             lease.landlord, lease.renter, 2024, 6
         )
-        assert preview['rent'] == Decimal('1100.00')
+        assert preview["rent"] == Decimal("1100.00")
 
 
 # --- default_invoice_due_date ---------------------------------------------
@@ -364,19 +364,19 @@ class TestDefaultInvoiceDueDate:
 
 class TestGenerateInvoice:
     def test_combined_creates_rent_and_gas_line_items(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         invoice = services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.COMBINED
         )
         kinds = sorted(
-            invoice.line_items.values_list('kind', flat=True)
+            invoice.line_items.values_list("kind", flat=True)
         )
-        assert kinds == ['gas', 'rent']
+        assert kinds == ["gas", "rent"]
         rent_item = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
-        assert rent_item.amount == Decimal('1000.00')
+        assert rent_item.amount == Decimal("1000.00")
 
     def test_rent_only_does_not_require_gas_config(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         invoice = services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
         )
@@ -392,7 +392,7 @@ class TestGenerateInvoice:
         assert invoice.line_items.first().kind == InvoiceLineItem.Kind.GAS
 
     def test_duplicate_kind_raises_and_rolls_back(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
         )
@@ -412,7 +412,7 @@ class TestGenerateInvoice:
         assert InvoiceLineItem.objects.count() == line_item_count_before
 
     def test_combined_then_rent_only_rejected(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.COMBINED
         )
@@ -427,7 +427,7 @@ class TestGenerateInvoice:
                 )
 
     def test_combined_then_gas_only_rejected(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.COMBINED
         )
@@ -442,7 +442,7 @@ class TestGenerateInvoice:
                 )
 
     def test_rent_only_then_gas_only_allowed(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
         )
@@ -463,7 +463,7 @@ class TestGenerateInvoice:
                 )
 
     def test_void_invoice_does_not_block_regeneration(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         voided = services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
         )
@@ -475,7 +475,7 @@ class TestGenerateInvoice:
         assert invoice.line_items.count() == 2
 
     def test_reuses_billing_period_across_kinds(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
         )
@@ -489,23 +489,23 @@ class TestGenerateInvoice:
     def test_rent_line_item_honors_revision_effective_for_billed_month(
         self,
     ):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         LeaseRentRevisionFactory(
             lease=lease,
-            new_monthly_rent=Decimal('1100.00'),
+            new_monthly_rent=Decimal("1100.00"),
             effective_date=date(2024, 6, 1),
         )
         invoice = services.generate_invoice(
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
         )
         rent_item = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
-        assert rent_item.amount == Decimal('1100.00')
+        assert rent_item.amount == Decimal("1100.00")
 
     def test_rent_amount_matches_preview_for_same_month(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         LeaseRentRevisionFactory(
             lease=lease,
-            new_monthly_rent=Decimal('1150.00'),
+            new_monthly_rent=Decimal("1150.00"),
             effective_date=date(2024, 5, 20),
         )
         preview = services.compute_period_preview(
@@ -515,10 +515,10 @@ class TestGenerateInvoice:
             lease.landlord, lease.renter, 2024, 6, Invoice.Kind.RENT_ONLY
         )
         rent_item = invoice.line_items.get(kind=InvoiceLineItem.Kind.RENT)
-        assert preview['rent'] == rent_item.amount
+        assert preview["rent"] == rent_item.amount
 
     def test_combined_for_future_month_raises(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         today = timezone.now().date()
         next_year, next_month = (
             (today.year + 1, 1) if today.month == 12
@@ -534,7 +534,7 @@ class TestGenerateInvoice:
             )
 
     def test_rent_only_for_future_month_succeeds(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         today = timezone.now().date()
         next_year, next_month = (
             (today.year + 1, 1) if today.month == 12
@@ -550,7 +550,7 @@ class TestGenerateInvoice:
         assert invoice.line_items.count() == 1
 
     def test_rent_only_for_current_month_succeeds(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         today = timezone.now().date()
         invoice = services.generate_invoice(
             lease.landlord,
@@ -562,7 +562,7 @@ class TestGenerateInvoice:
         assert invoice.line_items.count() == 2
 
     def test_explicit_due_date_overrides_default(self):
-        lease = LeaseFactory(monthly_rent=Decimal('1000.00'))
+        lease = LeaseFactory(monthly_rent=Decimal("1000.00"))
         invoice = services.generate_invoice(
             lease.landlord,
             lease.renter,
@@ -582,14 +582,14 @@ class TestRecomputeInvoiceGas:
         MileageProfileFactory(
             landlord=landlord,
             renter=renter,
-            one_way_miles=Decimal('10.00'),
-            mpg=Decimal('25.00'),
+            one_way_miles=Decimal("10.00"),
+            mpg=Decimal("25.00"),
             effective_from=date(2024, 1, 1),
         )
         GasPriceEntryFactory(
             landlord=landlord,
             renter=renter,
-            price_per_gallon=Decimal('3.500'),
+            price_per_gallon=Decimal("3.500"),
             effective_from=date(2024, 1, 1),
         )
         billing_period = BillingPeriodFactory(
@@ -599,7 +599,7 @@ class TestRecomputeInvoiceGas:
             billing_period=billing_period, kind=Invoice.Kind.GAS_ONLY
         )
         InvoiceLineItemFactory(
-            invoice=invoice, kind=InvoiceLineItem.Kind.GAS, amount=Decimal('0.00')
+            invoice=invoice, kind=InvoiceLineItem.Kind.GAS, amount=Decimal("0.00")
         )
         DrivenDayLogFactory(
             landlord=landlord,
@@ -611,7 +611,7 @@ class TestRecomputeInvoiceGas:
         updated = services.recompute_invoice_gas(invoice)
 
         gas_item = updated.line_items.get(kind=InvoiceLineItem.Kind.GAS)
-        assert gas_item.amount == Decimal('5.60')
+        assert gas_item.amount == Decimal("5.60")
 
     def test_noop_when_no_gas_line_item(self):
         invoice = InvoiceFactory(kind=Invoice.Kind.RENT_ONLY)
@@ -635,7 +635,7 @@ class TestRecomputeInvoiceGas:
         invoice = InvoiceFactory(status=Invoice.Status.PENDING)
         InvoiceLineItemFactory(
             invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
-            amount=Decimal('0.00'),
+            amount=Decimal("0.00"),
         )
         result = services.recompute_invoice_gas(invoice)
         assert result.status == Invoice.Status.PENDING
@@ -647,9 +647,9 @@ class TestRecomputeInvoiceGas:
         invoice = InvoiceFactory(status=Invoice.Status.PARTIAL)
         gas_item = InvoiceLineItemFactory(
             invoice=invoice, kind=InvoiceLineItem.Kind.GAS,
-            amount=Decimal('0.00'),
+            amount=Decimal("0.00"),
         )
-        invoice.btc_address = 'bc1qexample'
+        invoice.btc_address = "bc1qexample"
         invoice.btc_amount_sats = 1000
         invoice.btc_watch_expires_at = timezone.now() + timedelta(minutes=5)
         invoice.save()

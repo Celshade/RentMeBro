@@ -14,5 +14,5 @@ class InvoiceSettlementFactory(DjangoModelFactory):
 
     invoice = factory.SubFactory(InvoiceFactory)
     rail = InvoiceSettlement.Rail.BTC
-    amount_usd = Decimal('100.00')
+    amount_usd = Decimal("100.00")
     settled_at = factory.LazyFunction(timezone.now)

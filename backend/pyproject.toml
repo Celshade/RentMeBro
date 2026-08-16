@@ -23,6 +23,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-django>=4.12.0",
     "pytest-mock>=3.15.1",
+    "ruff>=0.15.22",
 ]
 
 [tool.pytest.ini_options]
@@ -31,3 +32,23 @@ pythonpath = ["src"]
 python_files = ["test_*.py"]
 testpaths = ["src"]
 addopts = "-ra"
+
+[tool.ruff]
+line-length = 80
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["Q", "E501", "ANN"]
+# ANN401: Any is the correct type for *args/**kwargs passthrough hooks
+# (Django save(), DRF retrieve/create/destroy(*args, **kwargs)).
+ignore = ["ANN401"]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "double"
+docstring-quotes = "double"
+multiline-quotes = "double"
+
+[tool.ruff.lint.per-file-ignores]
+"*/migrations/*" = ["Q", "E501", "ANN"]
+"*/tests/*" = ["E501", "ANN"]
+"conftest.py" = ["E501", "ANN"]
