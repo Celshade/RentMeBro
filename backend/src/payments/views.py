@@ -3,6 +3,7 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -57,7 +58,7 @@ class InvoicePaymentIntentView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
@@ -105,7 +106,7 @@ class InvoicePaymentCancelView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
@@ -123,7 +124,7 @@ class ConnectOnboardingView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         url = start_connect_onboarding(request.user)
         return Response({"onboarding_url": url})
 
@@ -139,7 +140,7 @@ class ConnectStatusView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def get(self, request) -> Response:
+    def get(self, request: Request) -> Response:
         if request.query_params.get("refresh") == "true":
             refresh_connect_status(request.user)
             request.user.refresh_from_db(fields=["stripe_charges_enabled"])
@@ -159,7 +160,7 @@ class StripeWebhookView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         payload = request.body
         sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
 
@@ -196,7 +197,7 @@ class ConnectWebhookView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         payload = request.body
         sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
 
@@ -228,10 +229,10 @@ class BtcSettingsView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def get(self, request) -> Response:
+    def get(self, request: Request) -> Response:
         return Response({"enabled": request.user.btc_payments_enabled})
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         if request.data.get("agree") is not True:
             return Response(
                 {"detail": "You must confirm before enabling BTC payments."},
@@ -246,7 +247,7 @@ class BtcPriceView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def get(self, request) -> Response:
+    def get(self, request: Request) -> Response:
         price = get_btc_usd_price()
         if price is None:
             return Response(
@@ -266,7 +267,7 @@ class InvoiceBtcAttachView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice,
             id=invoice_id,
@@ -305,7 +306,9 @@ class InvoiceLineItemPaymentLockView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request, invoice_id: int, line_item_id: int) -> Response:
+    def post(
+        self, request: Request, invoice_id: int, line_item_id: int
+    ) -> Response:
         invoice = get_object_or_404(
             Invoice,
             id=invoice_id,
@@ -335,7 +338,9 @@ class InvoiceLineItemMarkPaidView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request, invoice_id: int, line_item_id: int) -> Response:
+    def post(
+        self, request: Request, invoice_id: int, line_item_id: int
+    ) -> Response:
         invoice = get_object_or_404(
             Invoice,
             id=invoice_id,
@@ -384,7 +389,7 @@ class InvoiceBtcWatchView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
@@ -410,7 +415,7 @@ class InvoiceBtcStatusView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, invoice_id: int) -> Response:
+    def get(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
@@ -426,7 +431,7 @@ class InvoiceBtcCancelView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )
@@ -448,7 +453,7 @@ class InvoiceBtcCheckView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, invoice_id: int) -> Response:
+    def post(self, request: Request, invoice_id: int) -> Response:
         invoice = get_object_or_404(
             Invoice, id=invoice_id, billing_period__renter=request.user
         )

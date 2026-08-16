@@ -1,8 +1,11 @@
+from typing import Any
+
 from django.db.models import Q, QuerySet
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -122,7 +125,9 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             "-billing_period__year", "-billing_period__month", "-created_at"
         )
 
-    def retrieve(self, request, *args, **kwargs) -> Response:
+    def retrieve(
+        self, request: Request, *args: Any, **kwargs: Any
+    ) -> Response:
         """Serves a single invoice, self-healing stale payment state
         first.
 
@@ -151,7 +156,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(invoice)
         return Response(serializer.data)
 
-    def create(self, request, *args, **kwargs) -> Response:
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = InvoiceCreateSerializer(
             data=request.data, context={"request": request}
         )
@@ -185,7 +190,9 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             return [IsAuthenticated(), IsLandlord()]
         return super().get_permissions()
 
-    def destroy(self, request, *args, **kwargs) -> Response:
+    def destroy(
+        self, request: Request, *args: Any, **kwargs: Any
+    ) -> Response:
         """Hard-deletes an invoice that hasn't taken any money yet.
 
         Blocked once anything has settled or is mid-flight, or once
@@ -212,7 +219,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"])
-    def weeks(self, request, pk=None) -> Response:
+    def weeks(self, request: Request, pk: str | None = None) -> Response:
         """Returns the invoice's driven days grouped into billed weeks."""
         invoice = self.get_object()
         period = invoice.billing_period
@@ -226,7 +233,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         methods=["post"],
         permission_classes=[IsAuthenticated, IsLandlord],
     )
-    def send(self, request, pk=None) -> Response:
+    def send(self, request: Request, pk: str | None = None) -> Response:
         """Promotes a draft invoice to sent, making it visible as due."""
         invoice = self.get_object()
         if invoice.status != Invoice.Status.DRAFT:
@@ -243,7 +250,7 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         methods=["post"],
         permission_classes=[IsAuthenticated, IsLandlord],
     )
-    def recompute(self, request, pk=None) -> Response:
+    def recompute(self, request: Request, pk: str | None = None) -> Response:
         """Re-derives a not-yet-paid invoice's gas total from current logs."""
         invoice = self.get_object()
         try:
@@ -264,7 +271,7 @@ class LeaseRentRevisionView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def post(self, request, lease_id: int) -> Response:
+    def post(self, request: Request, lease_id: int) -> Response:
         lease = get_object_or_404(Lease, id=lease_id, landlord=request.user)
         serializer = LeaseRentRevisionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -285,7 +292,7 @@ class RenterLookupView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def get(self, request) -> Response:
+    def get(self, request: Request) -> Response:
         serializer = RenterLookupQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data["email"]
@@ -310,7 +317,9 @@ class BillingPeriodPreviewView(APIView):
 
     permission_classes = [IsAuthenticated, IsLandlord]
 
-    def get(self, request, renter_id: int, year: int, month: int) -> Response:
+    def get(
+        self, request: Request, renter_id: int, year: int, month: int
+    ) -> Response:
         renter = get_object_or_404(
             User.objects.filter(role=User.Role.RENTER), id=renter_id
         )

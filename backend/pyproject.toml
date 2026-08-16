@@ -39,6 +39,9 @@ src = ["src"]
 
 [tool.ruff.lint]
 select = ["Q", "E501", "ANN"]
+# ANN401: Any is the correct type for *args/**kwargs passthrough hooks
+# (Django save(), DRF retrieve/create/destroy(*args, **kwargs)).
+ignore = ["ANN401"]
 
 [tool.ruff.lint.flake8-quotes]
 inline-quotes = "double"

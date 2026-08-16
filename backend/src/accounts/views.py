@@ -3,6 +3,7 @@ from django.core.mail import send_mail
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -27,7 +28,7 @@ class MagicLinkRequestView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "magic_link_request"
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         serializer = MagicLinkRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data["email"]
@@ -57,7 +58,7 @@ class MagicLinkVerifyView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "magic_link_verify"
 
-    def post(self, request) -> Response:
+    def post(self, request: Request) -> Response:
         serializer = MagicLinkVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         token = serializer.validated_data["token"]

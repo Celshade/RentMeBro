@@ -1315,7 +1315,7 @@ def _find_largest_output(
     return best
 
 
-def _reconcile_lapsed_watch(invoice: Invoice, now) -> Invoice:
+def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
     """Takes one last look at a just-lapsed watch window before its quote
     is replaced.
 

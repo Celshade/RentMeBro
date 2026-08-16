@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -110,7 +111,7 @@ class LeaseRentRevision(models.Model):
             f"${self.new_monthly_rent}, {self.effective_date})"
         )
 
-    def save(self, *args, **kwargs) -> None:
+    def save(self, *args: Any, **kwargs: Any) -> None:
         is_new = self._state.adding
         super().save(*args, **kwargs)
         if is_new:
