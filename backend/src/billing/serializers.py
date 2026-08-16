@@ -22,6 +22,10 @@ MIN_RENT_REVISION_NOTICE_DAYS = 30
 
 
 class LeaseSerializer(serializers.ModelSerializer):
+    """Validates and serializes a lease, including its rent-revision
+    and terms-text derived fields.
+    """
+
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
     landlord_detail = UserSerializer(source="landlord", read_only=True)
     renter_detail = UserSerializer(source="renter", read_only=True)
@@ -83,6 +87,8 @@ def _validate_is_own_renter(renter: User, landlord: User) -> User:
 
 
 class DrivenDayLogSerializer(serializers.ModelSerializer):
+    """Validates and serializes a single logged driven day."""
+
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -127,6 +133,8 @@ class DrivenDayLogSerializer(serializers.ModelSerializer):
 
 
 class MileageProfileSerializer(serializers.ModelSerializer):
+    """Validates and serializes a renter's mileage profile."""
+
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
     full_day_miles = serializers.DecimalField(
         max_digits=6, decimal_places=2, read_only=True
@@ -148,6 +156,10 @@ class MileageProfileSerializer(serializers.ModelSerializer):
 
 
 class GasPriceEntrySerializer(serializers.ModelSerializer):
+    """Validates and serializes a gas price effective over a date
+    range.
+    """
+
     landlord = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -166,6 +178,8 @@ class GasPriceEntrySerializer(serializers.ModelSerializer):
 
 
 class InvoiceLineItemSerializer(serializers.ModelSerializer):
+    """Serializes a single rent or gas line item on an invoice."""
+
     class Meta:
         model = InvoiceLineItem
         fields = ["id", "description", "amount", "kind", "payment_lock"]
@@ -173,12 +187,18 @@ class InvoiceLineItemSerializer(serializers.ModelSerializer):
 
 
 class BillingPeriodSerializer(serializers.ModelSerializer):
+    """Serializes the year/month a billing period covers."""
+
     class Meta:
         model = BillingPeriod
         fields = ["id", "landlord", "renter", "year", "month"]
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
+    """Serializes an invoice, including its line items, payment
+    progress across both rails, and settlement history.
+    """
+
     line_items = InvoiceLineItemSerializer(many=True, read_only=True)
     billing_period = BillingPeriodSerializer(read_only=True)
     total = serializers.DecimalField(
@@ -290,6 +310,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
 
 class InvoiceWeekDaySerializer(serializers.Serializer):
+    """Serializes one day's gas cost within an invoice week preview."""
+
     date = serializers.DateField()
     kind = serializers.ChoiceField(choices=DrivenDayLog.Kind.choices)
     day_fraction = serializers.DecimalField(max_digits=3, decimal_places=2)
@@ -298,6 +320,10 @@ class InvoiceWeekDaySerializer(serializers.Serializer):
 
 
 class InvoiceWeekSerializer(serializers.Serializer):
+    """Serializes one week's driven days and gas cost totals within
+    an invoice preview.
+    """
+
     week_start = serializers.DateField()
     week_end = serializers.DateField()
     total_miles = serializers.DecimalField(max_digits=6, decimal_places=2)
@@ -312,6 +338,11 @@ MAX_FUTURE_INVOICE_MONTHS = 12
 
 
 class InvoiceCreateSerializer(serializers.Serializer):
+    """Validates a request to generate an invoice for a renter's
+    billing period, bounded to a maximum of
+    `MAX_FUTURE_INVOICE_MONTHS` ahead.
+    """
+
     renter = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(role=User.Role.RENTER)
     )
@@ -339,15 +370,25 @@ class InvoiceCreateSerializer(serializers.Serializer):
 
 
 class PeriodPreviewSerializer(serializers.Serializer):
+    """Serializes the projected rent and gas totals for a not-yet-
+    generated billing period.
+    """
+
     rent = serializers.DecimalField(max_digits=10, decimal_places=2)
     gas = serializers.DecimalField(max_digits=10, decimal_places=2)
 
 
 class RenterLookupQuerySerializer(serializers.Serializer):
+    """Validates an email address used to look up a landlord's
+    renter.
+    """
+
     email = serializers.EmailField()
 
 
 class LeaseRentRevisionSerializer(serializers.ModelSerializer):
+    """Validates and serializes a scheduled rent change on a lease."""
+
     class Meta:
         model = LeaseRentRevision
         fields = ["id", "lease", "new_monthly_rent", "effective_date"]
