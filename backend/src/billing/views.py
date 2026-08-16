@@ -36,6 +36,10 @@ from payments.services import check_btc_payment, refresh_card_payment_state
 
 
 class LeaseViewSet(viewsets.ModelViewSet):
+    """Lists and manages leases visible to the requesting landlord or
+    renter; only a landlord may create one.
+    """
+
     serializer_class = LeaseSerializer
     permission_classes = [IsAuthenticated]
 
@@ -80,6 +84,10 @@ class DrivenDayLogViewSet(viewsets.ModelViewSet):
 
 
 class MileageProfileViewSet(viewsets.ModelViewSet):
+    """Lists and manages a renter's mileage profiles; only a landlord
+    may create, update, or delete one.
+    """
+
     serializer_class = MileageProfileSerializer
     permission_classes = [IsAuthenticated]
 
@@ -94,6 +102,10 @@ class MileageProfileViewSet(viewsets.ModelViewSet):
 
 
 class GasPriceEntryViewSet(viewsets.ModelViewSet):
+    """Lists and manages a renter's gas price entries; only a
+    landlord may create, update, or delete one.
+    """
+
     serializer_class = GasPriceEntrySerializer
     permission_classes = [IsAuthenticated]
 
@@ -108,6 +120,10 @@ class GasPriceEntryViewSet(viewsets.ModelViewSet):
 
 
 class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
+    """Lists and retrieves invoices visible to the requesting
+    landlord or renter, plus generation and preview actions.
+    """
+
     serializer_class = InvoiceSerializer
     permission_classes = [IsAuthenticated]
 
