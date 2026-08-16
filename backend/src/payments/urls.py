@@ -20,32 +20,32 @@ from payments.views import (
 
 urlpatterns = [
     path(
-        'invoices/<int:invoice_id>/pay/',
+        "invoices/<int:invoice_id>/pay/",
         InvoicePaymentIntentView.as_view(),
-        name='invoice-pay',
+        name="invoice-pay",
     ),
     path(
-        'invoices/<int:invoice_id>/pay/cancel/',
+        "invoices/<int:invoice_id>/pay/cancel/",
         InvoicePaymentCancelView.as_view(),
-        name='invoice-pay-cancel',
+        name="invoice-pay-cancel",
     ),
     path(
-        'stripe/webhook/', StripeWebhookView.as_view(), name='stripe-webhook'
+        "stripe/webhook/", StripeWebhookView.as_view(), name="stripe-webhook"
     ),
     path(
-        'stripe/connect-webhook/',
+        "stripe/connect-webhook/",
         ConnectWebhookView.as_view(),
-        name='stripe-connect-webhook',
+        name="stripe-connect-webhook",
     ),
     path(
-        'payments/connect/onboard/',
+        "payments/connect/onboard/",
         ConnectOnboardingView.as_view(),
-        name='connect-onboard',
+        name="connect-onboard",
     ),
     path(
-        'payments/connect/status/',
+        "payments/connect/status/",
         ConnectStatusView.as_view(),
-        name='connect-status',
+        name="connect-status",
     ),
     path(
         "payments/btc/settings/",

@@ -18,19 +18,19 @@ class InvoiceSettlement(models.Model):
     """
 
     class Rail(models.TextChoices):
-        BTC = 'btc', 'Bitcoin'
-        CARD = 'card', 'Card / Cash App'
-        CASH = 'cash', 'Cash'
-        CHECK = 'check', 'Check'
-        OTHER = 'other', 'Other'
+        BTC = "btc", "Bitcoin"
+        CARD = "card", "Card / Cash App"
+        CASH = "cash", "Cash"
+        CHECK = "check", "Check"
+        OTHER = "other", "Other"
 
     invoice = models.ForeignKey(
-        'billing.Invoice', on_delete=models.CASCADE,
-        related_name='settlements',
+        "billing.Invoice", on_delete=models.CASCADE,
+        related_name="settlements",
     )
     rail = models.CharField(max_length=8, choices=Rail.choices)
     line_items = models.ManyToManyField(
-        'billing.InvoiceLineItem', related_name='+'
+        "billing.InvoiceLineItem", related_name="+"
     )
     amount_usd = models.DecimalField(max_digits=10, decimal_places=2)
     amount_sats = models.BigIntegerField(null=True, blank=True)
@@ -47,25 +47,25 @@ class InvoiceSettlement(models.Model):
     settled_at = models.DateTimeField()
 
     class Meta:
-        ordering = ['settled_at', 'id']
+        ordering = ["settled_at", "id"]
         indexes = [
-            models.Index(fields=['invoice', 'settled_at']),
+            models.Index(fields=["invoice", "settled_at"]),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=['invoice', 'txid'],
-                condition=~models.Q(txid=''),
-                name='unique_settlement_txid_per_invoice',
+                fields=["invoice", "txid"],
+                condition=~models.Q(txid=""),
+                name="unique_settlement_txid_per_invoice",
             ),
             models.UniqueConstraint(
-                fields=['invoice', 'stripe_payment_intent_id'],
-                condition=~models.Q(stripe_payment_intent_id=''),
-                name='unique_settlement_intent_per_invoice',
+                fields=["invoice", "stripe_payment_intent_id"],
+                condition=~models.Q(stripe_payment_intent_id=""),
+                name="unique_settlement_intent_per_invoice",
             ),
         ]
 
     def __str__(self) -> str:
         return (
-            f'InvoiceSettlement(invoice={self.invoice_id}, '
-            f'rail={self.rail}, ${self.amount_usd})'
+            f"InvoiceSettlement(invoice={self.invoice_id}, "
+            f"rail={self.rail}, ${self.amount_usd})"
         )

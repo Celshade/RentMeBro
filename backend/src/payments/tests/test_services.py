@@ -53,7 +53,7 @@ pytestmark = pytest.mark.django_db
 
 def _onboarded_invoice(**kwargs) -> Invoice:
     landlord = LandlordFactory(
-        stripe_account_id='acct_landlord', stripe_charges_enabled=True
+        stripe_account_id="acct_landlord", stripe_charges_enabled=True
     )
     billing_period = BillingPeriodFactory(landlord=landlord)
     return InvoiceFactory(billing_period=billing_period, **kwargs)
@@ -62,20 +62,20 @@ def _onboarded_invoice(**kwargs) -> Invoice:
 class TestCreatePaymentIntentForInvoice:
     def test_creates_new_intent_and_persists_id(self, mocker):
         invoice = _onboarded_invoice()
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal('123.45'))
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("123.45"))
         fake_intent = MagicMock(
-            id='pi_new123', client_secret='secret',
-            status='requires_payment_method',
+            id="pi_new123", client_secret="secret",
+            status="requires_payment_method",
         )
         fake_intent.to_dict.return_value = {
-            'status': 'requires_payment_method'
+            "status": "requires_payment_method"
         }
         mock_create = mocker.patch(
-            'payments.services.stripe.PaymentIntent.create',
+            "payments.services.stripe.PaymentIntent.create",
             return_value=fake_intent,
         )
         mock_retrieve = mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve'
+            "payments.services.stripe.PaymentIntent.retrieve"
         )
 
         result = create_payment_intent_for_invoice(invoice)
@@ -83,44 +83,44 @@ class TestCreatePaymentIntentForInvoice:
         assert result is fake_intent
         mock_create.assert_called_once_with(
             amount=12345,
-            currency='usd',
-            payment_method_types=['cashapp'],
-            metadata={'invoice_id': str(invoice.id)},
-            stripe_account='acct_landlord',
-            idempotency_key=f'invoice-{invoice.id}-intent',
+            currency="usd",
+            payment_method_types=["cashapp"],
+            metadata={"invoice_id": str(invoice.id)},
+            stripe_account="acct_landlord",
+            idempotency_key=f"invoice-{invoice.id}-intent",
         )
         mock_retrieve.assert_not_called()
         invoice.refresh_from_db()
-        assert invoice.stripe_payment_intent_id == 'pi_new123'
+        assert invoice.stripe_payment_intent_id == "pi_new123"
 
     def test_charges_only_the_card_portion_of_a_split_invoice(self, mocker):
         """Billing the full total alongside a line-item-scoped BTC
         address would charge the BTC-covered line item twice.
         """
         invoice = _onboarded_invoice()
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal('1000.00'))
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("1000.00"))
         gas = InvoiceLineItemFactory(
             invoice=invoice,
-            amount=Decimal('200.00'),
+            amount=Decimal("200.00"),
             kind=InvoiceLineItem.Kind.GAS,
         )
         invoice.btc_line_items.set([gas])
         fake_intent = MagicMock(
-            id='pi_split', client_secret='secret',
-            status='requires_payment_method',
+            id="pi_split", client_secret="secret",
+            status="requires_payment_method",
         )
         fake_intent.to_dict.return_value = {
-            'status': 'requires_payment_method'
+            "status": "requires_payment_method"
         }
         mock_create = mocker.patch(
-            'payments.services.stripe.PaymentIntent.create',
+            "payments.services.stripe.PaymentIntent.create",
             return_value=fake_intent,
         )
 
         create_payment_intent_for_invoice(invoice)
 
         # $1000 of rent, not the $1200 invoice total.
-        assert mock_create.call_args.kwargs['amount'] == 100000
+        assert mock_create.call_args.kwargs["amount"] == 100000
 
     def test_bills_the_full_total_when_btc_covers_every_charge(
         self, mocker
@@ -131,64 +131,64 @@ class TestCreatePaymentIntentForInvoice:
         """
         invoice = _onboarded_invoice()
         only_item = InvoiceLineItemFactory(
-            invoice=invoice, amount=Decimal('500.00')
+            invoice=invoice, amount=Decimal("500.00")
         )
         invoice.btc_line_items.set([only_item])
         fake_intent = MagicMock(
-            id='pi_full', client_secret='secret',
-            status='requires_payment_method',
+            id="pi_full", client_secret="secret",
+            status="requires_payment_method",
         )
         fake_intent.to_dict.return_value = {
-            'status': 'requires_payment_method'
+            "status": "requires_payment_method"
         }
         mock_create = mocker.patch(
-            'payments.services.stripe.PaymentIntent.create',
+            "payments.services.stripe.PaymentIntent.create",
             return_value=fake_intent,
         )
 
         create_payment_intent_for_invoice(invoice)
 
-        assert mock_create.call_args.kwargs['amount'] == 50000
+        assert mock_create.call_args.kwargs["amount"] == 50000
 
     def test_reuses_existing_intent(self, mocker):
-        invoice = _onboarded_invoice(stripe_payment_intent_id='pi_existing')
+        invoice = _onboarded_invoice(stripe_payment_intent_id="pi_existing")
         # 'processing' is real money in flight, so the reprice branch
         # (which would otherwise call the unmocked .modify) never runs.
-        fake_intent = MagicMock(id='pi_existing', status='processing')
-        fake_intent.to_dict.return_value = {'status': 'processing'}
+        fake_intent = MagicMock(id="pi_existing", status="processing")
+        fake_intent.to_dict.return_value = {"status": "processing"}
         mock_retrieve = mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=fake_intent,
         )
         mock_create = mocker.patch(
-            'payments.services.stripe.PaymentIntent.create'
+            "payments.services.stripe.PaymentIntent.create"
         )
 
         result = create_payment_intent_for_invoice(invoice)
 
         assert result is fake_intent
         mock_retrieve.assert_called_once_with(
-            'pi_existing', stripe_account='acct_landlord'
+            "pi_existing", stripe_account="acct_landlord"
         )
         mock_create.assert_not_called()
 
     def test_creates_fresh_intent_when_existing_is_canceled(self, mocker):
-        invoice = _onboarded_invoice(stripe_payment_intent_id='pi_stale')
-        InvoiceLineItemFactory(invoice=invoice, amount=Decimal('50.00'))
-        stale_intent = MagicMock(id='pi_stale', status='canceled')
+        invoice = _onboarded_invoice(stripe_payment_intent_id="pi_stale")
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        stale_intent = MagicMock(id="pi_stale", status="canceled")
         fresh_intent = MagicMock(
-            id='pi_fresh123', client_secret='secret',
-            status='requires_payment_method',
+            id="pi_fresh123", client_secret="secret",
+            status="requires_payment_method",
         )
         fresh_intent.to_dict.return_value = {
-            'status': 'requires_payment_method'
+            "status": "requires_payment_method"
         }
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=stale_intent,
         )
         mock_create = mocker.patch(
-            'payments.services.stripe.PaymentIntent.create',
+            "payments.services.stripe.PaymentIntent.create",
             return_value=fresh_intent,
         )
 
@@ -197,34 +197,34 @@ class TestCreatePaymentIntentForInvoice:
         assert result is fresh_intent
         mock_create.assert_called_once_with(
             amount=5000,
-            currency='usd',
-            payment_method_types=['cashapp'],
-            metadata={'invoice_id': str(invoice.id)},
-            stripe_account='acct_landlord',
+            currency="usd",
+            payment_method_types=["cashapp"],
+            metadata={"invoice_id": str(invoice.id)},
+            stripe_account="acct_landlord",
             idempotency_key=(
-                f'invoice-{invoice.id}-intent-retry-pi_stale'
+                f"invoice-{invoice.id}-intent-retry-pi_stale"
             ),
         )
         invoice.refresh_from_db()
-        assert invoice.stripe_payment_intent_id == 'pi_fresh123'
+        assert invoice.stripe_payment_intent_id == "pi_fresh123"
 
     def test_raises_and_reconciles_when_existing_already_succeeded(
         self, mocker
     ):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_done',
+            stripe_payment_intent_id="pi_done",
             status=Invoice.Status.SENT,
         )
-        succeeded_intent = MagicMock(id='pi_done', status='succeeded')
+        succeeded_intent = MagicMock(id="pi_done", status="succeeded")
         succeeded_intent.to_dict.return_value = {
-            'metadata': {'invoice_id': str(invoice.id)}
+            "metadata": {"invoice_id": str(invoice.id)}
         }
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=succeeded_intent,
         )
         mock_create = mocker.patch(
-            'payments.services.stripe.PaymentIntent.create'
+            "payments.services.stripe.PaymentIntent.create"
         )
 
         with pytest.raises(InvoiceAlreadyPaidError):
@@ -237,7 +237,7 @@ class TestCreatePaymentIntentForInvoice:
     def test_raises_if_landlord_not_onboarded(self, mocker):
         invoice = InvoiceFactory()  # default LandlordFactory: not onboarded
         mock_create = mocker.patch(
-            'payments.services.stripe.PaymentIntent.create'
+            "payments.services.stripe.PaymentIntent.create"
         )
 
         with pytest.raises(LandlordNotOnboardedError):
@@ -251,9 +251,9 @@ class TestCardRoundExpiry:
         now = timezone.now()
         future = now + timedelta(minutes=10)
         payment_intent = {
-            'next_action': {
-                'cashapp_handle_redirect_or_display_qr_code': {
-                    'qr_code': {'expires_at': int(future.timestamp())}
+            "next_action": {
+                "cashapp_handle_redirect_or_display_qr_code": {
+                    "qr_code": {"expires_at": int(future.timestamp())}
                 }
             }
         }
@@ -268,7 +268,7 @@ class TestCardRoundExpiry:
 
     def test_falls_back_when_cashapp_key_is_missing(self):
         now = timezone.now()
-        payment_intent = {'next_action': {}}
+        payment_intent = {"next_action": {}}
 
         expiry = _card_round_expiry(payment_intent, now)
 
@@ -277,8 +277,8 @@ class TestCardRoundExpiry:
     def test_falls_back_when_qr_code_is_missing(self):
         now = timezone.now()
         payment_intent = {
-            'next_action': {
-                'cashapp_handle_redirect_or_display_qr_code': {}
+            "next_action": {
+                "cashapp_handle_redirect_or_display_qr_code": {}
             }
         }
 
@@ -289,9 +289,9 @@ class TestCardRoundExpiry:
     def test_falls_back_when_expires_at_is_not_an_int(self):
         now = timezone.now()
         payment_intent = {
-            'next_action': {
-                'cashapp_handle_redirect_or_display_qr_code': {
-                    'qr_code': {'expires_at': 'soon'}
+            "next_action": {
+                "cashapp_handle_redirect_or_display_qr_code": {
+                    "qr_code": {"expires_at": "soon"}
                 }
             }
         }
@@ -307,9 +307,9 @@ class TestCardRoundExpiry:
         now = timezone.now()
         past = now - timedelta(minutes=5)
         payment_intent = {
-            'next_action': {
-                'cashapp_handle_redirect_or_display_qr_code': {
-                    'qr_code': {'expires_at': int(past.timestamp())}
+            "next_action": {
+                "cashapp_handle_redirect_or_display_qr_code": {
+                    "qr_code": {"expires_at": int(past.timestamp())}
                 }
             }
         }
@@ -324,87 +324,87 @@ class TestRefreshCardPaymentState:
         self, mocker
     ):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='requires_payment_method',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="requires_payment_method",
         )
         future = timezone.now() + timedelta(minutes=12)
-        fake_intent = MagicMock(id='pi_1', status='requires_action')
+        fake_intent = MagicMock(id="pi_1", status="requires_action")
         fake_intent.to_dict.return_value = {
-            'status': 'requires_action',
-            'next_action': {
-                'cashapp_handle_redirect_or_display_qr_code': {
-                    'qr_code': {'expires_at': int(future.timestamp())}
+            "status": "requires_action",
+            "next_action": {
+                "cashapp_handle_redirect_or_display_qr_code": {
+                    "qr_code": {"expires_at": int(future.timestamp())}
                 }
             },
         }
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=fake_intent,
         )
 
         result = refresh_card_payment_state(invoice)
 
-        assert result.stripe_intent_status == 'requires_action'
+        assert result.stripe_intent_status == "requires_action"
         assert abs(
             (result.stripe_round_expires_at - future).total_seconds()
         ) < 1
 
     def test_requires_payment_method_nulls_the_expiry(self, mocker):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='requires_action',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="requires_action",
             stripe_round_expires_at=(
                 timezone.now() + timedelta(minutes=5)
             ),
         )
         fake_intent = MagicMock(
-            id='pi_1', status='requires_payment_method'
+            id="pi_1", status="requires_payment_method"
         )
         fake_intent.to_dict.return_value = {
-            'status': 'requires_payment_method'
+            "status": "requires_payment_method"
         }
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=fake_intent,
         )
 
         result = refresh_card_payment_state(invoice)
 
-        assert result.stripe_intent_status == 'requires_payment_method'
+        assert result.stripe_intent_status == "requires_payment_method"
         assert result.stripe_round_expires_at is None
 
     def test_stripe_error_leaves_the_invoice_untouched(self, mocker):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='requires_action',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="requires_action",
             stripe_round_expires_at=(
                 timezone.now() + timedelta(minutes=5)
             ),
         )
         original_expires_at = invoice.stripe_round_expires_at
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
-            side_effect=stripe.StripeError('boom'),
+            "payments.services.stripe.PaymentIntent.retrieve",
+            side_effect=stripe.StripeError("boom"),
         )
 
         result = refresh_card_payment_state(invoice)
 
-        assert result.stripe_intent_status == 'requires_action'
+        assert result.stripe_intent_status == "requires_action"
         assert result.stripe_round_expires_at == original_expires_at
         invoice.refresh_from_db()
-        assert invoice.stripe_intent_status == 'requires_action'
+        assert invoice.stripe_intent_status == "requires_action"
 
     def test_noop_with_no_intent_id(self):
-        invoice = _onboarded_invoice(stripe_payment_intent_id='')
+        invoice = _onboarded_invoice(stripe_payment_intent_id="")
         assert refresh_card_payment_state(invoice) is invoice
 
     def test_noop_for_terminal_status(self, mocker):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='succeeded',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="succeeded",
         )
         mock_retrieve = mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve'
+            "payments.services.stripe.PaymentIntent.retrieve"
         )
 
         refresh_card_payment_state(invoice)
@@ -415,52 +415,52 @@ class TestRefreshCardPaymentState:
 class TestCancelCardPaymentAttempt:
     def test_happy_path_cancels_and_unfreezes(self, mocker):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='requires_action',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="requires_action",
             stripe_round_expires_at=(
                 timezone.now() + timedelta(minutes=5)
             ),
         )
         item = InvoiceLineItemFactory(
-            invoice=invoice, amount=Decimal('100.00')
+            invoice=invoice, amount=Decimal("100.00")
         )
         invoice.stripe_round_line_items.set([item])
         retrieved_intent = MagicMock(
-            id='pi_1', status='requires_action'
+            id="pi_1", status="requires_action"
         )
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=retrieved_intent,
         )
-        canceled_intent = MagicMock(id='pi_1', status='canceled')
-        canceled_intent.to_dict.return_value = {'status': 'canceled'}
+        canceled_intent = MagicMock(id="pi_1", status="canceled")
+        canceled_intent.to_dict.return_value = {"status": "canceled"}
         mock_cancel = mocker.patch(
-            'payments.services.stripe.PaymentIntent.cancel',
+            "payments.services.stripe.PaymentIntent.cancel",
             return_value=canceled_intent,
         )
 
         result = cancel_card_payment_attempt(invoice)
 
         mock_cancel.assert_called_once_with(
-            'pi_1', stripe_account='acct_landlord'
+            "pi_1", stripe_account="acct_landlord"
         )
-        assert result.stripe_intent_status == 'canceled'
+        assert result.stripe_intent_status == "canceled"
         assert list(result.stripe_round_line_items.all()) == []
         assert item.id not in result.frozen_line_item_ids
 
     def test_processing_raises_and_never_calls_cancel(self, mocker):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='processing',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="processing",
         )
-        retrieved_intent = MagicMock(id='pi_1', status='processing')
-        retrieved_intent.to_dict.return_value = {'status': 'processing'}
+        retrieved_intent = MagicMock(id="pi_1", status="processing")
+        retrieved_intent.to_dict.return_value = {"status": "processing"}
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=retrieved_intent,
         )
         mock_cancel = mocker.patch(
-            'payments.services.stripe.PaymentIntent.cancel'
+            "payments.services.stripe.PaymentIntent.cancel"
         )
 
         with pytest.raises(CardCancelNotAllowedError):
@@ -472,20 +472,20 @@ class TestCancelCardPaymentAttempt:
         self, mocker
     ):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='processing',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="processing",
             status=Invoice.Status.SENT,
         )
-        succeeded_intent = MagicMock(id='pi_1', status='succeeded')
+        succeeded_intent = MagicMock(id="pi_1", status="succeeded")
         succeeded_intent.to_dict.return_value = {
-            'metadata': {'invoice_id': str(invoice.id)}
+            "metadata": {"invoice_id": str(invoice.id)}
         }
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=succeeded_intent,
         )
         mock_cancel = mocker.patch(
-            'payments.services.stripe.PaymentIntent.cancel'
+            "payments.services.stripe.PaymentIntent.cancel"
         )
 
         with pytest.raises(CardCancelNotAllowedError):
@@ -499,26 +499,26 @@ class TestCancelCardPaymentAttempt:
         self, mocker
     ):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='requires_action',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="requires_action",
         )
         retrieved_intent = MagicMock(
-            id='pi_1', status='requires_action'
+            id="pi_1", status="requires_action"
         )
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.retrieve',
+            "payments.services.stripe.PaymentIntent.retrieve",
             return_value=retrieved_intent,
         )
         mocker.patch(
-            'payments.services.stripe.PaymentIntent.cancel',
-            side_effect=stripe.InvalidRequestError('raced', None),
+            "payments.services.stripe.PaymentIntent.cancel",
+            side_effect=stripe.InvalidRequestError("raced", None),
         )
 
         with pytest.raises(CardCancelNotAllowedError):
             cancel_card_payment_attempt(invoice)
 
     def test_raises_with_no_intent_id(self):
-        invoice = _onboarded_invoice(stripe_payment_intent_id='')
+        invoice = _onboarded_invoice(stripe_payment_intent_id="")
 
         with pytest.raises(CardCancelNotAllowedError):
             cancel_card_payment_attempt(invoice)
@@ -527,25 +527,25 @@ class TestCancelCardPaymentAttempt:
 class TestHandlePaymentIntentStateChange:
     def test_canceled_clears_the_round_line_items(self):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='requires_action',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="requires_action",
         )
         item = InvoiceLineItemFactory(
-            invoice=invoice, amount=Decimal('100.00')
+            invoice=invoice, amount=Decimal("100.00")
         )
         invoice.stripe_round_line_items.set([item])
 
         handle_payment_intent_state_change(
             {
-                'id': 'pi_1',
-                'status': 'canceled',
-                'metadata': {'invoice_id': str(invoice.id)},
+                "id": "pi_1",
+                "status": "canceled",
+                "metadata": {"invoice_id": str(invoice.id)},
             },
-            connected_account_id='acct_landlord',
+            connected_account_id="acct_landlord",
         )
 
         invoice.refresh_from_db()
-        assert invoice.stripe_intent_status == 'canceled'
+        assert invoice.stripe_intent_status == "canceled"
         assert list(invoice.stripe_round_line_items.all()) == []
 
     def test_payment_failed_keeps_the_round_line_items(self):
@@ -555,81 +555,81 @@ class TestHandlePaymentIntentStateChange:
         landlord already re-scoped.
         """
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='requires_action',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="requires_action",
         )
         item = InvoiceLineItemFactory(
-            invoice=invoice, amount=Decimal('100.00')
+            invoice=invoice, amount=Decimal("100.00")
         )
         invoice.stripe_round_line_items.set([item])
 
         handle_payment_intent_state_change(
             {
-                'id': 'pi_1',
-                'status': 'payment_failed',
-                'metadata': {'invoice_id': str(invoice.id)},
+                "id": "pi_1",
+                "status": "payment_failed",
+                "metadata": {"invoice_id": str(invoice.id)},
             },
-            connected_account_id='acct_landlord',
+            connected_account_id="acct_landlord",
         )
 
         invoice.refresh_from_db()
-        assert invoice.stripe_intent_status == 'payment_failed'
+        assert invoice.stripe_intent_status == "payment_failed"
         assert {
             i.id for i in invoice.stripe_round_line_items.all()
         } == {item.id}
 
     def test_wrong_connected_account_is_noop(self):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_1',
-            stripe_intent_status='requires_action',
+            stripe_payment_intent_id="pi_1",
+            stripe_intent_status="requires_action",
         )
 
         handle_payment_intent_state_change(
             {
-                'id': 'pi_1',
-                'status': 'canceled',
-                'metadata': {'invoice_id': str(invoice.id)},
+                "id": "pi_1",
+                "status": "canceled",
+                "metadata": {"invoice_id": str(invoice.id)},
             },
-            connected_account_id='acct_someone_else',
+            connected_account_id="acct_someone_else",
         )
 
         invoice.refresh_from_db()
-        assert invoice.stripe_intent_status == 'requires_action'
+        assert invoice.stripe_intent_status == "requires_action"
 
     def test_superseded_intent_id_is_noop(self):
         invoice = _onboarded_invoice(
-            stripe_payment_intent_id='pi_current',
-            stripe_intent_status='requires_action',
+            stripe_payment_intent_id="pi_current",
+            stripe_intent_status="requires_action",
         )
 
         handle_payment_intent_state_change(
             {
-                'id': 'pi_old',
-                'status': 'canceled',
-                'metadata': {'invoice_id': str(invoice.id)},
+                "id": "pi_old",
+                "status": "canceled",
+                "metadata": {"invoice_id": str(invoice.id)},
             },
-            connected_account_id='acct_landlord',
+            connected_account_id="acct_landlord",
         )
 
         invoice.refresh_from_db()
-        assert invoice.stripe_intent_status == 'requires_action'
+        assert invoice.stripe_intent_status == "requires_action"
 
 
 class TestCancelBtcWatch:
     def test_happy_path_clears_the_quote(self):
         invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
         item = InvoiceLineItemFactory(
-            invoice=invoice, amount=Decimal('200.00')
+            invoice=invoice, amount=Decimal("200.00")
         )
         invoice.btc_amount_sats = 400000
         invoice.btc_watch_expires_at = (
             timezone.now() + timedelta(minutes=10)
         )
-        invoice.remainder_owed_usd = Decimal('5.00')
+        invoice.remainder_owed_usd = Decimal("5.00")
         invoice.save(
             update_fields=[
-                'btc_amount_sats', 'btc_watch_expires_at',
-                'remainder_owed_usd',
+                "btc_amount_sats", "btc_watch_expires_at",
+                "remainder_owed_usd",
             ]
         )
         invoice.btc_round_line_items.set([item])
@@ -639,11 +639,11 @@ class TestCancelBtcWatch:
         assert result.btc_amount_sats is None
         assert result.btc_watch_expires_at is None
         assert list(result.btc_round_line_items.all()) == []
-        assert result.remainder_owed_usd == Decimal('5.00')
+        assert result.remainder_owed_usd == Decimal("5.00")
 
     def test_raises_when_a_tx_has_already_been_seen(self):
         invoice = _btc_enabled_invoice(
-            status=Invoice.Status.SENT, btc_txid='tx1'
+            status=Invoice.Status.SENT, btc_txid="tx1"
         )
 
         with pytest.raises(BtcWatchCancelError):
@@ -655,8 +655,8 @@ class TestHandlePaymentIntentSucceeded:
         invoice = _onboarded_invoice(status=Invoice.Status.SENT)
 
         handle_payment_intent_succeeded(
-            {'metadata': {'invoice_id': str(invoice.id)}},
-            connected_account_id='acct_landlord',
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id="acct_landlord",
         )
 
         invoice.refresh_from_db()
@@ -670,8 +670,8 @@ class TestHandlePaymentIntentSucceeded:
         invoice = _onboarded_invoice(status=Invoice.Status.SENT)
 
         handle_payment_intent_succeeded(
-            {'metadata': {'invoice_id': str(invoice.id)}},
-            connected_account_id='acct_someone_else',
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id="acct_someone_else",
         )
 
         invoice.refresh_from_db()
@@ -681,7 +681,7 @@ class TestHandlePaymentIntentSucceeded:
         invoice = _onboarded_invoice(status=Invoice.Status.SENT)
 
         handle_payment_intent_succeeded(
-            {}, connected_account_id='acct_landlord'
+            {}, connected_account_id="acct_landlord"
         )
 
         invoice.refresh_from_db()
@@ -691,8 +691,8 @@ class TestHandlePaymentIntentSucceeded:
         invoice = _onboarded_invoice(status=Invoice.Status.SENT)
 
         handle_payment_intent_succeeded(
-            {'metadata': {'invoice_id': ''}},
-            connected_account_id='acct_landlord',
+            {"metadata": {"invoice_id": ""}},
+            connected_account_id="acct_landlord",
         )
 
         invoice.refresh_from_db()
@@ -700,75 +700,75 @@ class TestHandlePaymentIntentSucceeded:
 
     def test_nonexistent_invoice_id_is_noop_no_error(self):
         handle_payment_intent_succeeded(
-            {'metadata': {'invoice_id': '999999'}},
-            connected_account_id='acct_landlord',
+            {"metadata": {"invoice_id": "999999"}},
+            connected_account_id="acct_landlord",
         )
         # No exception raised; nothing to assert against.
 
 
 class TestStartConnectOnboarding:
     def test_creates_account_when_missing_and_returns_link_url(self, mocker):
-        landlord = LandlordFactory(stripe_account_id='')
+        landlord = LandlordFactory(stripe_account_id="")
         mock_account_create = mocker.patch(
-            'payments.services.stripe.Account.create',
-            return_value=MagicMock(id='acct_new123'),
+            "payments.services.stripe.Account.create",
+            return_value=MagicMock(id="acct_new123"),
         )
         mock_link_create = mocker.patch(
-            'payments.services.stripe.AccountLink.create',
-            return_value=MagicMock(url='https://connect.stripe.com/setup/x'),
+            "payments.services.stripe.AccountLink.create",
+            return_value=MagicMock(url="https://connect.stripe.com/setup/x"),
         )
 
         url = start_connect_onboarding(landlord)
 
-        assert url == 'https://connect.stripe.com/setup/x'
-        mock_account_create.assert_called_once_with(type='standard')
+        assert url == "https://connect.stripe.com/setup/x"
+        mock_account_create.assert_called_once_with(type="standard")
         landlord.refresh_from_db()
-        assert landlord.stripe_account_id == 'acct_new123'
+        assert landlord.stripe_account_id == "acct_new123"
         mock_link_create.assert_called_once()
         assert (
-            mock_link_create.call_args.kwargs['account'] == 'acct_new123'
+            mock_link_create.call_args.kwargs["account"] == "acct_new123"
         )
 
     def test_reuses_existing_account(self, mocker):
-        landlord = LandlordFactory(stripe_account_id='acct_existing')
+        landlord = LandlordFactory(stripe_account_id="acct_existing")
         mock_account_create = mocker.patch(
-            'payments.services.stripe.Account.create'
+            "payments.services.stripe.Account.create"
         )
         mocker.patch(
-            'payments.services.stripe.AccountLink.create',
-            return_value=MagicMock(url='https://connect.stripe.com/setup/y'),
+            "payments.services.stripe.AccountLink.create",
+            return_value=MagicMock(url="https://connect.stripe.com/setup/y"),
         )
 
         url = start_connect_onboarding(landlord)
 
-        assert url == 'https://connect.stripe.com/setup/y'
+        assert url == "https://connect.stripe.com/setup/y"
         mock_account_create.assert_not_called()
 
 
 class TestHandleAccountUpdated:
     def test_syncs_charges_enabled_true(self):
         landlord = LandlordFactory(
-            stripe_account_id='acct_1', stripe_charges_enabled=False
+            stripe_account_id="acct_1", stripe_charges_enabled=False
         )
 
-        handle_account_updated({'id': 'acct_1', 'charges_enabled': True})
+        handle_account_updated({"id": "acct_1", "charges_enabled": True})
 
         landlord.refresh_from_db()
         assert landlord.stripe_charges_enabled is True
 
     def test_syncs_charges_enabled_false(self):
         landlord = LandlordFactory(
-            stripe_account_id='acct_1', stripe_charges_enabled=True
+            stripe_account_id="acct_1", stripe_charges_enabled=True
         )
 
-        handle_account_updated({'id': 'acct_1', 'charges_enabled': False})
+        handle_account_updated({"id": "acct_1", "charges_enabled": False})
 
         landlord.refresh_from_db()
         assert landlord.stripe_charges_enabled is False
 
     def test_unknown_account_id_is_noop(self):
         handle_account_updated(
-            {'id': 'acct_unknown', 'charges_enabled': True}
+            {"id": "acct_unknown", "charges_enabled": True}
         )
         # No exception raised; nothing to assert against.
 
