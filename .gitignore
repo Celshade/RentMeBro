@@ -24,3 +24,6 @@ frontend/dist/
 
 # claude
 .claude/
+
+# BuildResources
+.BuildResources/
