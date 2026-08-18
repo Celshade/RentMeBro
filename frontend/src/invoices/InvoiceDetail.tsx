@@ -242,6 +242,75 @@ function AttachBtcPaymentForm({
   );
 }
 
+
+/**
+ * Landlord-facing banner for the invoice's most recent pending BTC
+ * txid claim, letting them accept (verifies and settles the observed
+ * amount server-side) or deny (leaves the invoice untouched; the
+ * renter can resubmit). Renders nothing once there's no pending claim.
+ * @param props.invoice - The invoice whose `btc_claims` to check.
+ * @param props.onResolved - Called with the refreshed invoice once
+ *   accept or deny succeeds.
+ */
+function BtcClaimBanner({
+  invoice,
+  onResolved,
+}: {
+  invoice: Invoice;
+  onResolved: (invoice: Invoice) => void;
+}) {
+  const [resolving, setResolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pendingClaim = invoice.btc_claims.find((c) => c.status === 'pending');
+  if (!pendingClaim) return null;
+
+  async function resolve(accept: boolean) {
+    setResolving(true);
+    setError(null);
+    try {
+      const updated = await apiFetch<Invoice>(
+        `/api/invoices/${invoice.id}/btc/claim/${pendingClaim!.id}/resolve/`,
+        { method: 'POST', body: { accept } }
+      );
+      onResolved(updated);
+    } catch (err) {
+      setError(errorMessage(err, 'Could not resolve this claim. Try again.'));
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  return (
+    <section className="card btc-claim-banner">
+      <div className="card__header">
+        <h2>Renter-submitted BTC payment claim</h2>
+      </div>
+      <p>
+        The renter says they paid via <BtcTxLink txid={pendingClaim.txid} />.
+        Accepting re-verifies this on-chain before crediting anything.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      <div className="btc-claim-banner__actions">
+        <button
+          type="button"
+          disabled={resolving}
+          onClick={() => resolve(true)}
+        >
+          {resolving ? 'Working…' : 'Accept'}
+        </button>
+        <button
+          type="button"
+          disabled={resolving}
+          onClick={() => resolve(false)}
+        >
+          {resolving ? 'Working…' : 'Deny'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 /** Describes a logged day the way the mileage log form does, not as raw data. */
 function formatDayDescription(day: InvoiceWeekDay): string {
   if (day.kind === 'day_off') return 'Day off';
@@ -668,6 +737,10 @@ export function InvoiceDetail({
             </div>
           </div>
         </div>
+      )}
+
+      {user?.role === 'landlord' && (
+        <BtcClaimBanner invoice={invoice} onResolved={setInvoice} />
       )}
 
       {user?.role === 'landlord' &&
