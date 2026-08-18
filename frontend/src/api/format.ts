@@ -8,6 +8,17 @@ const INVOICE_KIND_LABELS: Record<InvoiceKind, string> = {
   gas_only: 'Gas-Only',
 };
 
+/**
+ * Shared BTC irreversibility warning, shown both when a landlord enables
+ * BTC payments and when attaching/changing an address on an invoice, so
+ * the copy can't drift between the two call sites.
+ */
+export const BTC_IRREVERSIBILITY_WARNING =
+  'Ensure your attached address is correct, as blockchain transactions ' +
+  'are permanent and irreversible. If needed, you can edit and reattach ' +
+  'a correct address before sending your invoice; however, all payments ' +
+  'to an attached address are final.';
+
 
 /**
  * Formats an invoice kind for display.
