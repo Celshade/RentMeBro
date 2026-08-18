@@ -249,6 +249,29 @@ export interface InvoiceSettlement {
 }
 
 
+export type BtcPaymentClaimStatus = 'pending' | 'accepted' | 'denied';
+
+
+/**
+ * A renter-submitted BTC txid awaiting landlord review, submitted as
+ * a fallback when automatic reconciliation hasn't picked up a
+ * payment yet.
+ * @property id - Primary key.
+ * @property txid - The transaction id the renter says paid the invoice.
+ * @property status - Where the claim stands in the landlord's review.
+ * @property created_at - When the claim was submitted (ISO 8601).
+ * @property resolved_at - When the claim was accepted or denied (ISO
+ *   8601), or null while still pending.
+ */
+export interface BtcPaymentClaim {
+  id: number;
+  txid: string;
+  status: BtcPaymentClaimStatus;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+
 /**
  * @property id - Primary key.
  * @property landlord - User id of the landlord this period belongs to.
@@ -366,6 +389,8 @@ export type InvoiceStatus =
  *   instead" would bill right now, ignoring the landlord's BTC scope.
  * @property settlements - Every completed payment round against this
  *   invoice, oldest first.
+ * @property btc_claims - Renter-submitted BTC txid claims awaiting or
+ *   past landlord review, newest first.
  */
 export interface Invoice {
   id: number;
@@ -402,6 +427,7 @@ export interface Invoice {
   btc_full_owed_usd: string;
   btc_full_line_items: number[];
   settlements: InvoiceSettlement[];
+  btc_claims: BtcPaymentClaim[];
 }
 
 
