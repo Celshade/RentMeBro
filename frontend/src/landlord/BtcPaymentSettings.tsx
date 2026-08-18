@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
+import { BTC_IRREVERSIBILITY_WARNING } from '../api/format';
 import type { BtcSettings } from '../api/types';
 
 
@@ -8,7 +9,8 @@ import type { BtcSettings } from '../api/types';
  * option alongside Stripe Cash App Pay. Enabling requires confirming a
  * one-time dialogue -- including a disclaimer to use a separate BTC
  * address per renter, since a shared address makes tx matching
- * ambiguous; the platform never custodies funds.
+ * ambiguous, and a warning that attached-address transactions are
+ * permanent and irreversible; the platform never custodies funds.
  * @param props.onClose - Called when the landlord dismisses this view.
  */
 export function BtcPaymentSettings({ onClose }: { onClose: () => void }) {
@@ -64,6 +66,7 @@ export function BtcPaymentSettings({ onClose }: { onClose: () => void }) {
             shared address makes payments ambiguous to match and can
             misattribute one renter's payment to another's invoice.
           </p>
+          <p className="btc-address-disclaimer">{BTC_IRREVERSIBILITY_WARNING}</p>
           <label>
             <input
               type="checkbox"
