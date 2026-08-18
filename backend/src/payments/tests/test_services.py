@@ -29,6 +29,7 @@ from payments.services import (
     ManualSettlementError,
     NothingLeftToChargeError,
     _card_round_expiry,
+    _reconcile_lapsed_watch,
     _sats_to_usd,
     _usd_to_sats,
     attach_btc_payment,
@@ -1417,7 +1418,11 @@ class TestInitiateBtcWatch:
                     "status": {"confirmed": False},
                 }
             ],
-            first_seen={"short-tx": int(timezone.now().timestamp())},
+            first_seen={
+                "short-tx": int(
+                    (timezone.now() - timedelta(minutes=8)).timestamp()
+                )
+            },
         )
         mocker.patch(
             "payments.services.get_btc_usd_price", return_value=50000
@@ -1473,6 +1478,294 @@ class TestInitiateBtcWatch:
         assert result.status == Invoice.Status.UNDERPAID
         assert result.remainder_owed_usd == Decimal("70.00")
         assert result.btc_amount_sats == 140000
+
+
+class TestReconcileLapsedWatchTimeInvariance:
+    """Scope A/A2: matching is bound by the tx's own timestamp, not by
+    when the check happens to run, and a shortfall is only reported
+    when it's genuinely still short in USD at check time.
+    """
+
+    def test_exact_payment_long_after_expiry_settles_paid(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() - timedelta(hours=1),
+        )
+        started_at = invoice.btc_watch_expires_at - timedelta(minutes=15)
+        tx_time = int((started_at + timedelta(minutes=5)).timestamp())
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "ontime-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {"confirmed": True, "block_time": tx_time},
+                }
+            ],
+        )
+
+        result = _reconcile_lapsed_watch(invoice, timezone.now())
+
+        assert result.status == Invoice.Status.PAID
+        assert result.btc_amount_sats is None
+        assert result.btc_watch_expires_at is None
+
+    def test_tx_after_grace_period_does_not_match(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() - timedelta(hours=1),
+        )
+        # Broadcast well after this watch's expires_at + GRACE.
+        tx_time = int((timezone.now() - timedelta(minutes=1)).timestamp())
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "too-late-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {"confirmed": True, "block_time": tx_time},
+                }
+            ],
+        )
+
+        result = _reconcile_lapsed_watch(invoice, timezone.now())
+
+        assert result.status == Invoice.Status.SENT
+        assert result.btc_credited_txid == ""
+        # Nothing in-window was found, and grace has long passed, so
+        # the stale window is retired rather than left dangling.
+        assert result.btc_amount_sats is None
+        assert result.btc_watch_expires_at is None
+
+    def test_concurrent_invoices_on_reused_address_do_not_cross_match(
+        self, mocker
+    ):
+        address = "bc1qexample"
+        now = timezone.now()
+        invoice_a = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address=address,
+            btc_amount_sats=100000,
+            btc_watch_expires_at=now - timedelta(hours=1),
+        )
+        invoice_b = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address=address,
+            btc_amount_sats=100000,
+            btc_watch_expires_at=now - timedelta(minutes=10),
+        )
+        # Squarely inside invoice B's window (started ~25 min ago),
+        # long after invoice A's window (started ~75 min ago) closed.
+        tx_time = int((now - timedelta(minutes=15)).timestamp())
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "shared-tx",
+                    "vout": [
+                        {"scriptpubkey_address": address, "value": 100000}
+                    ],
+                    "status": {"confirmed": True, "block_time": tx_time},
+                }
+            ],
+        )
+
+        result_a = _reconcile_lapsed_watch(invoice_a, now)
+        assert result_a.status == Invoice.Status.SENT
+        assert result_a.btc_credited_txid == ""
+
+        result_b = _reconcile_lapsed_watch(invoice_b, now)
+        assert result_b.status == Invoice.Status.PAID
+        assert result_b.settlements.get().txid == "shared-tx"
+
+    def test_check_inside_grace_with_nothing_found_leaves_window_live(
+        self, mocker
+    ):
+        expires_at = timezone.now() - timedelta(minutes=1)
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=expires_at,
+        )
+        _mock_mempool_requests(mocker, address_txs=[])
+
+        result = _reconcile_lapsed_watch(invoice, timezone.now())
+
+        assert result.status == Invoice.Status.SENT
+        assert result.btc_amount_sats == 100000
+        assert result.btc_watch_expires_at == expires_at
+
+    def test_check_past_grace_with_nothing_found_retires_window(
+        self, mocker
+    ):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() - timedelta(hours=1),
+        )
+        _mock_mempool_requests(mocker, address_txs=[])
+
+        result = _reconcile_lapsed_watch(invoice, timezone.now())
+
+        assert result.status == Invoice.Status.SENT
+        assert result.btc_amount_sats is None
+        assert result.btc_watch_expires_at is None
+
+    def test_appreciated_shortfall_settles_paid_at_check_time_price(
+        self, mocker
+    ):
+        """Sats that were short of the quote can still satisfy the
+        invoice if BTC appreciated enough by check time -- the invoice
+        is USD-denominated, so USD coverage is what counts, not the
+        sats gap against the original quote.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,  # quoted 0.001 BTC == $50 @ $50k/BTC
+            btc_watch_expires_at=timezone.now() - timedelta(hours=1),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([item])
+        started_at = invoice.btc_watch_expires_at - timedelta(minutes=15)
+        tx_time = int((started_at + timedelta(minutes=5)).timestamp())
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "short-but-appreciated-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 60000,
+                        }
+                    ],
+                    "status": {"confirmed": True, "block_time": tx_time},
+                }
+            ],
+        )
+        # Only 0.0006 BTC was sent (short of the 0.001 BTC quoted), but
+        # BTC appreciated to $100k/BTC by check time, so 0.0006 BTC is
+        # now worth $60 -- more than the $50 owed.
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=100000
+        )
+
+        result = _reconcile_lapsed_watch(invoice, timezone.now())
+
+        assert result.status == Invoice.Status.PAID
+        assert result.remainder_owed_usd is None
+        assert result.btc_amount_sats is None
+        assert result.btc_watch_expires_at is None
+        settlement = result.settlements.get()
+        assert settlement.txid == "short-but-appreciated-tx"
+
+    def test_appreciated_shortfall_sends_no_underpaid_email(
+        self, mocker, mailoutbox
+    ):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_watch_expires_at=timezone.now() - timedelta(hours=1),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([item])
+        started_at = invoice.btc_watch_expires_at - timedelta(minutes=15)
+        tx_time = int((started_at + timedelta(minutes=5)).timestamp())
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "short-but-appreciated-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 60000,
+                        }
+                    ],
+                    "status": {"confirmed": True, "block_time": tx_time},
+                }
+            ],
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=100000
+        )
+
+        _reconcile_lapsed_watch(invoice, timezone.now())
+
+        assert len(mailoutbox) == 0
+
+    def test_genuine_shortfall_never_credits_a_zero_remainder(
+        self, mocker
+    ):
+        """A shortfall that's still short even at check-time price
+        leaves a positive remainder -- never exactly zero -- and
+        `initiate_btc_watch` can immediately quote a second round
+        against it.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,  # quoted 0.001 BTC == $50 @ $50k/BTC
+            btc_watch_expires_at=timezone.now() - timedelta(hours=1),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([item])
+        started_at = invoice.btc_watch_expires_at - timedelta(minutes=15)
+        tx_time = int((started_at + timedelta(minutes=5)).timestamp())
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "genuinely-short-tx",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 60000,
+                        }
+                    ],
+                    "status": {"confirmed": True, "block_time": tx_time},
+                }
+            ],
+        )
+        # 0.0006 BTC stays short of the $50 owed even at check time.
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = _reconcile_lapsed_watch(invoice, timezone.now())
+
+        assert result.status == Invoice.Status.UNDERPAID
+        assert result.remainder_owed_usd == Decimal("20.00")
+        assert result.remainder_owed_usd != Decimal("0")
+
+        result = initiate_btc_watch(result)
+
+        assert result.btc_amount_sats == 40000  # $20 @ $50k/BTC
+        assert result.btc_watch_expires_at > timezone.now()
 
 
 class TestMarkLineItemPaidManually:
@@ -1962,11 +2255,10 @@ class TestUnderpaymentRoundTrip:
         # Lapse the window with only a short tx on the address.
         invoice.btc_watch_expires_at = timezone.now() - timedelta(minutes=5)
         invoice.save(update_fields=["btc_watch_expires_at"])
-        # A couple seconds' buffer keeps `block_time` (int-truncated)
-        # from landing before this window's precise `started_at` when
-        # both fall in the same wall-clock second.
+        # Comfortably inside the lapsed window (started_at .. expires_at
+        # + BTC_GRACE_PERIOD), which the strict time bound now enforces.
         short_tx_time = int(
-            (timezone.now() + timedelta(seconds=2)).timestamp()
+            (timezone.now() - timedelta(minutes=3)).timestamp()
         )
         _mock_mempool_requests(
             mocker,
@@ -2136,7 +2428,11 @@ class TestBtcDiscrepancyEmails:
                     "status": {"confirmed": False},
                 }
             ],
-            first_seen={"short-tx": int(timezone.now().timestamp())},
+            first_seen={
+                "short-tx": int(
+                    (timezone.now() - timedelta(minutes=8)).timestamp()
+                )
+            },
         )
         mocker.patch(
             "payments.services.get_btc_usd_price", return_value=50000

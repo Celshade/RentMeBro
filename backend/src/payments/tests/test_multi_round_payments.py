@@ -410,7 +410,11 @@ class TestPayFullBtcOwedUsd:
                     "status": {"confirmed": False},
                 }
             ],
-            first_seen={"short-tx": int(timezone.now().timestamp())},
+            first_seen={
+                "short-tx": int(
+                    (timezone.now() - timedelta(minutes=8)).timestamp()
+                )
+            },
         )
 
         invoice = initiate_btc_watch(invoice)

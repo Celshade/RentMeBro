@@ -1241,27 +1241,40 @@ def _first_seen_for_candidates(
 
 
 def _is_in_window(
-    tx: dict, started_at: datetime, first_seen: dict[str, int]
+    tx: dict,
+    started_at: datetime,
+    expires_at: datetime,
+    first_seen: dict[str, int],
 ) -> bool:
     """Whether `tx` could belong to the watch window starting at
     `started_at`.
 
-    Confirmed txs are checked against their block time; unconfirmed
-    ones carry no `block_time` key at all, so they're checked against
-    when mempool.space first observed them instead -- never the other
-    way around.
+    Bounded on both ends by the transaction's *own* timestamp, never
+    by when we happen to be looking: a payment broadcast within the
+    window still matches no matter how late it's observed, and a
+    payment from outside the window (e.g. an unrelated earlier tx on
+    a reused address) never matches no matter how promptly it's
+    observed. Confirmed txs are checked against their block time;
+    unconfirmed ones carry no `block_time` key at all, so they're
+    checked against when mempool.space first observed them instead --
+    never the other way around.
 
     Args:
         tx: A transaction from mempool.space.
         started_at: The earliest moment a tx may belong to this watch.
+        expires_at: The watch's nominal expiry. The tx must have
+            happened no later than `BTC_GRACE_PERIOD` past this.
         first_seen: txid -> first-seen epoch seconds, from
             `_first_seen_at`. A tx missing from this map (lookup
             failed, or mined/unknown) fails closed as not in window.
     """
+    upper_bound = (expires_at + BTC_GRACE_PERIOD).timestamp()
     tx_status = tx.get("status", {})
     if tx_status.get("confirmed", False):
-        return tx_status.get("block_time", 0) >= started_at.timestamp()
-    return first_seen.get(tx["txid"], 0) >= started_at.timestamp()
+        tx_time = tx_status.get("block_time", 0)
+    else:
+        tx_time = first_seen.get(tx["txid"], 0)
+    return started_at.timestamp() <= tx_time <= upper_bound
 
 
 def _find_matching_output(
@@ -1269,6 +1282,7 @@ def _find_matching_output(
     address: str,
     amount_sats: int,
     started_at: datetime,
+    expires_at: datetime,
     first_seen: dict[str, int],
 ) -> dict | None:
     """Finds the first in-window tx paying `address` exactly `amount_sats`.
@@ -1276,12 +1290,13 @@ def _find_matching_output(
     Exact rather than `>=` so a reused address's unrelated history
     can't cross-match a rate-locked quote the way `20,997 >= 10,192`
     once did; time-bounded so nothing that predates the renter
-    starting this watch can match at all, regardless of amount.
+    starting this watch, or postdates its grace period, can match at
+    all, regardless of amount.
     """
     for tx in txs:
         if _paid_sats(tx, address) != amount_sats:
             continue
-        if _is_in_window(tx, started_at, first_seen):
+        if _is_in_window(tx, started_at, expires_at, first_seen):
             return tx
     return None
 
@@ -1290,6 +1305,7 @@ def _find_largest_output(
     txs: list[dict],
     address: str,
     started_at: datetime,
+    expires_at: datetime,
     first_seen: dict[str, int],
 ) -> dict | None:
     """Finds the in-window tx paying `address` the most, if anything did.
@@ -1302,7 +1318,7 @@ def _find_largest_output(
     best: dict | None = None
     best_sats = 0
     for tx in txs:
-        if not _is_in_window(tx, started_at, first_seen):
+        if not _is_in_window(tx, started_at, expires_at, first_seen):
             continue
         paid_sats = _paid_sats(tx, address)
         if paid_sats > 0 and paid_sats > best_sats:
@@ -1319,19 +1335,24 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
     """Takes one last look at a just-lapsed watch window before its quote
     is replaced.
 
-    Honors the about-to-be-discarded amount for `BTC_GRACE_PERIOD` past
-    its expiry, so a tx broadcast right at the edge (seen by mempool.space
-    moments after the renter's browser stopped polling) still resolves
-    normally instead of getting orphaned by a fresh, different quote.
+    Matching is bound by the *transaction's* own timestamp, not by
+    when this check happens to run (see `_is_in_window`), so a
+    correct, on-time payment still settles normally no matter how
+    late the renter reopens the invoice. Only once `BTC_GRACE_PERIOD`
+    has passed since expiry -- and nothing conclusive was found -- is
+    the window actually given up on: a check still inside that grace
+    period leaves it live for the next poll instead of guessing.
 
-    If nothing satisfies that (grace-period) amount but something short
-    of it was sent, that's a genuine shortfall rather than a timing
-    race: it's credited toward the invoice as a fixed, logged USD
-    remainder (`Invoice.Status.UNDERPAID`) rather than silently
-    replaced.
-    The credited tx is excluded from all future matching (see
-    `_excluded_txids`) so it can't also satisfy the smaller remainder
-    quote generated next.
+    If, past grace, something short of the quoted amount was sent,
+    that's a genuine shortfall rather than a timing race: it's
+    credited toward the invoice as a fixed, logged USD remainder
+    (`Invoice.Status.UNDERPAID`), unless BTC appreciated enough since
+    the tx that the credited USD now covers the invoice outright, in
+    which case it's settled as paid instead -- a shortfall in sats is
+    not necessarily a shortfall in dollars, and the invoice is
+    USD-denominated. The credited (or settling) tx is excluded from
+    all future matching (see `_excluded_txids`) so it can't also
+    satisfy a later quote.
 
     Args:
         invoice: The invoice whose watch window just lapsed.
@@ -1339,10 +1360,11 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
             reading across this reconciliation).
 
     Returns:
-        The updated invoice. If a full, overpaid, or grace-period
-        match was found, its status is now PENDING/PAID/PARTIAL.
-        Otherwise, unchanged (no on-chain payment at all) or
-        UNDERPAID (a shortfall was credited).
+        The updated invoice. If a full, overpaid, or appreciated-
+        shortfall match was found, its status is now
+        PENDING/PAID/PARTIAL. Otherwise, unchanged (nothing found yet,
+        still within grace, or no payment at all past grace) or
+        UNDERPAID (a genuine shortfall was credited).
     """
     if not invoice.btc_amount_sats:
         return invoice
@@ -1354,30 +1376,39 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
     txs = [t for t in txs if t.get("txid") not in excluded]
 
     started_at = _watch_started_at(invoice)
+    expires_at = invoice.btc_watch_expires_at
     first_seen = _first_seen_for_candidates(txs, invoice.btc_address)
     amount_sats = invoice.btc_amount_sats
 
-    if now <= invoice.btc_watch_expires_at + BTC_GRACE_PERIOD:
-        exact = _find_matching_output(
-            txs, invoice.btc_address, amount_sats, started_at, first_seen
-        )
-        if exact is not None:
-            invoice.btc_txid = exact["txid"]
-            _settle_btc_leg(
-                invoice, exact.get("status", {}).get("confirmed", False)
-            )
-            return invoice
-
-    best = _find_largest_output(
-        txs, invoice.btc_address, started_at, first_seen
+    exact = _find_matching_output(
+        txs, invoice.btc_address, amount_sats, started_at, expires_at,
+        first_seen,
     )
-    if best is None:
+    if exact is not None:
+        invoice.btc_txid = exact["txid"]
+        _settle_btc_leg(
+            invoice, exact.get("status", {}).get("confirmed", False)
+        )
         return invoice
 
-    if best["paid_sats"] > amount_sats:
+    best = _find_largest_output(
+        txs, invoice.btc_address, started_at, expires_at, first_seen
+    )
+    if best is not None and best["paid_sats"] > amount_sats:
         invoice.btc_txid = best["txid"]
         _settle_btc_leg(
             invoice, best["confirmed"], paid_sats=best["paid_sats"]
+        )
+        return invoice
+
+    if now <= expires_at + BTC_GRACE_PERIOD:
+        return invoice
+
+    if best is None:
+        invoice.btc_amount_sats = None
+        invoice.btc_watch_expires_at = None
+        invoice.save(
+            update_fields=["btc_amount_sats", "btc_watch_expires_at"]
         )
         return invoice
 
@@ -1387,8 +1418,16 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
 
     credited_usd = _sats_to_usd(best["paid_sats"], price)
     usd_owed = _invoice_usd_owed(invoice)
+
+    if credited_usd >= usd_owed:
+        invoice.btc_txid = best["txid"]
+        _settle_btc_leg(
+            invoice, best["confirmed"], paid_sats=best["paid_sats"]
+        )
+        return invoice
+
     invoice.status = Invoice.Status.UNDERPAID
-    invoice.remainder_owed_usd = max(usd_owed - credited_usd, Decimal("0"))
+    invoice.remainder_owed_usd = usd_owed - credited_usd
     invoice.btc_credited_txid = best["txid"]
     invoice.btc_credited_usd = credited_usd
     invoice.btc_amount_sats = None
@@ -1589,18 +1628,20 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
         excluded = _excluded_txids(invoice)
         txs = [t for t in txs if t.get("txid") not in excluded]
         started_at = _watch_started_at(invoice)
+        expires_at = invoice.btc_watch_expires_at
         first_seen = _first_seen_for_candidates(txs, invoice.btc_address)
         match = _find_matching_output(
             txs,
             invoice.btc_address,
             invoice.btc_amount_sats,
             started_at,
+            expires_at,
             first_seen,
         )
         paid_sats = None
         if match is None:
             best = _find_largest_output(
-                txs, invoice.btc_address, started_at, first_seen
+                txs, invoice.btc_address, started_at, expires_at, first_seen
             )
             if best is not None and best["paid_sats"] > invoice.btc_amount_sats:
                 match = {
