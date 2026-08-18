@@ -5,13 +5,16 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from billing.models import Invoice
 from billing.permissions import IsLandlord
 from billing.serializers import InvoiceSerializer
 from billing.services import InvoiceLockedError
+from payments.models import BtcPaymentClaim
 from payments.services import (
+    BtcClaimError,
     BtcLineItemError,
     BtcNotEnabledError,
     BtcWatchCancelError,
@@ -36,8 +39,10 @@ from payments.services import (
     initiate_btc_watch,
     mark_line_item_paid_manually,
     refresh_connect_status,
+    resolve_btc_payment_claim,
     set_line_item_payment_lock,
     start_connect_onboarding,
+    submit_btc_payment_claim,
 )
 
 # PaymentIntent webhook events that change a card round's state without
@@ -459,3 +464,62 @@ class InvoiceBtcCheckView(APIView):
         )
         invoice = check_btc_payment(invoice)
         return _btc_status_response(invoice)
+
+
+class InvoiceBtcClaimSubmitView(APIView):
+    """Lets a renter submit a BTC txid as a fallback when the automatic
+    reconciliation on `InvoiceBtcCheckView` hasn't picked up their
+    payment.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "btc_claim_submit"
+
+    def post(self, request: Request, invoice_id: int) -> Response:
+        invoice = get_object_or_404(
+            Invoice, id=invoice_id, billing_period__renter=request.user
+        )
+        try:
+            claim = submit_btc_payment_claim(
+                invoice, request.user, request.data.get("txid", "")
+            )
+        except BtcClaimError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(
+            {"id": claim.id, "txid": claim.txid, "status": claim.status},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class InvoiceBtcClaimResolveView(APIView):
+    """Lets a landlord accept or deny a renter's pending BTC txid claim.
+
+    Accepting re-verifies the tx against the invoice's BTC address
+    before crediting anything -- see
+    `payments.services.resolve_btc_payment_claim`.
+    """
+
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def post(
+        self, request: Request, invoice_id: int, claim_id: int
+    ) -> Response:
+        claim = get_object_or_404(
+            BtcPaymentClaim,
+            id=claim_id,
+            invoice_id=invoice_id,
+            invoice__billing_period__landlord=request.user,
+        )
+        try:
+            resolve_btc_payment_claim(
+                claim, request.user, bool(request.data.get("accept", False))
+            )
+        except BtcClaimError as exc:
+            return Response(
+                {"detail": str(exc)}, status=status.HTTP_409_CONFLICT
+            )
+        claim.invoice.refresh_from_db()
+        return Response(InvoiceSerializer(claim.invoice).data)
