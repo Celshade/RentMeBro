@@ -16,7 +16,7 @@ from django.utils import timezone
 from accounts.models import User
 from billing.models import Invoice, InvoiceLineItem
 from billing.services import InvoiceLockedError
-from payments.models import InvoiceSettlement
+from payments.models import BtcPaymentClaim, InvoiceSettlement
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -85,6 +85,10 @@ class InvalidManualRailError(Exception):
 
 class ManualSettlementError(Exception):
     """The line item is already settled or has a payment in flight."""
+
+
+class BtcClaimError(Exception):
+    """A BTC payment claim can't be submitted or resolved as requested."""
 
 
 def resolve_settled_status(invoice: Invoice) -> str:
@@ -1032,6 +1036,173 @@ def attach_btc_payment(
     )
     invoice.btc_line_items.set(item_ids)
     return invoice
+
+
+def submit_btc_payment_claim(
+    invoice: Invoice, renter: User, txid: str
+) -> BtcPaymentClaim:
+    """Renter-submitted fallback for a BTC payment reconciliation missed.
+
+    Purely a landlord notification + review queue entry -- nothing is
+    verified or credited here. That happens only on accept, in
+    `resolve_btc_payment_claim`.
+
+    Args:
+        invoice: The invoice being claimed as paid.
+        renter: The renter submitting the claim.
+        txid: The transaction id the renter says paid it.
+
+    Returns:
+        The newly created, pending claim.
+
+    Raises:
+        BtcClaimError: `txid` is blank, the invoice has no BTC address
+            attached, or a claim is already pending review on it.
+    """
+    txid = txid.strip()
+    if not txid:
+        raise BtcClaimError("A transaction ID is required.")
+    if not invoice.btc_address:
+        raise BtcClaimError("This invoice has no BTC address attached.")
+    if BtcPaymentClaim.objects.filter(
+        invoice=invoice, status=BtcPaymentClaim.Status.PENDING
+    ).exists():
+        raise BtcClaimError(
+            "A claim is already pending review for this invoice."
+        )
+
+    claim = BtcPaymentClaim.objects.create(
+        invoice=invoice, txid=txid, submitted_by=renter
+    )
+    landlord = invoice.billing_period.landlord
+    try:
+        send_mail(
+            subject=f"BTC payment claim on invoice #{invoice.id}",
+            message=(
+                f"{renter.email} says they paid invoice #{invoice.id} "
+                f"via Bitcoin.\nTransaction: {txid}\n\nReview it at "
+                f"{settings.FRONTEND_URL}/invoices/{invoice.id}"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[landlord.email],
+        )
+    except Exception:
+        logger.warning(
+            "Failed to email landlord about BTC claim on invoice %s",
+            invoice.id,
+            exc_info=True,
+        )
+    return claim
+
+
+def resolve_btc_payment_claim(
+    claim: BtcPaymentClaim, landlord: User, accept: bool
+) -> BtcPaymentClaim:
+    """Landlord accept/deny for a renter-submitted BTC txid claim.
+
+    Denying leaves the invoice untouched and the claim on record, so
+    the renter can resubmit (e.g. with a corrected txid) afterward.
+
+    Accepting never trusts the renter's word for the amount -- it
+    verifies the tx via `_fetch_address_txs`/`_paid_sats` first, then
+    routes the *observed* amount through the same settle-or-credit
+    branches `_reconcile_lapsed_watch` uses past its grace period, so a
+    claim can't be used to sneak past the Scope A2 zero-remainder dead
+    end. This bypasses only the reconciliation time window -- never
+    the address or amount checks a normal poll would apply.
+
+    Args:
+        claim: The pending claim to resolve.
+        landlord: The landlord resolving it.
+        accept: True to accept, False to deny.
+
+    Returns:
+        The resolved claim.
+
+    Raises:
+        BtcClaimError: The claim isn't pending, or (on accept) the
+            txid doesn't genuinely pay the invoice's BTC address, is
+            already settled against another invoice or already
+            credited to this one, or the BTC price is temporarily
+            unavailable to value it.
+    """
+    if claim.status != BtcPaymentClaim.Status.PENDING:
+        raise BtcClaimError("This claim has already been resolved.")
+
+    if not accept:
+        claim.status = BtcPaymentClaim.Status.DENIED
+        claim.resolved_by = landlord
+        claim.resolved_at = timezone.now()
+        claim.save(update_fields=["status", "resolved_by", "resolved_at"])
+        return claim
+
+    invoice = claim.invoice
+    if (
+        InvoiceSettlement.objects.filter(txid=claim.txid)
+        .exclude(invoice=invoice)
+        .exists()
+    ):
+        raise BtcClaimError(
+            "That transaction already settled a different invoice."
+        )
+    if claim.txid in _excluded_txids(invoice):
+        raise BtcClaimError(
+            "That transaction has already been credited to this "
+            "invoice."
+        )
+
+    txs = _fetch_address_txs(invoice.btc_address)
+    tx = next((t for t in (txs or []) if t.get("txid") == claim.txid), None)
+    paid_sats = _paid_sats(tx, invoice.btc_address) if tx else 0
+    if not tx or paid_sats <= 0:
+        raise BtcClaimError(
+            "That transaction wasn't found paying this invoice's BTC "
+            "address."
+        )
+
+    price = get_btc_usd_price()
+    if price is None:
+        raise BtcClaimError(
+            "BTC price is temporarily unavailable -- try again shortly."
+        )
+
+    confirmed = tx.get("status", {}).get("confirmed", False)
+    credited_usd = _sats_to_usd(paid_sats, price)
+    usd_owed = _invoice_usd_owed(invoice)
+
+    invoice.btc_txid = claim.txid
+    if credited_usd >= usd_owed:
+        _settle_btc_leg(invoice, confirmed, paid_sats=paid_sats)
+    else:
+        invoice.status = Invoice.Status.UNDERPAID
+        invoice.remainder_owed_usd = usd_owed - credited_usd
+        invoice.btc_credited_txid = claim.txid
+        invoice.btc_credited_usd = credited_usd
+        invoice.btc_amount_sats = None
+        invoice.btc_watch_expires_at = None
+        invoice.save(
+            update_fields=[
+                "btc_txid",
+                "status",
+                "remainder_owed_usd",
+                "btc_credited_txid",
+                "btc_credited_usd",
+                "btc_amount_sats",
+                "btc_watch_expires_at",
+            ]
+        )
+        _notify_landlord_discrepancy(
+            invoice,
+            kind="underpaid",
+            quoted_usd=usd_owed,
+            received_usd=credited_usd,
+        )
+
+    claim.status = BtcPaymentClaim.Status.ACCEPTED
+    claim.resolved_by = landlord
+    claim.resolved_at = timezone.now()
+    claim.save(update_fields=["status", "resolved_by", "resolved_at"])
+    return claim
 
 
 def _usd_to_sats(usd: Decimal, usd_per_btc: int) -> int:
