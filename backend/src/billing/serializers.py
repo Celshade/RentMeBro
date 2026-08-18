@@ -225,6 +225,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
     paid_line_items = serializers.SerializerMethodField()
     frozen_line_items = serializers.SerializerMethodField()
     settlements = serializers.SerializerMethodField()
+    btc_claims = serializers.SerializerMethodField()
     btc_scope_line_items = serializers.SerializerMethodField()
     stripe_scope_line_items = serializers.SerializerMethodField()
     card_full_line_items = serializers.SerializerMethodField()
@@ -243,7 +244,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "btc_watch_expires_at", "paid_line_items", "frozen_line_items",
             "settlements", "stripe_round_expires_at", "btc_scope_line_items",
             "stripe_scope_line_items", "card_full_line_items",
-            "btc_full_owed_usd", "btc_full_line_items",
+            "btc_full_owed_usd", "btc_full_line_items", "btc_claims",
         ]
         read_only_fields = [
             "status", "stripe_payment_intent_id", "created_at",
@@ -306,6 +307,23 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 "settled_at": settlement.settled_at.isoformat(),
             }
             for settlement in obj.settlements.all()
+        ]
+
+    def get_btc_claims(self, obj: Invoice) -> list[dict]:
+        """Renter-submitted BTC txid claims, newest first."""
+        return [
+            {
+                "id": claim.id,
+                "txid": claim.txid,
+                "status": claim.status,
+                "created_at": claim.created_at.isoformat(),
+                "resolved_at": (
+                    claim.resolved_at.isoformat()
+                    if claim.resolved_at
+                    else None
+                ),
+            }
+            for claim in obj.btc_claims.all()
         ]
 
 
