@@ -16,8 +16,10 @@ from billing.tests.factories import (
     InvoiceFactory,
     InvoiceLineItemFactory,
 )
+from payments.models import BtcPaymentClaim, InvoiceSettlement
 from payments.services import (
     BTC_PRICE_CACHE_KEY,
+    BtcClaimError,
     BtcLineItemError,
     BtcNotEnabledError,
     BtcWatchCancelError,
@@ -45,8 +47,10 @@ from payments.services import (
     initiate_btc_watch,
     mark_line_item_paid_manually,
     refresh_card_payment_state,
+    resolve_btc_payment_claim,
     resolve_settled_status,
     start_connect_onboarding,
+    submit_btc_payment_claim,
 )
 
 pytestmark = pytest.mark.django_db
@@ -2560,3 +2564,300 @@ class TestUsdSatsConversion:
         sats = _usd_to_sats(original, usd_per_btc)
 
         assert _sats_to_usd(sats, usd_per_btc) == original
+
+
+class TestSubmitBtcPaymentClaim:
+    def test_creates_pending_claim_and_emails_landlord(self, mailoutbox):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        renter = invoice.billing_period.renter
+
+        claim = submit_btc_payment_claim(invoice, renter, "tx1")
+
+        assert claim.status == BtcPaymentClaim.Status.PENDING
+        assert claim.txid == "tx1"
+        assert claim.submitted_by == renter
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == [invoice.billing_period.landlord.email]
+
+    def test_strips_and_requires_a_txid(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        renter = invoice.billing_period.renter
+
+        with pytest.raises(BtcClaimError):
+            submit_btc_payment_claim(invoice, renter, "   ")
+
+    def test_raises_if_no_btc_address(self):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        renter = invoice.billing_period.renter
+
+        with pytest.raises(BtcClaimError):
+            submit_btc_payment_claim(invoice, renter, "tx1")
+
+    def test_raises_if_a_claim_is_already_pending(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        renter = invoice.billing_period.renter
+        submit_btc_payment_claim(invoice, renter, "tx1")
+
+        with pytest.raises(BtcClaimError):
+            submit_btc_payment_claim(invoice, renter, "tx2")
+
+    def test_resubmission_after_denial_works(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        renter = invoice.billing_period.renter
+        first = submit_btc_payment_claim(invoice, renter, "tx1")
+        first.status = BtcPaymentClaim.Status.DENIED
+        first.save(update_fields=["status"])
+
+        second = submit_btc_payment_claim(invoice, renter, "tx2")
+
+        assert second.status == BtcPaymentClaim.Status.PENDING
+
+    def test_mail_failure_does_not_prevent_claim_creation(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        renter = invoice.billing_period.renter
+        mocker.patch(
+            "payments.services.send_mail", side_effect=Exception("smtp down")
+        )
+
+        claim = submit_btc_payment_claim(invoice, renter, "tx1")
+
+        assert claim.status == BtcPaymentClaim.Status.PENDING
+
+
+class TestResolveBtcPaymentClaim:
+    def _claim(self, invoice, txid="tx1") -> BtcPaymentClaim:
+        return BtcPaymentClaim.objects.create(
+            invoice=invoice,
+            txid=txid,
+            submitted_by=invoice.billing_period.renter,
+        )
+
+    def test_deny_leaves_invoice_untouched_and_claim_on_record(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice)
+
+        result = resolve_btc_payment_claim(claim, landlord, accept=False)
+
+        assert result.status == BtcPaymentClaim.Status.DENIED
+        assert result.resolved_by == landlord
+        assert result.resolved_at is not None
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.SENT
+
+    def test_already_resolved_claim_raises(self):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice)
+        resolve_btc_payment_claim(claim, landlord, accept=False)
+
+        with pytest.raises(BtcClaimError):
+            resolve_btc_payment_claim(claim, landlord, accept=False)
+
+    def test_accept_settles_the_observed_amount(self, mocker):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_address = "bc1qexample"
+        invoice.save(update_fields=["btc_address"])
+        invoice.btc_line_items.set([item])
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice)
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "tx1",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {"confirmed": True},
+                }
+            ],
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = resolve_btc_payment_claim(claim, landlord, accept=True)
+
+        assert result.status == BtcPaymentClaim.Status.ACCEPTED
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
+        settlement = invoice.settlements.get()
+        assert settlement.txid == "tx1"
+
+    def test_accept_credits_a_genuine_shortfall_as_underpaid(self, mocker):
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_address = "bc1qexample"
+        invoice.save(update_fields=["btc_address"])
+        invoice.btc_line_items.set([item])
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice)
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "tx1",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 60000,
+                        }
+                    ],
+                    "status": {"confirmed": True},
+                }
+            ],
+        )
+        # 0.0006 BTC stays short of the $50 owed even at check time.
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        resolve_btc_payment_claim(claim, landlord, accept=True)
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.UNDERPAID
+        assert invoice.remainder_owed_usd == Decimal("20.00")
+
+    def test_accept_appreciated_shortfall_settles_paid_not_zero_remainder(
+        self, mocker
+    ):
+        """Mirrors the A2 invariant on the reconciliation path: a claim
+        can't be used to sneak an UNDERPAID-with-$0-remainder dead end
+        past `resolve_btc_payment_claim` either.
+        """
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_address = "bc1qexample"
+        invoice.save(update_fields=["btc_address"])
+        invoice.btc_line_items.set([item])
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice)
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "tx1",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 60000,
+                        }
+                    ],
+                    "status": {"confirmed": True},
+                }
+            ],
+        )
+        # BTC appreciated to $100k/BTC, so 0.0006 BTC now covers the $50 owed.
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=100000
+        )
+
+        resolve_btc_payment_claim(claim, landlord, accept=True)
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
+        assert invoice.remainder_owed_usd is None
+
+    def test_accept_rejects_txid_already_settled_on_another_invoice(
+        self, mocker
+    ):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice, txid="shared-tx")
+        other_invoice = _btc_enabled_invoice(status=Invoice.Status.PAID)
+        InvoiceSettlement.objects.create(
+            invoice=other_invoice,
+            rail=InvoiceSettlement.Rail.BTC,
+            amount_usd=Decimal("50.00"),
+            txid="shared-tx",
+            settled_at=timezone.now(),
+        )
+
+        with pytest.raises(BtcClaimError):
+            resolve_btc_payment_claim(claim, landlord, accept=True)
+
+    def test_accept_rejects_txid_already_excluded_on_this_invoice(
+        self, mocker
+    ):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.UNDERPAID,
+            btc_address="bc1qexample",
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+            remainder_owed_usd=Decimal("20.00"),
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice, txid="short-tx")
+
+        with pytest.raises(BtcClaimError):
+            resolve_btc_payment_claim(claim, landlord, accept=True)
+
+    def test_accept_rejects_tx_not_found_paying_the_address(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice)
+        _mock_mempool_requests(mocker, address_txs=[])
+
+        with pytest.raises(BtcClaimError):
+            resolve_btc_payment_claim(claim, landlord, accept=True)
+
+    def test_accept_raises_when_btc_price_unavailable(self, mocker):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.SENT, btc_address="bc1qexample"
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice)
+        _mock_mempool_requests(
+            mocker,
+            address_txs=[
+                {
+                    "txid": "tx1",
+                    "vout": [
+                        {
+                            "scriptpubkey_address": "bc1qexample",
+                            "value": 100000,
+                        }
+                    ],
+                    "status": {"confirmed": True},
+                }
+            ],
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=None
+        )
+
+        with pytest.raises(BtcClaimError):
+            resolve_btc_payment_claim(claim, landlord, accept=True)
