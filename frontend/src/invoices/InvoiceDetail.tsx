@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import {
+  BTC_IRREVERSIBILITY_WARNING,
   formatBillingPeriod,
   formatInvoiceKind,
   formatMoney,
@@ -64,7 +65,9 @@ function errorMessage(err: unknown, fallback: string): string {
  * already locked (paid/void/pending). Removing clears any line items
  * marked as BTC-billed along with the address. Surfaces the same
  * one-address-per-renter disclaimer shown when enabling BTC payments,
- * since a shared address makes tx matching ambiguous.
+ * since a shared address makes tx matching ambiguous, plus a persistent
+ * irreversibility warning that is also confirmed via `window.confirm`
+ * whenever the submitted address differs from the one already attached.
  * @param props.invoice - The invoice to attach or remove BTC payment
  *   info on.
  * @param props.onAttached - Called with the updated invoice once an
@@ -99,6 +102,12 @@ function AttachBtcPaymentForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (
+      address !== invoice.btc_address &&
+      !window.confirm(BTC_IRREVERSIBILITY_WARNING)
+    ) {
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -171,6 +180,7 @@ function AttachBtcPaymentForm({
         makes payments ambiguous to match and can misattribute one
         renter's payment to another's invoice.
       </p>
+      <p className="btc-address-disclaimer">{BTC_IRREVERSIBILITY_WARNING}</p>
       <div className="btc-address-row">
         <label className="btc-address-row__field">
           BTC address
