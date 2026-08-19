@@ -6,6 +6,7 @@ Bitcoin (p2p). An optional mileage-based gas/utility add-on tracks and bills a r
 for days driven to/from a work-site/etc - based on a customizable mileage profile and weekly gas
 prices.
 
+[![CI](https://github.com/Celshade/RentMeBro/actions/workflows/ci.yml/badge.svg)](https://github.com/Celshade/RentMeBro/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![Django](https://img.shields.io/badge/Django-6.0-092E20)
 ![React](https://img.shields.io/badge/React-19-61DAFB)
