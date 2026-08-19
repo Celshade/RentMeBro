@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, master]
+
+# Cancel a superseded run on the same ref (e.g. a new push to a PR
+# branch) instead of letting both finish, to keep Actions minutes down.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # No repo secrets needed: every other setting in settings.py has
+      # a safe default (django-environ), only these two don't.
+      DJANGO_SECRET_KEY: ci-not-a-real-secret
+      DEBUG: "False"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      # --locked fails if uv.lock has drifted from pyproject.toml.
+      - run: uv sync --locked
+      - run: uv run ruff check
+      # DATABASES falls back to SQLite when DATABASE_URL is unset, so
+      # no Postgres service container is needed here.
+      - run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      # build runs `tsc -b && vite build`, so this also covers the
+      # TypeScript check.
+      - run: npm run build
