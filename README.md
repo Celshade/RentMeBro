@@ -1,9 +1,10 @@
 # RentMeBro
 
-Rent + utility billing for small and independent landlords and contractors. Renters pay Landlords
-directly through Cash App Pay (via Stripe Connect) or on-chain Bitcoin (p2p) if bitcoin address is
-provided. An optional mileage-based gas/utility add-on bills a renter (passenger) for days driven
-to/from a work-site/etc - based on a customizable mileage profile and weekly gas prices.
+RentMeBro is a light-weight rent + utility billing platform for small and independent landlords and
+contractors. Renters pay Landlords directly through Cash App Pay (via Stripe Connect) or on-chain
+Bitcoin (p2p). An optional mileage-based gas/utility add-on tracks and bills a renter (passenger)
+for days driven to/from a work-site/etc - based on a customizable mileage profile and weekly gas
+prices.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![Django](https://img.shields.io/badge/Django-6.0-092E20)
@@ -17,7 +18,7 @@ to/from a work-site/etc - based on a customizable mileage profile and weekly gas
 
 ## Status
 
-Early-stage and not deployed. This is a portfolio/learning project first; use
+Early-stage and not deployed. This is an entrepreneurial/portfolio project first; use
 it at your own risk.
 
 Permitted uses under the [LICENSE](LICENSE):
@@ -26,6 +27,12 @@ Permitted uses under the [LICENSE](LICENSE):
 - ✅ Contributions back to this repository
 - ❌ Any commercial use, including running RentMeBro (or a derivative)
   as a paid or hosted service
+
+## Known limitations / roadmap
+
+- **Session security** — refresh tokens don't yet support rotation,
+  revocation, or a real logout endpoint. Hardening is planned before
+  any real deployment.
 
 ## Features
 
@@ -120,7 +127,7 @@ installed.
 
 Environment variables are documented in `backend/.env.example` and
 `frontend/.env.example`. Copy each to `.env` and fill in real values — never
-commit `.env` itself.
+commit `.env` itself in local builds or contribution PRs.
 
 **Backend**
 
