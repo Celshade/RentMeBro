@@ -28,6 +28,12 @@ Permitted uses under the [LICENSE](LICENSE):
 - ❌ Any commercial use, including running RentMeBro (or a derivative)
   as a paid or hosted service
 
+## Known limitations / roadmap
+
+- **Session security** — refresh tokens don't yet support rotation,
+  revocation, or a real logout endpoint. Hardening is planned before
+  any real deployment.
+
 ## Features
 
 **Billing**
