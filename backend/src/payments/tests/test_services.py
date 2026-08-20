@@ -1974,6 +1974,152 @@ class TestCheckBtcPayment:
 
         assert result.status == Invoice.Status.PAID
 
+    def test_confirms_via_known_txid_short_credits_underpaid(self, mocker):
+        """Issue #52: a tracked, confirmed tx that pays less than the
+        quote must credit a shortfall, not force-settle PAID for the
+        invoice's full amount.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.PENDING,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="tx1",
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([item])
+        _mock_mempool_requests(
+            mocker,
+            tx_detail={
+                "txid": "tx1",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 60000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            },
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.UNDERPAID
+        assert result.remainder_owed_usd == Decimal("20.00")
+        assert result.btc_credited_txid == "tx1"
+        assert result.btc_txid == ""
+        assert not result.settlements.exists()
+
+    def test_confirms_via_known_txid_appreciated_shortfall_settles_paid(
+        self, mocker
+    ):
+        """Mirrors the A2 invariant on the tracked-txid path: BTC
+        appreciating enough to cover the invoice must settle PAID, not
+        dead-end at UNDERPAID with a $0 remainder.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.PENDING,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="tx1",
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_line_items.set([item])
+        _mock_mempool_requests(
+            mocker,
+            tx_detail={
+                "txid": "tx1",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 60000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            },
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=100000
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PAID
+        assert result.remainder_owed_usd is None
+
+    def test_confirms_via_known_txid_without_amount_is_noop(self, mocker):
+        """No live round to check the confirmation against -- must not
+        settle the whole invoice off an untethered txid.
+        """
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.PENDING,
+            btc_address="bc1qexample",
+            btc_amount_sats=None,
+            btc_txid="tx1",
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        _mock_mempool_requests(
+            mocker,
+            tx_detail={
+                "txid": "tx1",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 60000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            },
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PENDING
+        assert result.btc_txid == "tx1"
+        assert not result.settlements.exists()
+
+    def test_confirms_via_known_txid_short_price_unavailable_is_noop(
+        self, mocker
+    ):
+        invoice = _btc_enabled_invoice(
+            status=Invoice.Status.PENDING,
+            btc_address="bc1qexample",
+            btc_amount_sats=100000,
+            btc_txid="tx1",
+            btc_watch_expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        _mock_mempool_requests(
+            mocker,
+            tx_detail={
+                "txid": "tx1",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 60000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            },
+        )
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=None
+        )
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.PENDING
+        assert result.btc_txid == "tx1"
+        assert result.remainder_owed_usd is None
+
     def test_no_match_is_noop(self, mocker):
         invoice = _btc_enabled_invoice(
             status=Invoice.Status.SENT,
@@ -2740,6 +2886,47 @@ class TestResolveBtcPaymentClaim:
         invoice.refresh_from_db()
         assert invoice.status == Invoice.Status.UNDERPAID
         assert invoice.remainder_owed_usd == Decimal("20.00")
+        assert invoice.btc_credited_txid == "tx1"
+        # Not in-flight: a credited shortfall must not read as
+        # "still needs confirming" (issue #52).
+        assert invoice.btc_txid == ""
+
+    def test_accept_underpaid_then_reconfirm_stays_underpaid(self, mocker):
+        """Issue #52 regression, end to end: once a claim credits a
+        genuine shortfall, re-checking that same confirmed tx later
+        (the renter's 60s poll, or a page's self-healing check) must
+        not force-settle the invoice PAID for its full amount.
+        """
+        invoice = _btc_enabled_invoice(status=Invoice.Status.SENT)
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00")
+        )
+        invoice.btc_address = "bc1qexample"
+        invoice.save(update_fields=["btc_address"])
+        invoice.btc_line_items.set([item])
+        landlord = invoice.billing_period.landlord
+        claim = self._claim(invoice)
+        tx = {
+            "txid": "tx1",
+            "vout": [
+                {"scriptpubkey_address": "bc1qexample", "value": 60000}
+            ],
+            "status": {"confirmed": True},
+        }
+        _mock_mempool_requests(mocker, address_txs=[tx])
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+
+        resolve_btc_payment_claim(claim, landlord, accept=True)
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.UNDERPAID
+
+        result = check_btc_payment(invoice)
+
+        assert result.status == Invoice.Status.UNDERPAID
+        assert result.remainder_owed_usd == Decimal("20.00")
+        assert not result.settlements.exists()
 
     def test_accept_appreciated_shortfall_settles_paid_not_zero_remainder(
         self, mocker
