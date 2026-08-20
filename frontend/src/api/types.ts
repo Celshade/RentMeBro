@@ -362,6 +362,11 @@ export type InvoiceStatus =
  * @property btc_credited_txid - A short payment credited toward the
  *   invoice that leaves a remainder owed, or an empty string if there
  *   isn't one.
+ * @property btc_credited_usd - What `btc_credited_txid` was worth at
+ *   credit time, as a decimal string, or null if there isn't one.
+ *   Already netted out of `stripe_portion_usd`, `card_full_owed_usd`,
+ *   and `btc_full_owed_usd` server-side -- shown here only so the UI
+ *   can explain why those totals are less than a line item's amount.
  * @property btc_watch_expires_at - When the current BTC quote window
  *   closes (ISO 8601), or null if no watch is in progress.
  * @property paid_line_items - Ids of line items covered by a settled
@@ -417,6 +422,7 @@ export interface Invoice {
   stripe_settled_at: string | null;
   btc_txid: string;
   btc_credited_txid: string;
+  btc_credited_usd: string | null;
   btc_watch_expires_at: string | null;
   paid_line_items: number[];
   frozen_line_items: number[];
