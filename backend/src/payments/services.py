@@ -293,6 +293,46 @@ def _credit_shortfall(
     )
 
 
+def _consume_btc_credit(
+    invoice: Invoice, covered_items: list[InvoiceLineItem]
+) -> tuple[str, Decimal | None]:
+    """Clears an outstanding BTC credit once another rail settles it.
+
+    Netting the credit out of the other rails' totals
+    (`Invoice.stripe_portion_usd` and friends) on its own would leave
+    `remainder_owed_usd` set forever once every item is actually paid
+    -- `resolve_settled_status` would keep returning UNDERPAID with
+    nothing left to collect. Mirrors what `_settle_btc_leg` already
+    does inline: only fires once `covered_items` fully includes the
+    credited items, so a still-partial round leaves the credit alone.
+
+    Args:
+        invoice: The invoice whose credit might be getting consumed.
+            Its credit fields are cleared on the instance but not
+            saved -- the caller folds them into its own
+            `save(update_fields=...)`.
+        covered_items: The items the settlement about to be recorded
+            actually covers.
+
+    Returns:
+        The `(credited_txid, credited_usd)` just cleared, for the
+        caller to record on its own settlement row -- or `("", None)`
+        if there was nothing to consume.
+    """
+    credited_ids = invoice.btc_credited_line_item_ids
+    if not credited_ids:
+        return "", None
+    covered_ids = {item.id for item in covered_items}
+    if not credited_ids <= covered_ids:
+        return "", None
+    credited_txid = invoice.btc_credited_txid
+    credited_usd = invoice.btc_credited_usd
+    invoice.remainder_owed_usd = None
+    invoice.btc_credited_txid = ""
+    invoice.btc_credited_usd = None
+    return credited_txid, credited_usd
+
+
 _MANUAL_RAILS = frozenset({
     InvoiceSettlement.Rail.CASH,
     InvoiceSettlement.Rail.CHECK,
@@ -347,17 +387,29 @@ def mark_line_item_paid_manually(
         )
 
     with transaction.atomic():
+        credited_txid, credited_usd = _consume_btc_credit(
+            invoice, [line_item]
+        )
         settlement = InvoiceSettlement.objects.create(
             invoice=invoice,
             rail=rail,
             amount_usd=line_item.amount,
             note=note,
+            credited_txid=credited_txid,
+            credited_usd=credited_usd,
             settled_at=timezone.now(),
         )
         settlement.line_items.set([line_item])
         invoice._prefetched_objects_cache = {}
         invoice.status = resolve_settled_status(invoice)
-        invoice.save(update_fields=["status"])
+        invoice.save(
+            update_fields=[
+                "status",
+                "remainder_owed_usd",
+                "btc_credited_txid",
+                "btc_credited_usd",
+            ]
+        )
     return invoice
 
 
@@ -611,6 +663,9 @@ def handle_payment_intent_succeeded(
         if not billed_items:
             billed_items = invoice.stripe_scope_line_items
         intent_id = payment_intent.get("id") or invoice.stripe_payment_intent_id
+        credited_txid, credited_usd = _consume_btc_credit(
+            invoice, billed_items
+        )
 
         settlement, created = InvoiceSettlement.objects.get_or_create(
             invoice=invoice,
@@ -620,6 +675,8 @@ def handle_payment_intent_succeeded(
                 "amount_usd": sum(
                     (item.amount for item in billed_items), Decimal(0)
                 ),
+                "credited_txid": credited_txid,
+                "credited_usd": credited_usd,
                 "settled_at": timezone.now(),
             },
         )
@@ -636,7 +693,8 @@ def handle_payment_intent_succeeded(
         invoice.save(
             update_fields=[
                 "status", "stripe_settled_at", "stripe_intent_status",
-                "stripe_round_expires_at",
+                "stripe_round_expires_at", "remainder_owed_usd",
+                "btc_credited_txid", "btc_credited_usd",
             ]
         )
 
