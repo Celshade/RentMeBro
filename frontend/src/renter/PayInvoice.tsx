@@ -418,6 +418,11 @@ export function PayInvoice({
                 ? invoice.card_full_owed_usd
                 : invoice.stripe_portion_usd
             }
+            note={
+              invoice.remainder_owed_usd !== null
+                ? 'A previous payment already covered part of this total.'
+                : undefined
+            }
           />
           <PayInvoiceCashApp
             invoiceId={invoice.id}
