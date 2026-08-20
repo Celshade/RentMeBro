@@ -390,6 +390,11 @@ export function PayInvoiceBtc({
           itemIds={btcStatus.line_items}
           totalUsd={btcStatus.btc_owed_usd}
           heading="Available to pay via Bitcoin"
+          note={
+            btcStatus.remainder_owed_usd
+              ? 'A previous payment already covered part of this total.'
+              : undefined
+          }
         />
         {canPayFullByBtc ? (
           <label className="pay-invoice__pay-full">
