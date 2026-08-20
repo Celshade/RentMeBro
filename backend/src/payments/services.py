@@ -238,6 +238,61 @@ def _settle_btc_leg(
         )
 
 
+def _credit_shortfall(
+    invoice: Invoice,
+    *,
+    txid: str,
+    credited_usd: Decimal,
+    usd_owed: Decimal,
+    quoted_usd: Decimal,
+) -> None:
+    """Records a genuine BTC shortfall as a fixed, logged USD remainder.
+
+    Shared by `_reconcile_lapsed_watch` and `resolve_btc_payment_claim`,
+    the two paths that credit a tx too small to fully cover the
+    invoice. `btc_txid` is deliberately left unset (or cleared) here --
+    a credited shortfall isn't an in-flight tx, and both the frontend
+    (`InvoiceDetail.tsx`) and `check_btc_payment`'s tracked-txid branch
+    treat a non-empty `btc_txid` as "still needs confirming," which
+    would otherwise force-settle this same tx again for the full
+    invoice amount once it confirms (issue #52).
+
+    Args:
+        invoice: The invoice to credit. Its `btc_amount_sats` and
+            `btc_watch_expires_at` are cleared as part of crediting.
+        txid: The tx being credited, short of the full quote.
+        credited_usd: What that tx is worth at check-time price.
+        usd_owed: What the invoice actually owes via BTC.
+        quoted_usd: What the lapsed/claimed quote was for, for the
+            discrepancy email -- not always equal to `usd_owed` (a
+            claim's quote and the live owed amount can diverge).
+    """
+    invoice.status = Invoice.Status.UNDERPAID
+    invoice.remainder_owed_usd = usd_owed - credited_usd
+    invoice.btc_credited_txid = txid
+    invoice.btc_credited_usd = credited_usd
+    invoice.btc_txid = ""
+    invoice.btc_amount_sats = None
+    invoice.btc_watch_expires_at = None
+    invoice.save(
+        update_fields=[
+            "status",
+            "remainder_owed_usd",
+            "btc_credited_txid",
+            "btc_credited_usd",
+            "btc_txid",
+            "btc_amount_sats",
+            "btc_watch_expires_at",
+        ]
+    )
+    _notify_landlord_discrepancy(
+        invoice,
+        kind="underpaid",
+        quoted_usd=quoted_usd,
+        received_usd=credited_usd,
+    )
+
+
 _MANUAL_RAILS = frozenset({
     InvoiceSettlement.Rail.CASH,
     InvoiceSettlement.Rail.CHECK,
@@ -1170,32 +1225,18 @@ def resolve_btc_payment_claim(
     credited_usd = _sats_to_usd(paid_sats, price)
     usd_owed = _invoice_usd_owed(invoice)
 
-    invoice.btc_txid = claim.txid
     if credited_usd >= usd_owed:
+        invoice.btc_txid = claim.txid
         _settle_btc_leg(invoice, confirmed, paid_sats=paid_sats)
     else:
-        invoice.status = Invoice.Status.UNDERPAID
-        invoice.remainder_owed_usd = usd_owed - credited_usd
-        invoice.btc_credited_txid = claim.txid
-        invoice.btc_credited_usd = credited_usd
-        invoice.btc_amount_sats = None
-        invoice.btc_watch_expires_at = None
-        invoice.save(
-            update_fields=[
-                "btc_txid",
-                "status",
-                "remainder_owed_usd",
-                "btc_credited_txid",
-                "btc_credited_usd",
-                "btc_amount_sats",
-                "btc_watch_expires_at",
-            ]
-        )
-        _notify_landlord_discrepancy(
+        # `btc_txid` is deliberately left unset here -- see
+        # `_credit_shortfall`'s docstring (issue #52).
+        _credit_shortfall(
             invoice,
-            kind="underpaid",
+            txid=claim.txid,
+            credited_usd=credited_usd,
+            usd_owed=usd_owed,
             quoted_usd=usd_owed,
-            received_usd=credited_usd,
         )
 
     claim.status = BtcPaymentClaim.Status.ACCEPTED
@@ -1597,28 +1638,12 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
         )
         return invoice
 
-    invoice.status = Invoice.Status.UNDERPAID
-    invoice.remainder_owed_usd = usd_owed - credited_usd
-    invoice.btc_credited_txid = best["txid"]
-    invoice.btc_credited_usd = credited_usd
-    invoice.btc_amount_sats = None
-    invoice.btc_watch_expires_at = None
-    invoice.save(
-        update_fields=[
-            "status",
-            "remainder_owed_usd",
-            "btc_credited_txid",
-            "btc_credited_usd",
-            "btc_amount_sats",
-            "btc_watch_expires_at",
-        ]
-    )
-    quoted_usd = _sats_to_usd(amount_sats, price)
-    _notify_landlord_discrepancy(
+    _credit_shortfall(
         invoice,
-        kind="underpaid",
-        quoted_usd=quoted_usd,
-        received_usd=credited_usd,
+        txid=best["txid"],
+        credited_usd=credited_usd,
+        usd_owed=usd_owed,
+        quoted_usd=_sats_to_usd(amount_sats, price),
     )
     return invoice
 
@@ -1747,6 +1772,61 @@ def cancel_btc_watch(invoice: Invoice) -> Invoice:
     return invoice
 
 
+def _settle_tracked_tx(invoice: Invoice, paid_sats: int) -> None:
+    """Settles or credits a confirmed, already-tracked BTC tx.
+
+    `check_btc_payment`'s tracked-`btc_txid` branch re-confirms a tx
+    that was already matched against a live quote or claim -- but a
+    quote's `btc_amount_sats` is only a snapshot, and a claim's
+    `btc_txid` should never have been set to a tx smaller than what it
+    credits (see `_credit_shortfall`). This amount-checks the
+    confirmation the same way `_reconcile_lapsed_watch` and
+    `resolve_btc_payment_claim` do, instead of trusting confirmation
+    alone the way a bare `_settle_btc_leg` call once did (issue #52):
+    a genuine shortfall must stay UNDERPAID with its remainder intact,
+    not get force-settled PAID for the invoice's full amount.
+
+    Args:
+        invoice: The invoice being polled. `btc_txid` is already set.
+        paid_sats: What the confirmed tx actually paid.
+    """
+    amount_sats = invoice.btc_amount_sats
+    if not amount_sats:
+        # No live round to settle against (e.g. `btc_txid` set outside
+        # the normal watch/claim flow). Nothing sane to do but wait
+        # for whatever sets one, rather than settling the whole
+        # invoice off an untethered txid.
+        logger.warning(
+            "check_btc_payment: invoice %s has a tracked btc_txid but"
+            " no btc_amount_sats to check it against",
+            invoice.id,
+        )
+        return
+
+    if paid_sats >= amount_sats:
+        _settle_btc_leg(invoice, True, paid_sats=paid_sats)
+        return
+
+    price = get_btc_usd_price()
+    if price is None:
+        # Retry on the next poll rather than guessing.
+        return
+
+    credited_usd = _sats_to_usd(paid_sats, price)
+    usd_owed = _invoice_usd_owed(invoice)
+    if credited_usd >= usd_owed:
+        _settle_btc_leg(invoice, True, paid_sats=paid_sats)
+        return
+
+    _credit_shortfall(
+        invoice,
+        txid=invoice.btc_txid,
+        credited_usd=credited_usd,
+        usd_owed=usd_owed,
+        quoted_usd=_sats_to_usd(amount_sats, price),
+    )
+
+
 def check_btc_payment(invoice: Invoice) -> Invoice:
     """Polls mempool.space for an invoice's BTC payment status.
 
@@ -1790,7 +1870,7 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
             tx = response.json()
             if tx.get("status", {}).get("confirmed", False):
                 paid_sats = _paid_sats(tx, invoice.btc_address)
-                _settle_btc_leg(invoice, True, paid_sats=paid_sats)
+                _settle_tracked_tx(invoice, paid_sats)
             return invoice
 
         txs = _fetch_address_txs(invoice.btc_address, mempool_only=True)
