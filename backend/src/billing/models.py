@@ -491,6 +491,42 @@ class Invoice(models.Model):
         return frozen
 
     @property
+    def btc_credited_line_item_ids(self) -> set[int]:
+        """Unpaid items an outstanding BTC credit applies to.
+
+        Empty unless a shortfall is currently credited
+        (`remainder_owed_usd` and `btc_credited_usd` both set).
+        `_credit_shortfall` deliberately leaves `btc_round_line_items`
+        in place (unlike `_settle_btc_leg`, which clears it), so that
+        snapshot is the credit's scope; it falls back to
+        `btc_scope_line_items` if the round was never snapshotted.
+        """
+        if self.remainder_owed_usd is None or self.btc_credited_usd is None:
+            return set()
+        round_ids = {item.id for item in self.btc_round_line_items.all()}
+        ids = round_ids or {
+            item.id for item in self.btc_scope_line_items
+        }
+        return ids - self.paid_line_item_ids
+
+    def _less_btc_credit(
+        self, items: list["InvoiceLineItem"], total: Decimal
+    ) -> Decimal:
+        """Nets an outstanding BTC credit out of `total` when it applies.
+
+        Only when the credited item IDs are a subset of `items`' IDs --
+        not merely an intersection -- so a credit against gas can never
+        net against a rent-only leg's total.
+        """
+        credited_ids = self.btc_credited_line_item_ids
+        if not credited_ids:
+            return total
+        item_ids = {item.id for item in items}
+        if not credited_ids <= item_ids:
+            return total
+        return max(total - self.btc_credited_usd, Decimal(0))
+
+    @property
     def _btc_candidates(self) -> list["InvoiceLineItem"]:
         return [
             item for item in self.unpaid_line_items
@@ -570,10 +606,9 @@ class Invoice(models.Model):
 
     @property
     def stripe_portion_usd(self) -> Decimal:
-        return sum(
-            (item.amount for item in self.stripe_scope_line_items),
-            start=Decimal(0),
-        )
+        items = self.stripe_scope_line_items
+        total = sum((item.amount for item in items), start=Decimal(0))
+        return self._less_btc_credit(items, total)
 
     @property
     def btc_full_line_items(self) -> list["InvoiceLineItem"]:
@@ -590,10 +625,9 @@ class Invoice(models.Model):
         """Every BTC-payable item's total -- the opt-in "pay it all by
         BTC instead" figure, ignoring the landlord's BTC scope.
         """
-        return sum(
-            (item.amount for item in self.btc_full_line_items),
-            start=Decimal(0),
-        )
+        items = self.btc_full_line_items
+        total = sum((item.amount for item in items), start=Decimal(0))
+        return self._less_btc_credit(items, total)
 
     @property
     def card_full_line_items(self) -> list["InvoiceLineItem"]:
@@ -610,10 +644,9 @@ class Invoice(models.Model):
         """Every card-payable item's total -- the opt-in "pay it all by
         card instead" figure, ignoring the BTC expectation.
         """
-        return sum(
-            (item.amount for item in self.card_full_line_items),
-            start=Decimal(0),
-        )
+        items = self.card_full_line_items
+        total = sum((item.amount for item in items), start=Decimal(0))
+        return self._less_btc_credit(items, total)
 
     @property
     def is_split_payment(self) -> bool:
