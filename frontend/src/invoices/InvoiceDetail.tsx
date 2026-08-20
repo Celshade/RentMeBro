@@ -579,6 +579,13 @@ export function InvoiceDetail({
         <div className="stat-tile">
           <span className="stat-tile__label">Total</span>
           <span className="stat-tile__value">${invoice.total}</span>
+          {invoice.remainder_owed_usd !== null && (
+            <span className="stat-tile__meta">
+              ${formatMoney(invoice.btc_credited_usd ?? '0')} credited via{' '}
+              <BtcTxLink txid={invoice.btc_credited_txid} /> · $
+              {formatMoney(invoice.remainder_owed_usd)} still owed
+            </span>
+          )}
         </div>
       </div>
 
