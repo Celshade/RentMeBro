@@ -241,17 +241,19 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "stripe_portion_usd", "card_full_owed_usd", "btc_owed_usd",
             "is_split_payment", "btc_settled_at", "btc_overpaid_usd",
             "stripe_settled_at", "btc_txid", "btc_credited_txid",
-            "btc_watch_expires_at", "paid_line_items", "frozen_line_items",
-            "settlements", "stripe_round_expires_at", "btc_scope_line_items",
-            "stripe_scope_line_items", "card_full_line_items",
-            "btc_full_owed_usd", "btc_full_line_items", "btc_claims",
+            "btc_credited_usd", "btc_watch_expires_at", "paid_line_items",
+            "frozen_line_items", "settlements", "stripe_round_expires_at",
+            "btc_scope_line_items", "stripe_scope_line_items",
+            "card_full_line_items", "btc_full_owed_usd",
+            "btc_full_line_items", "btc_claims",
         ]
         read_only_fields = [
             "status", "stripe_payment_intent_id", "created_at",
             "btc_address", "btc_amount_sats", "remainder_owed_usd",
             "btc_line_items", "btc_settled_at", "btc_overpaid_usd",
             "stripe_settled_at", "btc_txid", "btc_credited_txid",
-            "btc_watch_expires_at", "stripe_round_expires_at",
+            "btc_credited_usd", "btc_watch_expires_at",
+            "stripe_round_expires_at",
         ]
 
     def get_btc_owed_usd(self, obj: Invoice) -> str:
