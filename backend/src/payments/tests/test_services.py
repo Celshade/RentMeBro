@@ -127,6 +127,38 @@ class TestCreatePaymentIntentForInvoice:
         # $1000 of rent, not the $1200 invoice total.
         assert mock_create.call_args.kwargs["amount"] == 100000
 
+    def test_bills_the_credited_item_net_of_its_btc_credit(self, mocker):
+        """Once a shortfall is credited via BTC, the card leg must
+        bill the netted remainder, not the item's full amount -- else
+        the landlord collects the credited portion twice (#53).
+        """
+        invoice = _onboarded_invoice(
+            status=Invoice.Status.UNDERPAID,
+            remainder_owed_usd=Decimal("70.00"),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
+        invoice.btc_round_line_items.set([item])
+        fake_intent = MagicMock(
+            id="pi_netted", client_secret="secret",
+            status="requires_payment_method",
+        )
+        fake_intent.to_dict.return_value = {
+            "status": "requires_payment_method"
+        }
+        mock_create = mocker.patch(
+            "payments.services.stripe.PaymentIntent.create",
+            return_value=fake_intent,
+        )
+
+        create_payment_intent_for_invoice(invoice)
+
+        assert mock_create.call_args.kwargs["amount"] == 7000
+
     def test_bills_the_full_total_when_btc_covers_every_charge(
         self, mocker
     ):
@@ -709,6 +741,69 @@ class TestHandlePaymentIntentSucceeded:
             connected_account_id="acct_landlord",
         )
         # No exception raised; nothing to assert against.
+
+    def test_consumes_full_btc_credit_when_card_round_covers_it(self):
+        """A credited shortfall must be cleared once the card leg
+        settles the exact item it was credited against -- otherwise
+        the invoice sticks at UNDERPAID forever (#53).
+        """
+        invoice = _onboarded_invoice(
+            status=Invoice.Status.UNDERPAID,
+            remainder_owed_usd=Decimal("70.00"),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
+        invoice.btc_round_line_items.set([item])
+
+        handle_payment_intent_succeeded(
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id="acct_landlord",
+        )
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
+        assert invoice.remainder_owed_usd is None
+        assert invoice.btc_credited_txid == ""
+        assert invoice.btc_credited_usd is None
+        settlement = invoice.settlements.get(
+            rail=InvoiceSettlement.Rail.CARD
+        )
+        assert settlement.credited_txid == "short-tx"
+        assert settlement.credited_usd == Decimal("30.00")
+
+    def test_credit_survives_when_card_round_covers_other_items_only(
+        self,
+    ):
+        invoice = _onboarded_invoice(
+            status=Invoice.Status.UNDERPAID,
+            remainder_owed_usd=Decimal("20.00"),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+        )
+        gas = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00"), kind="gas"
+        )
+        rent = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00"), kind="rent"
+        )
+        invoice.btc_line_items.set([gas])
+        invoice.btc_round_line_items.set([gas])
+        invoice.stripe_round_line_items.set([rent])
+
+        handle_payment_intent_succeeded(
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id="acct_landlord",
+        )
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.UNDERPAID
+        assert invoice.remainder_owed_usd == Decimal("20.00")
+        assert invoice.btc_credited_txid == "short-tx"
+        assert invoice.btc_credited_usd == Decimal("30.00")
 
 
 class TestStartConnectOnboarding:
@@ -1851,6 +1946,33 @@ class TestMarkLineItemPaidManually:
         result = mark_line_item_paid_manually(invoice, item.id, "cash")
 
         assert item.id in result.paid_line_item_ids
+
+    def test_consumes_credited_shortfall_on_the_credited_item(self):
+        """Manually settling the exact item a BTC credit applies to
+        must clear the credit -- otherwise the invoice stays UNDERPAID
+        forever even once nothing is left unpaid (#53).
+        """
+        invoice = _onboarded_invoice(
+            status=Invoice.Status.UNDERPAID,
+            remainder_owed_usd=Decimal("70.00"),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
+        invoice.btc_round_line_items.set([item])
+
+        result = mark_line_item_paid_manually(invoice, item.id, "cash")
+
+        assert result.status == Invoice.Status.PAID
+        assert result.remainder_owed_usd is None
+        assert result.btc_credited_txid == ""
+        assert result.btc_credited_usd is None
+        settlement = result.settlements.get()
+        assert settlement.credited_txid == "short-tx"
+        assert settlement.credited_usd == Decimal("30.00")
 
 
 class TestCheckBtcPayment:
