@@ -175,6 +175,7 @@ Interactive schema at `/api/schema/swagger/` (drf-spectacular). Route groups:
 ```bash
 # backend
 cd backend
+uv run ruff check   # lint (line-length, quotes, annotations)
 uv run pytest
 
 # frontend
