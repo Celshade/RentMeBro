@@ -9,6 +9,28 @@ const REFRESH_TOKEN_KEY = 'rentmebro_refresh_token';
  */
 export const AUTH_LOGOUT_EVENT = 'rentmebro:auth-logout';
 
+
+/**
+ * An API request that came back with a non-OK status.
+ *
+ * Carries the HTTP status alongside the server's `detail` message, so
+ * callers can branch on the status instead of matching message text.
+ * Extends `Error` with the same message, so existing handlers that
+ * only read `.message` are unaffected.
+ * @param message - The server's `detail`, or a generic fallback.
+ * @param status - The HTTP status code the response carried.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+
 /** Reads/writes the JWT pair used to authenticate API requests. */
 export const tokenStorage = {
   getAccess: () => localStorage.getItem(ACCESS_TOKEN_KEY),
@@ -105,7 +127,10 @@ export async function apiFetch<T>(
 
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
-    throw new Error(detail.detail || `Request failed: ${response.status}`);
+    throw new ApiError(
+      detail.detail || `Request failed: ${response.status}`,
+      response.status
+    );
   }
 
   const text = await response.text();
