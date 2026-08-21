@@ -7,6 +7,8 @@ for days driven to/from a work-site/etc - based on a customizable mileage profil
 prices.
 
 [![CI](https://github.com/Celshade/RentMeBro/actions/workflows/ci.yml/badge.svg)](https://github.com/Celshade/RentMeBro/actions/workflows/ci.yml)
+![Status](https://img.shields.io/badge/Status-Alpha-orange)
+![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-purple)\
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![Django](https://img.shields.io/badge/Django-6.0-092E20)
 ![React](https://img.shields.io/badge/React-19-61DAFB)
@@ -14,8 +16,6 @@ prices.
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF)
 ![Bitcoin](https://img.shields.io/badge/Bitcoin-on--chain-F7931A)
 ![Stripe](https://img.shields.io/badge/Stripe-Cash%20App%20Pay-635BFF)
-![Status](https://img.shields.io/badge/Status-Alpha-orange)
-![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-purple)
 
 ## Status
 
