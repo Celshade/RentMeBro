@@ -1,6 +1,6 @@
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { useEffect, useRef, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { ApiError, apiFetch } from '../api/client';
 import {
   formatClockTime,
   formatCountdown,
@@ -15,8 +15,9 @@ import { PayInvoiceBtc } from './PayInvoiceBtc';
 // How often to poll for the Cash App payment landing while the QR is
 // up. Reuses POST /pay/ itself as the status check -- a still-open
 // intent just gets re-synced and returns 200, while a settled one is
-// reconciled server-side and answers with the "already paid" 400,
-// which is this loop's success signal.
+// reconciled server-side and answers with a 400 (already paid, in one
+// of a couple wordings depending on which path resolved it), which is
+// this loop's success signal.
 const CASH_APP_POLL_INTERVAL_MS = 4_000;
 
 /**
@@ -154,7 +155,7 @@ function PayInvoiceCashApp({
         method: 'POST',
         body: { pay_full: payFull },
       }).catch((err: Error) => {
-        if (err.message === 'Invoice is already paid.') {
+        if (err instanceof ApiError && err.status === 400) {
           onPaidRef.current();
         }
       });
