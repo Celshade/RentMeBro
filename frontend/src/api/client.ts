@@ -21,12 +21,12 @@ export const AUTH_LOGOUT_EVENT = 'rentmebro:auth-logout';
  * @param status - The HTTP status code the response carried.
  */
 export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number
-  ) {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
     super(message);
     this.name = 'ApiError';
+    this.status = status;
   }
 }
 
