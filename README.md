@@ -8,6 +8,7 @@ prices.
 
 [![CI](https://github.com/Celshade/RentMeBro/actions/workflows/ci.yml/badge.svg)](https://github.com/Celshade/RentMeBro/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/Status-Alpha-orange)
+![Version](https://img.shields.io/github/v/tag/Celshade/RentMeBro?label=version)
 ![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-purple)\
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![Django](https://img.shields.io/badge/Django-6.0-092E20)
