@@ -9,6 +9,8 @@ from payments.views import (
     InvoiceBtcAttachView,
     InvoiceBtcCancelView,
     InvoiceBtcCheckView,
+    InvoiceBtcClaimResolveView,
+    InvoiceBtcClaimSubmitView,
     InvoiceBtcStatusView,
     InvoiceBtcWatchView,
     InvoiceLineItemMarkPaidView,
@@ -81,6 +83,16 @@ urlpatterns = [
         "invoices/<int:invoice_id>/btc/cancel/",
         InvoiceBtcCancelView.as_view(),
         name="invoice-btc-cancel",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/claim/",
+        InvoiceBtcClaimSubmitView.as_view(),
+        name="invoice-btc-claim-submit",
+    ),
+    path(
+        "invoices/<int:invoice_id>/btc/claim/<int:claim_id>/resolve/",
+        InvoiceBtcClaimResolveView.as_view(),
+        name="invoice-btc-claim-resolve",
     ),
     path(
         "invoices/<int:invoice_id>/line-items/<int:line_item_id>/"

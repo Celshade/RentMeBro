@@ -87,6 +87,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "magic_link_request": "5/hour",
         "magic_link_verify": "20/hour",
+        "btc_claim_submit": "10/hour",
     },
 }
 

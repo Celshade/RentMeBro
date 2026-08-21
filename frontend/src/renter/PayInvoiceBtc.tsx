@@ -7,7 +7,11 @@ import {
   formatMoney,
   satsToBtc,
 } from '../api/format';
-import type { BtcInvoiceStatus, InvoiceLineItem } from '../api/types';
+import type {
+  BtcInvoiceStatus,
+  BtcPaymentClaim,
+  InvoiceLineItem,
+} from '../api/types';
 import { BtcBroadcastBlocks } from '../components/BtcBroadcastBlocks';
 import { BtcTxLink } from '../components/BtcTxLink';
 import { PaymentLegSummary } from '../components/PaymentLegSummary';
@@ -74,6 +78,80 @@ function statusCopy(
     )} still owed`;
   }
   return expired ? 'No payment detected yet.' : 'Waiting for payment...';
+}
+
+
+/**
+ * Fallback for whatever automatic BTC reconciliation misses: lets the
+ * renter submit a txid directly for landlord review. Opens collapsed
+ * behind a disclosure toggle so it doesn't compete with the primary
+ * QR/address flow, and shows a static "submitted" state afterward
+ * rather than polling -- the landlord's review happens outside this
+ * panel.
+ * @param props.invoiceId - The invoice being claimed as paid.
+ */
+function BtcClaimForm({ invoiceId }: { invoiceId: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [txid, setTxid] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [claim, setClaim] = useState<BtcPaymentClaim | null>(null);
+
+  const submit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      setSubmitting(true);
+      setError(null);
+      apiFetch<BtcPaymentClaim>(`/api/invoices/${invoiceId}/btc/claim/`, {
+        method: 'POST',
+        body: { txid },
+      })
+        .then(setClaim)
+        .catch((err: Error) => setError(err.message))
+        .finally(() => setSubmitting(false));
+    },
+    [invoiceId, txid]
+  );
+
+  if (claim) {
+    return (
+      <p className="pay-invoice-btc__claim-submitted">
+        Claim submitted for <code>{claim.txid}</code> -- pending landlord
+        review.
+      </p>
+    );
+  }
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        className="pay-invoice-btc__claim-toggle"
+        onClick={() => setExpanded(true)}
+      >
+        Already paid, but not showing up here?
+      </button>
+    );
+  }
+
+  return (
+    <form className="pay-invoice-btc__claim-form" onSubmit={submit}>
+      <label htmlFor="btc-claim-txid">
+        Enter the transaction id you sent -- the landlord will review it.
+      </label>
+      <input
+        id="btc-claim-txid"
+        type="text"
+        value={txid}
+        onChange={(e) => setTxid(e.target.value)}
+        required
+      />
+      {error && <p role="alert">{error}</p>}
+      <button type="submit" disabled={submitting || txid.trim() === ''}>
+        Submit claim
+      </button>
+    </form>
+  );
 }
 
 
@@ -312,6 +390,11 @@ export function PayInvoiceBtc({
           itemIds={btcStatus.line_items}
           totalUsd={btcStatus.btc_owed_usd}
           heading="Available to pay via Bitcoin"
+          note={
+            btcStatus.remainder_owed_usd
+              ? 'A previous payment already covered part of this total.'
+              : undefined
+          }
         />
         {canPayFullByBtc ? (
           <label className="pay-invoice__pay-full">
@@ -347,6 +430,7 @@ export function PayInvoiceBtc({
             </button>
           </>
         )}
+        <BtcClaimForm invoiceId={invoiceId} />
       </div>
     );
   }
@@ -372,6 +456,7 @@ export function PayInvoiceBtc({
         <button type="button" onClick={generateQuote}>
           Generate a new quote
         </button>
+        <BtcClaimForm invoiceId={invoiceId} />
       </div>
     );
   }
@@ -412,6 +497,7 @@ export function PayInvoiceBtc({
       <button type="button" onClick={cancelQuote}>
         Cancel payment
       </button>
+      <BtcClaimForm invoiceId={invoiceId} />
     </div>
   );
 }

@@ -676,6 +676,10 @@ body {
   gap: 8px;
 }
 
+.list-row__pay-panel {
+  flex-basis: 100%;
+}
+
 .list-row:last-child {
   border-bottom: none;
 }

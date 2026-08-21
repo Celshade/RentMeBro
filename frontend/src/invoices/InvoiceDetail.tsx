@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import {
+  BTC_IRREVERSIBILITY_WARNING,
   formatBillingPeriod,
   formatInvoiceKind,
   formatMoney,
@@ -64,7 +65,9 @@ function errorMessage(err: unknown, fallback: string): string {
  * already locked (paid/void/pending). Removing clears any line items
  * marked as BTC-billed along with the address. Surfaces the same
  * one-address-per-renter disclaimer shown when enabling BTC payments,
- * since a shared address makes tx matching ambiguous.
+ * since a shared address makes tx matching ambiguous, plus a persistent
+ * irreversibility warning that is also confirmed via `window.confirm`
+ * whenever the submitted address differs from the one already attached.
  * @param props.invoice - The invoice to attach or remove BTC payment
  *   info on.
  * @param props.onAttached - Called with the updated invoice once an
@@ -99,6 +102,12 @@ function AttachBtcPaymentForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (
+      address !== invoice.btc_address &&
+      !window.confirm(BTC_IRREVERSIBILITY_WARNING)
+    ) {
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -171,6 +180,7 @@ function AttachBtcPaymentForm({
         makes payments ambiguous to match and can misattribute one
         renter's payment to another's invoice.
       </p>
+      <p className="btc-address-disclaimer">{BTC_IRREVERSIBILITY_WARNING}</p>
       <div className="btc-address-row">
         <label className="btc-address-row__field">
           BTC address
@@ -229,6 +239,75 @@ function AttachBtcPaymentForm({
       )}
       {error && <p role="alert">{error}</p>}
     </form>
+  );
+}
+
+
+/**
+ * Landlord-facing banner for the invoice's most recent pending BTC
+ * txid claim, letting them accept (verifies and settles the observed
+ * amount server-side) or deny (leaves the invoice untouched; the
+ * renter can resubmit). Renders nothing once there's no pending claim.
+ * @param props.invoice - The invoice whose `btc_claims` to check.
+ * @param props.onResolved - Called with the refreshed invoice once
+ *   accept or deny succeeds.
+ */
+function BtcClaimBanner({
+  invoice,
+  onResolved,
+}: {
+  invoice: Invoice;
+  onResolved: (invoice: Invoice) => void;
+}) {
+  const [resolving, setResolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pendingClaim = invoice.btc_claims.find((c) => c.status === 'pending');
+  if (!pendingClaim) return null;
+
+  async function resolve(accept: boolean) {
+    setResolving(true);
+    setError(null);
+    try {
+      const updated = await apiFetch<Invoice>(
+        `/api/invoices/${invoice.id}/btc/claim/${pendingClaim!.id}/resolve/`,
+        { method: 'POST', body: { accept } }
+      );
+      onResolved(updated);
+    } catch (err) {
+      setError(errorMessage(err, 'Could not resolve this claim. Try again.'));
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  return (
+    <section className="card btc-claim-banner">
+      <div className="card__header">
+        <h2>Renter-submitted BTC payment claim</h2>
+      </div>
+      <p>
+        The renter says they paid via <BtcTxLink txid={pendingClaim.txid} />.
+        Accepting re-verifies this on-chain before crediting anything.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      <div className="btc-claim-banner__actions">
+        <button
+          type="button"
+          disabled={resolving}
+          onClick={() => resolve(true)}
+        >
+          {resolving ? 'Working…' : 'Accept'}
+        </button>
+        <button
+          type="button"
+          disabled={resolving}
+          onClick={() => resolve(false)}
+        >
+          {resolving ? 'Working…' : 'Deny'}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -500,6 +579,13 @@ export function InvoiceDetail({
         <div className="stat-tile">
           <span className="stat-tile__label">Total</span>
           <span className="stat-tile__value">${invoice.total}</span>
+          {invoice.remainder_owed_usd !== null && (
+            <span className="stat-tile__meta">
+              ${formatMoney(invoice.btc_credited_usd ?? '0')} credited via{' '}
+              <BtcTxLink txid={invoice.btc_credited_txid} /> · $
+              {formatMoney(invoice.remainder_owed_usd)} still owed
+            </span>
+          )}
         </div>
       </div>
 
@@ -658,6 +744,10 @@ export function InvoiceDetail({
             </div>
           </div>
         </div>
+      )}
+
+      {user?.role === 'landlord' && (
+        <BtcClaimBanner invoice={invoice} onResolved={setInvoice} />
       )}
 
       {user?.role === 'landlord' &&

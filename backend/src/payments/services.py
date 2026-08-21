@@ -16,7 +16,7 @@ from django.utils import timezone
 from accounts.models import User
 from billing.models import Invoice, InvoiceLineItem
 from billing.services import InvoiceLockedError
-from payments.models import InvoiceSettlement
+from payments.models import BtcPaymentClaim, InvoiceSettlement
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -85,6 +85,10 @@ class InvalidManualRailError(Exception):
 
 class ManualSettlementError(Exception):
     """The line item is already settled or has a payment in flight."""
+
+
+class BtcClaimError(Exception):
+    """A BTC payment claim can't be submitted or resolved as requested."""
 
 
 def resolve_settled_status(invoice: Invoice) -> str:
@@ -234,6 +238,101 @@ def _settle_btc_leg(
         )
 
 
+def _credit_shortfall(
+    invoice: Invoice,
+    *,
+    txid: str,
+    credited_usd: Decimal,
+    usd_owed: Decimal,
+    quoted_usd: Decimal,
+) -> None:
+    """Records a genuine BTC shortfall as a fixed, logged USD remainder.
+
+    Shared by `_reconcile_lapsed_watch` and `resolve_btc_payment_claim`,
+    the two paths that credit a tx too small to fully cover the
+    invoice. `btc_txid` is deliberately left unset (or cleared) here --
+    a credited shortfall isn't an in-flight tx, and both the frontend
+    (`InvoiceDetail.tsx`) and `check_btc_payment`'s tracked-txid branch
+    treat a non-empty `btc_txid` as "still needs confirming," which
+    would otherwise force-settle this same tx again for the full
+    invoice amount once it confirms (issue #52).
+
+    Args:
+        invoice: The invoice to credit. Its `btc_amount_sats` and
+            `btc_watch_expires_at` are cleared as part of crediting.
+        txid: The tx being credited, short of the full quote.
+        credited_usd: What that tx is worth at check-time price.
+        usd_owed: What the invoice actually owes via BTC.
+        quoted_usd: What the lapsed/claimed quote was for, for the
+            discrepancy email -- not always equal to `usd_owed` (a
+            claim's quote and the live owed amount can diverge).
+    """
+    invoice.status = Invoice.Status.UNDERPAID
+    invoice.remainder_owed_usd = usd_owed - credited_usd
+    invoice.btc_credited_txid = txid
+    invoice.btc_credited_usd = credited_usd
+    invoice.btc_txid = ""
+    invoice.btc_amount_sats = None
+    invoice.btc_watch_expires_at = None
+    invoice.save(
+        update_fields=[
+            "status",
+            "remainder_owed_usd",
+            "btc_credited_txid",
+            "btc_credited_usd",
+            "btc_txid",
+            "btc_amount_sats",
+            "btc_watch_expires_at",
+        ]
+    )
+    _notify_landlord_discrepancy(
+        invoice,
+        kind="underpaid",
+        quoted_usd=quoted_usd,
+        received_usd=credited_usd,
+    )
+
+
+def _consume_btc_credit(
+    invoice: Invoice, covered_items: list[InvoiceLineItem]
+) -> tuple[str, Decimal | None]:
+    """Clears an outstanding BTC credit once another rail settles it.
+
+    Netting the credit out of the other rails' totals
+    (`Invoice.stripe_portion_usd` and friends) on its own would leave
+    `remainder_owed_usd` set forever once every item is actually paid
+    -- `resolve_settled_status` would keep returning UNDERPAID with
+    nothing left to collect. Mirrors what `_settle_btc_leg` already
+    does inline: only fires once `covered_items` fully includes the
+    credited items, so a still-partial round leaves the credit alone.
+
+    Args:
+        invoice: The invoice whose credit might be getting consumed.
+            Its credit fields are cleared on the instance but not
+            saved -- the caller folds them into its own
+            `save(update_fields=...)`.
+        covered_items: The items the settlement about to be recorded
+            actually covers.
+
+    Returns:
+        The `(credited_txid, credited_usd)` just cleared, for the
+        caller to record on its own settlement row -- or `("", None)`
+        if there was nothing to consume.
+    """
+    credited_ids = invoice.btc_credited_line_item_ids
+    if not credited_ids:
+        return "", None
+    covered_ids = {item.id for item in covered_items}
+    if not credited_ids <= covered_ids:
+        return "", None
+    credited_txid = invoice.btc_credited_txid
+    credited_usd = invoice.btc_credited_usd
+    invoice.remainder_owed_usd = None
+    invoice.btc_credited_txid = ""
+    invoice.btc_credited_usd = None
+    return credited_txid, credited_usd
+
+
 _MANUAL_RAILS = frozenset({
     InvoiceSettlement.Rail.CASH,
     InvoiceSettlement.Rail.CHECK,
@@ -288,17 +387,29 @@ def mark_line_item_paid_manually(
         )
 
     with transaction.atomic():
+        credited_txid, credited_usd = _consume_btc_credit(
+            invoice, [line_item]
+        )
         settlement = InvoiceSettlement.objects.create(
             invoice=invoice,
             rail=rail,
             amount_usd=line_item.amount,
             note=note,
+            credited_txid=credited_txid,
+            credited_usd=credited_usd,
             settled_at=timezone.now(),
         )
         settlement.line_items.set([line_item])
         invoice._prefetched_objects_cache = {}
         invoice.status = resolve_settled_status(invoice)
-        invoice.save(update_fields=["status"])
+        invoice.save(
+            update_fields=[
+                "status",
+                "remainder_owed_usd",
+                "btc_credited_txid",
+                "btc_credited_usd",
+            ]
+        )
     return invoice
 
 
@@ -476,9 +587,7 @@ def create_payment_intent_for_invoice(
                 intent.to_dict(),
                 connected_account_id=landlord.stripe_account_id,
             )
-            raise InvoiceAlreadyPaidError(
-                "This invoice was already paid."
-            )
+            raise InvoiceAlreadyPaidError("Invoice is already paid.")
         idempotency_key = (
             f"invoice-{invoice.id}-intent-retry-"
             f"{invoice.stripe_payment_intent_id}"
@@ -553,6 +662,17 @@ def handle_payment_intent_succeeded(
             billed_items = invoice.stripe_scope_line_items
         intent_id = payment_intent.get("id") or invoice.stripe_payment_intent_id
 
+        if invoice.stripe_settled_at is None:
+            invoice.stripe_settled_at = timezone.now()
+        invoice.stripe_intent_status = "succeeded"
+        invoice.stripe_round_expires_at = None
+        invoice.stripe_round_line_items.clear()
+        invoice._prefetched_objects_cache = {}
+
+        credited_txid, credited_usd = _consume_btc_credit(
+            invoice, billed_items
+        )
+
         settlement, created = InvoiceSettlement.objects.get_or_create(
             invoice=invoice,
             rail=InvoiceSettlement.Rail.CARD,
@@ -561,23 +681,20 @@ def handle_payment_intent_succeeded(
                 "amount_usd": sum(
                     (item.amount for item in billed_items), Decimal(0)
                 ),
+                "credited_txid": credited_txid,
+                "credited_usd": credited_usd,
                 "settled_at": timezone.now(),
             },
         )
         if created:
             settlement.line_items.set(billed_items)
 
-        if invoice.stripe_settled_at is None:
-            invoice.stripe_settled_at = timezone.now()
-        invoice.stripe_intent_status = "succeeded"
-        invoice.stripe_round_expires_at = None
-        invoice.stripe_round_line_items.clear()
-        invoice._prefetched_objects_cache = {}
         invoice.status = resolve_settled_status(invoice)
         invoice.save(
             update_fields=[
                 "status", "stripe_settled_at", "stripe_intent_status",
-                "stripe_round_expires_at",
+                "stripe_round_expires_at", "remainder_owed_usd",
+                "btc_credited_txid", "btc_credited_usd",
             ]
         )
 
@@ -1034,6 +1151,159 @@ def attach_btc_payment(
     return invoice
 
 
+def submit_btc_payment_claim(
+    invoice: Invoice, renter: User, txid: str
+) -> BtcPaymentClaim:
+    """Renter-submitted fallback for a BTC payment reconciliation missed.
+
+    Purely a landlord notification + review queue entry -- nothing is
+    verified or credited here. That happens only on accept, in
+    `resolve_btc_payment_claim`.
+
+    Args:
+        invoice: The invoice being claimed as paid.
+        renter: The renter submitting the claim.
+        txid: The transaction id the renter says paid it.
+
+    Returns:
+        The newly created, pending claim.
+
+    Raises:
+        BtcClaimError: `txid` is blank, the invoice has no BTC address
+            attached, or a claim is already pending review on it.
+    """
+    txid = txid.strip()
+    if not txid:
+        raise BtcClaimError("A transaction ID is required.")
+    if not invoice.btc_address:
+        raise BtcClaimError("This invoice has no BTC address attached.")
+    if BtcPaymentClaim.objects.filter(
+        invoice=invoice, status=BtcPaymentClaim.Status.PENDING
+    ).exists():
+        raise BtcClaimError(
+            "A claim is already pending review for this invoice."
+        )
+
+    claim = BtcPaymentClaim.objects.create(
+        invoice=invoice, txid=txid, submitted_by=renter
+    )
+    landlord = invoice.billing_period.landlord
+    try:
+        send_mail(
+            subject=f"BTC payment claim on invoice #{invoice.id}",
+            message=(
+                f"{renter.email} says they paid invoice #{invoice.id} "
+                f"via Bitcoin.\nTransaction: {txid}\n\nReview it at "
+                f"{settings.FRONTEND_URL}/invoices/{invoice.id}"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[landlord.email],
+        )
+    except Exception:
+        logger.warning(
+            "Failed to email landlord about BTC claim on invoice %s",
+            invoice.id,
+            exc_info=True,
+        )
+    return claim
+
+
+def resolve_btc_payment_claim(
+    claim: BtcPaymentClaim, landlord: User, accept: bool
+) -> BtcPaymentClaim:
+    """Landlord accept/deny for a renter-submitted BTC txid claim.
+
+    Denying leaves the invoice untouched and the claim on record, so
+    the renter can resubmit (e.g. with a corrected txid) afterward.
+
+    Accepting never trusts the renter's word for the amount -- it
+    verifies the tx via `_fetch_address_txs`/`_paid_sats` first, then
+    routes the *observed* amount through the same settle-or-credit
+    branches `_reconcile_lapsed_watch` uses past its grace period, so a
+    claim can't be used to sneak past the Scope A2 zero-remainder dead
+    end. This bypasses only the reconciliation time window -- never
+    the address or amount checks a normal poll would apply.
+
+    Args:
+        claim: The pending claim to resolve.
+        landlord: The landlord resolving it.
+        accept: True to accept, False to deny.
+
+    Returns:
+        The resolved claim.
+
+    Raises:
+        BtcClaimError: The claim isn't pending, or (on accept) the
+            txid doesn't genuinely pay the invoice's BTC address, is
+            already settled against another invoice or already
+            credited to this one, or the BTC price is temporarily
+            unavailable to value it.
+    """
+    if claim.status != BtcPaymentClaim.Status.PENDING:
+        raise BtcClaimError("This claim has already been resolved.")
+
+    if not accept:
+        claim.status = BtcPaymentClaim.Status.DENIED
+        claim.resolved_by = landlord
+        claim.resolved_at = timezone.now()
+        claim.save(update_fields=["status", "resolved_by", "resolved_at"])
+        return claim
+
+    invoice = claim.invoice
+    if (
+        InvoiceSettlement.objects.filter(txid=claim.txid)
+        .exclude(invoice=invoice)
+        .exists()
+    ):
+        raise BtcClaimError(
+            "That transaction already settled a different invoice."
+        )
+    if claim.txid in _excluded_txids(invoice):
+        raise BtcClaimError(
+            "That transaction has already been credited to this "
+            "invoice."
+        )
+
+    txs = _fetch_address_txs(invoice.btc_address)
+    tx = next((t for t in (txs or []) if t.get("txid") == claim.txid), None)
+    paid_sats = _paid_sats(tx, invoice.btc_address) if tx else 0
+    if not tx or paid_sats <= 0:
+        raise BtcClaimError(
+            "That transaction wasn't found paying this invoice's BTC "
+            "address."
+        )
+
+    price = get_btc_usd_price()
+    if price is None:
+        raise BtcClaimError(
+            "BTC price is temporarily unavailable -- try again shortly."
+        )
+
+    confirmed = tx.get("status", {}).get("confirmed", False)
+    credited_usd = _sats_to_usd(paid_sats, price)
+    usd_owed = _invoice_usd_owed(invoice)
+
+    if credited_usd >= usd_owed:
+        invoice.btc_txid = claim.txid
+        _settle_btc_leg(invoice, confirmed, paid_sats=paid_sats)
+    else:
+        # `btc_txid` is deliberately left unset here -- see
+        # `_credit_shortfall`'s docstring (issue #52).
+        _credit_shortfall(
+            invoice,
+            txid=claim.txid,
+            credited_usd=credited_usd,
+            usd_owed=usd_owed,
+            quoted_usd=usd_owed,
+        )
+
+    claim.status = BtcPaymentClaim.Status.ACCEPTED
+    claim.resolved_by = landlord
+    claim.resolved_at = timezone.now()
+    claim.save(update_fields=["status", "resolved_by", "resolved_at"])
+    return claim
+
+
 def _usd_to_sats(usd: Decimal, usd_per_btc: int) -> int:
     """Converts a USD amount to satoshis at a given BTC/USD price."""
     btc = usd / Decimal(usd_per_btc)
@@ -1241,27 +1511,40 @@ def _first_seen_for_candidates(
 
 
 def _is_in_window(
-    tx: dict, started_at: datetime, first_seen: dict[str, int]
+    tx: dict,
+    started_at: datetime,
+    expires_at: datetime,
+    first_seen: dict[str, int],
 ) -> bool:
     """Whether `tx` could belong to the watch window starting at
     `started_at`.
 
-    Confirmed txs are checked against their block time; unconfirmed
-    ones carry no `block_time` key at all, so they're checked against
-    when mempool.space first observed them instead -- never the other
-    way around.
+    Bounded on both ends by the transaction's *own* timestamp, never
+    by when we happen to be looking: a payment broadcast within the
+    window still matches no matter how late it's observed, and a
+    payment from outside the window (e.g. an unrelated earlier tx on
+    a reused address) never matches no matter how promptly it's
+    observed. Confirmed txs are checked against their block time;
+    unconfirmed ones carry no `block_time` key at all, so they're
+    checked against when mempool.space first observed them instead --
+    never the other way around.
 
     Args:
         tx: A transaction from mempool.space.
         started_at: The earliest moment a tx may belong to this watch.
+        expires_at: The watch's nominal expiry. The tx must have
+            happened no later than `BTC_GRACE_PERIOD` past this.
         first_seen: txid -> first-seen epoch seconds, from
             `_first_seen_at`. A tx missing from this map (lookup
             failed, or mined/unknown) fails closed as not in window.
     """
+    upper_bound = (expires_at + BTC_GRACE_PERIOD).timestamp()
     tx_status = tx.get("status", {})
     if tx_status.get("confirmed", False):
-        return tx_status.get("block_time", 0) >= started_at.timestamp()
-    return first_seen.get(tx["txid"], 0) >= started_at.timestamp()
+        tx_time = tx_status.get("block_time", 0)
+    else:
+        tx_time = first_seen.get(tx["txid"], 0)
+    return started_at.timestamp() <= tx_time <= upper_bound
 
 
 def _find_matching_output(
@@ -1269,6 +1552,7 @@ def _find_matching_output(
     address: str,
     amount_sats: int,
     started_at: datetime,
+    expires_at: datetime,
     first_seen: dict[str, int],
 ) -> dict | None:
     """Finds the first in-window tx paying `address` exactly `amount_sats`.
@@ -1276,12 +1560,13 @@ def _find_matching_output(
     Exact rather than `>=` so a reused address's unrelated history
     can't cross-match a rate-locked quote the way `20,997 >= 10,192`
     once did; time-bounded so nothing that predates the renter
-    starting this watch can match at all, regardless of amount.
+    starting this watch, or postdates its grace period, can match at
+    all, regardless of amount.
     """
     for tx in txs:
         if _paid_sats(tx, address) != amount_sats:
             continue
-        if _is_in_window(tx, started_at, first_seen):
+        if _is_in_window(tx, started_at, expires_at, first_seen):
             return tx
     return None
 
@@ -1290,6 +1575,7 @@ def _find_largest_output(
     txs: list[dict],
     address: str,
     started_at: datetime,
+    expires_at: datetime,
     first_seen: dict[str, int],
 ) -> dict | None:
     """Finds the in-window tx paying `address` the most, if anything did.
@@ -1302,7 +1588,7 @@ def _find_largest_output(
     best: dict | None = None
     best_sats = 0
     for tx in txs:
-        if not _is_in_window(tx, started_at, first_seen):
+        if not _is_in_window(tx, started_at, expires_at, first_seen):
             continue
         paid_sats = _paid_sats(tx, address)
         if paid_sats > 0 and paid_sats > best_sats:
@@ -1319,19 +1605,24 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
     """Takes one last look at a just-lapsed watch window before its quote
     is replaced.
 
-    Honors the about-to-be-discarded amount for `BTC_GRACE_PERIOD` past
-    its expiry, so a tx broadcast right at the edge (seen by mempool.space
-    moments after the renter's browser stopped polling) still resolves
-    normally instead of getting orphaned by a fresh, different quote.
+    Matching is bound by the *transaction's* own timestamp, not by
+    when this check happens to run (see `_is_in_window`), so a
+    correct, on-time payment still settles normally no matter how
+    late the renter reopens the invoice. Only once `BTC_GRACE_PERIOD`
+    has passed since expiry -- and nothing conclusive was found -- is
+    the window actually given up on: a check still inside that grace
+    period leaves it live for the next poll instead of guessing.
 
-    If nothing satisfies that (grace-period) amount but something short
-    of it was sent, that's a genuine shortfall rather than a timing
-    race: it's credited toward the invoice as a fixed, logged USD
-    remainder (`Invoice.Status.UNDERPAID`) rather than silently
-    replaced.
-    The credited tx is excluded from all future matching (see
-    `_excluded_txids`) so it can't also satisfy the smaller remainder
-    quote generated next.
+    If, past grace, something short of the quoted amount was sent,
+    that's a genuine shortfall rather than a timing race: it's
+    credited toward the invoice as a fixed, logged USD remainder
+    (`Invoice.Status.UNDERPAID`), unless BTC appreciated enough since
+    the tx that the credited USD now covers the invoice outright, in
+    which case it's settled as paid instead -- a shortfall in sats is
+    not necessarily a shortfall in dollars, and the invoice is
+    USD-denominated. The credited (or settling) tx is excluded from
+    all future matching (see `_excluded_txids`) so it can't also
+    satisfy a later quote.
 
     Args:
         invoice: The invoice whose watch window just lapsed.
@@ -1339,10 +1630,11 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
             reading across this reconciliation).
 
     Returns:
-        The updated invoice. If a full, overpaid, or grace-period
-        match was found, its status is now PENDING/PAID/PARTIAL.
-        Otherwise, unchanged (no on-chain payment at all) or
-        UNDERPAID (a shortfall was credited).
+        The updated invoice. If a full, overpaid, or appreciated-
+        shortfall match was found, its status is now
+        PENDING/PAID/PARTIAL. Otherwise, unchanged (nothing found yet,
+        still within grace, or no payment at all past grace) or
+        UNDERPAID (a genuine shortfall was credited).
     """
     if not invoice.btc_amount_sats:
         return invoice
@@ -1354,30 +1646,39 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
     txs = [t for t in txs if t.get("txid") not in excluded]
 
     started_at = _watch_started_at(invoice)
+    expires_at = invoice.btc_watch_expires_at
     first_seen = _first_seen_for_candidates(txs, invoice.btc_address)
     amount_sats = invoice.btc_amount_sats
 
-    if now <= invoice.btc_watch_expires_at + BTC_GRACE_PERIOD:
-        exact = _find_matching_output(
-            txs, invoice.btc_address, amount_sats, started_at, first_seen
-        )
-        if exact is not None:
-            invoice.btc_txid = exact["txid"]
-            _settle_btc_leg(
-                invoice, exact.get("status", {}).get("confirmed", False)
-            )
-            return invoice
-
-    best = _find_largest_output(
-        txs, invoice.btc_address, started_at, first_seen
+    exact = _find_matching_output(
+        txs, invoice.btc_address, amount_sats, started_at, expires_at,
+        first_seen,
     )
-    if best is None:
+    if exact is not None:
+        invoice.btc_txid = exact["txid"]
+        _settle_btc_leg(
+            invoice, exact.get("status", {}).get("confirmed", False)
+        )
         return invoice
 
-    if best["paid_sats"] > amount_sats:
+    best = _find_largest_output(
+        txs, invoice.btc_address, started_at, expires_at, first_seen
+    )
+    if best is not None and best["paid_sats"] > amount_sats:
         invoice.btc_txid = best["txid"]
         _settle_btc_leg(
             invoice, best["confirmed"], paid_sats=best["paid_sats"]
+        )
+        return invoice
+
+    if now <= expires_at + BTC_GRACE_PERIOD:
+        return invoice
+
+    if best is None:
+        invoice.btc_amount_sats = None
+        invoice.btc_watch_expires_at = None
+        invoice.save(
+            update_fields=["btc_amount_sats", "btc_watch_expires_at"]
         )
         return invoice
 
@@ -1387,28 +1688,20 @@ def _reconcile_lapsed_watch(invoice: Invoice, now: datetime) -> Invoice:
 
     credited_usd = _sats_to_usd(best["paid_sats"], price)
     usd_owed = _invoice_usd_owed(invoice)
-    invoice.status = Invoice.Status.UNDERPAID
-    invoice.remainder_owed_usd = max(usd_owed - credited_usd, Decimal("0"))
-    invoice.btc_credited_txid = best["txid"]
-    invoice.btc_credited_usd = credited_usd
-    invoice.btc_amount_sats = None
-    invoice.btc_watch_expires_at = None
-    invoice.save(
-        update_fields=[
-            "status",
-            "remainder_owed_usd",
-            "btc_credited_txid",
-            "btc_credited_usd",
-            "btc_amount_sats",
-            "btc_watch_expires_at",
-        ]
-    )
-    quoted_usd = _sats_to_usd(amount_sats, price)
-    _notify_landlord_discrepancy(
+
+    if credited_usd >= usd_owed:
+        invoice.btc_txid = best["txid"]
+        _settle_btc_leg(
+            invoice, best["confirmed"], paid_sats=best["paid_sats"]
+        )
+        return invoice
+
+    _credit_shortfall(
         invoice,
-        kind="underpaid",
-        quoted_usd=quoted_usd,
-        received_usd=credited_usd,
+        txid=best["txid"],
+        credited_usd=credited_usd,
+        usd_owed=usd_owed,
+        quoted_usd=_sats_to_usd(amount_sats, price),
     )
     return invoice
 
@@ -1537,6 +1830,61 @@ def cancel_btc_watch(invoice: Invoice) -> Invoice:
     return invoice
 
 
+def _settle_tracked_tx(invoice: Invoice, paid_sats: int) -> None:
+    """Settles or credits a confirmed, already-tracked BTC tx.
+
+    `check_btc_payment`'s tracked-`btc_txid` branch re-confirms a tx
+    that was already matched against a live quote or claim -- but a
+    quote's `btc_amount_sats` is only a snapshot, and a claim's
+    `btc_txid` should never have been set to a tx smaller than what it
+    credits (see `_credit_shortfall`). This amount-checks the
+    confirmation the same way `_reconcile_lapsed_watch` and
+    `resolve_btc_payment_claim` do, instead of trusting confirmation
+    alone the way a bare `_settle_btc_leg` call once did (issue #52):
+    a genuine shortfall must stay UNDERPAID with its remainder intact,
+    not get force-settled PAID for the invoice's full amount.
+
+    Args:
+        invoice: The invoice being polled. `btc_txid` is already set.
+        paid_sats: What the confirmed tx actually paid.
+    """
+    amount_sats = invoice.btc_amount_sats
+    if not amount_sats:
+        # No live round to settle against (e.g. `btc_txid` set outside
+        # the normal watch/claim flow). Nothing sane to do but wait
+        # for whatever sets one, rather than settling the whole
+        # invoice off an untethered txid.
+        logger.warning(
+            "check_btc_payment: invoice %s has a tracked btc_txid but"
+            " no btc_amount_sats to check it against",
+            invoice.id,
+        )
+        return
+
+    if paid_sats >= amount_sats:
+        _settle_btc_leg(invoice, True, paid_sats=paid_sats)
+        return
+
+    price = get_btc_usd_price()
+    if price is None:
+        # Retry on the next poll rather than guessing.
+        return
+
+    credited_usd = _sats_to_usd(paid_sats, price)
+    usd_owed = _invoice_usd_owed(invoice)
+    if credited_usd >= usd_owed:
+        _settle_btc_leg(invoice, True, paid_sats=paid_sats)
+        return
+
+    _credit_shortfall(
+        invoice,
+        txid=invoice.btc_txid,
+        credited_usd=credited_usd,
+        usd_owed=usd_owed,
+        quoted_usd=_sats_to_usd(amount_sats, price),
+    )
+
+
 def check_btc_payment(invoice: Invoice) -> Invoice:
     """Polls mempool.space for an invoice's BTC payment status.
 
@@ -1580,7 +1928,7 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
             tx = response.json()
             if tx.get("status", {}).get("confirmed", False):
                 paid_sats = _paid_sats(tx, invoice.btc_address)
-                _settle_btc_leg(invoice, True, paid_sats=paid_sats)
+                _settle_tracked_tx(invoice, paid_sats)
             return invoice
 
         txs = _fetch_address_txs(invoice.btc_address, mempool_only=True)
@@ -1589,18 +1937,20 @@ def check_btc_payment(invoice: Invoice) -> Invoice:
         excluded = _excluded_txids(invoice)
         txs = [t for t in txs if t.get("txid") not in excluded]
         started_at = _watch_started_at(invoice)
+        expires_at = invoice.btc_watch_expires_at
         first_seen = _first_seen_for_candidates(txs, invoice.btc_address)
         match = _find_matching_output(
             txs,
             invoice.btc_address,
             invoice.btc_amount_sats,
             started_at,
+            expires_at,
             first_seen,
         )
         paid_sats = None
         if match is None:
             best = _find_largest_output(
-                txs, invoice.btc_address, started_at, first_seen
+                txs, invoice.btc_address, started_at, expires_at, first_seen
             )
             if best is not None and best["paid_sats"] > invoice.btc_amount_sats:
                 match = {

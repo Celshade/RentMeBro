@@ -249,6 +249,29 @@ export interface InvoiceSettlement {
 }
 
 
+export type BtcPaymentClaimStatus = 'pending' | 'accepted' | 'denied';
+
+
+/**
+ * A renter-submitted BTC txid awaiting landlord review, submitted as
+ * a fallback when automatic reconciliation hasn't picked up a
+ * payment yet.
+ * @property id - Primary key.
+ * @property txid - The transaction id the renter says paid the invoice.
+ * @property status - Where the claim stands in the landlord's review.
+ * @property created_at - When the claim was submitted (ISO 8601).
+ * @property resolved_at - When the claim was accepted or denied (ISO
+ *   8601), or null while still pending.
+ */
+export interface BtcPaymentClaim {
+  id: number;
+  txid: string;
+  status: BtcPaymentClaimStatus;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+
 /**
  * @property id - Primary key.
  * @property landlord - User id of the landlord this period belongs to.
@@ -339,6 +362,11 @@ export type InvoiceStatus =
  * @property btc_credited_txid - A short payment credited toward the
  *   invoice that leaves a remainder owed, or an empty string if there
  *   isn't one.
+ * @property btc_credited_usd - What `btc_credited_txid` was worth at
+ *   credit time, as a decimal string, or null if there isn't one.
+ *   Already netted out of `stripe_portion_usd`, `card_full_owed_usd`,
+ *   and `btc_full_owed_usd` server-side -- shown here only so the UI
+ *   can explain why those totals are less than a line item's amount.
  * @property btc_watch_expires_at - When the current BTC quote window
  *   closes (ISO 8601), or null if no watch is in progress.
  * @property paid_line_items - Ids of line items covered by a settled
@@ -366,6 +394,8 @@ export type InvoiceStatus =
  *   instead" would bill right now, ignoring the landlord's BTC scope.
  * @property settlements - Every completed payment round against this
  *   invoice, oldest first.
+ * @property btc_claims - Renter-submitted BTC txid claims awaiting or
+ *   past landlord review, newest first.
  */
 export interface Invoice {
   id: number;
@@ -392,6 +422,7 @@ export interface Invoice {
   stripe_settled_at: string | null;
   btc_txid: string;
   btc_credited_txid: string;
+  btc_credited_usd: string | null;
   btc_watch_expires_at: string | null;
   paid_line_items: number[];
   frozen_line_items: number[];
@@ -402,6 +433,7 @@ export interface Invoice {
   btc_full_owed_usd: string;
   btc_full_line_items: number[];
   settlements: InvoiceSettlement[];
+  btc_claims: BtcPaymentClaim[];
 }
 
 

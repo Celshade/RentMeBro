@@ -288,6 +288,98 @@ class TestInvoice:
             f"Invoice({invoice.billing_period}, rent_only)"
         )
 
+    def test_credited_shortfall_nets_out_of_single_item_totals(self):
+        """A credited shortfall on a single-item invoice must net out
+        of every rail's payoff figure, not just `btc_owed_usd` (#53).
+        """
+        invoice = InvoiceFactory(
+            remainder_owed_usd=Decimal("70.00"),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
+        invoice.btc_round_line_items.set([item])
+
+        assert invoice.btc_owed_usd == Decimal("70.00")
+        assert invoice.stripe_portion_usd == Decimal("70.00")
+        assert invoice.card_full_owed_usd == Decimal("70.00")
+        assert invoice.btc_full_owed_usd == Decimal("70.00")
+
+    def test_credited_shortfall_on_gas_leaves_rent_leg_unnetted(self):
+        """The subset rule: a credit against gas must never net against
+        a card leg quoting rent alone (#53).
+        """
+        invoice = InvoiceFactory(
+            remainder_owed_usd=Decimal("20.00"),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+        )
+        rent = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("1000.00"), kind="rent"
+        )
+        gas = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("50.00"), kind="gas"
+        )
+        invoice.btc_line_items.set([gas])
+        invoice.btc_round_line_items.set([gas])
+
+        # The card leg bills rent alone -- the credit was against gas,
+        # so it must not be subtracted here.
+        assert invoice.stripe_portion_usd == Decimal("1000.00")
+        # "Pay it all instead" totals cover every item, so they do
+        # include the gas item the credit actually applies to.
+        assert invoice.card_full_owed_usd == Decimal("1020.00")
+        assert invoice.btc_full_owed_usd == Decimal("1020.00")
+
+    def test_no_credit_leaves_totals_unchanged(self):
+        invoice = InvoiceFactory()
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
+
+        assert invoice.stripe_portion_usd == Decimal("100.00")
+        assert invoice.card_full_owed_usd == Decimal("100.00")
+        assert invoice.btc_full_owed_usd == Decimal("100.00")
+
+    def test_cleared_credit_leaves_totals_unchanged(self):
+        """A settled/cleared credit (remainder None) must not double as
+        a leftover netting signal -- guards against double-netting
+        after `_settle_btc_leg` clears these fields.
+        """
+        invoice = InvoiceFactory(
+            remainder_owed_usd=None,
+            btc_credited_txid="",
+            btc_credited_usd=None,
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
+
+        assert invoice.stripe_portion_usd == Decimal("100.00")
+        assert invoice.card_full_owed_usd == Decimal("100.00")
+        assert invoice.btc_full_owed_usd == Decimal("100.00")
+
+    def test_credit_exceeding_item_total_floors_at_zero(self):
+        invoice = InvoiceFactory(
+            remainder_owed_usd=Decimal("0.00"),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("999.00"),
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
+        invoice.btc_round_line_items.set([item])
+
+        assert invoice.stripe_portion_usd == Decimal("0")
+        assert invoice.card_full_owed_usd == Decimal("0")
+        assert invoice.btc_full_owed_usd == Decimal("0")
+
 
 class TestCardRoundLiveness:
     def test_processing_is_live_even_an_hour_past_expiry(self):

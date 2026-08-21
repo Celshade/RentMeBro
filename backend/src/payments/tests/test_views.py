@@ -1236,3 +1236,212 @@ class TestInvoiceLineItemMarkPaidView:
         )
 
         assert response.status_code == 409
+
+
+class TestInvoiceBtcClaimSubmitView:
+    def test_requires_authentication(self, api_client, invoice):
+        response = api_client.post(
+            reverse("invoice-btc-claim-submit", args=[invoice.id]),
+            data={"txid": "tx1"},
+        )
+        assert response.status_code == 401
+
+    def test_other_renter_gets_404(self, api_client, invoice):
+        from accounts.tests.factories import UserFactory
+
+        other_renter = UserFactory()
+        api_client.force_authenticate(user=other_renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-claim-submit", args=[invoice.id]),
+            data={"txid": "tx1"},
+        )
+
+        assert response.status_code == 404
+
+    def test_owning_renter_submits_a_claim(
+        self, api_client, renter, invoice
+    ):
+        invoice.btc_address = "bc1qexample"
+        invoice.save(update_fields=["btc_address"])
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-claim-submit", args=[invoice.id]),
+            data={"txid": "tx1"},
+        )
+
+        assert response.status_code == 201
+        assert response.data["txid"] == "tx1"
+        assert response.data["status"] == "pending"
+
+    def test_no_btc_address_returns_400(self, api_client, renter, invoice):
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse("invoice-btc-claim-submit", args=[invoice.id]),
+            data={"txid": "tx1"},
+        )
+
+        assert response.status_code == 400
+
+    def test_duplicate_pending_claim_returns_400(
+        self, api_client, renter, invoice
+    ):
+        invoice.btc_address = "bc1qexample"
+        invoice.save(update_fields=["btc_address"])
+        api_client.force_authenticate(user=renter)
+        api_client.post(
+            reverse("invoice-btc-claim-submit", args=[invoice.id]),
+            data={"txid": "tx1"},
+        )
+
+        response = api_client.post(
+            reverse("invoice-btc-claim-submit", args=[invoice.id]),
+            data={"txid": "tx2"},
+        )
+
+        assert response.status_code == 400
+
+
+class TestInvoiceBtcClaimResolveView:
+    def _pending_claim(self, invoice, renter):
+        from payments.models import BtcPaymentClaim
+
+        return BtcPaymentClaim.objects.create(
+            invoice=invoice, txid="tx1", submitted_by=renter
+        )
+
+    def test_requires_landlord(self, api_client, renter, invoice):
+        claim = self._pending_claim(invoice, renter)
+        api_client.force_authenticate(user=renter)
+
+        response = api_client.post(
+            reverse(
+                "invoice-btc-claim-resolve", args=[invoice.id, claim.id]
+            ),
+            data={"accept": False},
+            format="json",
+        )
+
+        assert response.status_code == 403
+
+    def test_other_landlord_gets_404(self, api_client, renter, invoice):
+        from accounts.tests.factories import LandlordFactory
+
+        claim = self._pending_claim(invoice, renter)
+        other_landlord = LandlordFactory()
+        api_client.force_authenticate(user=other_landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-btc-claim-resolve", args=[invoice.id, claim.id]
+            ),
+            data={"accept": False},
+            format="json",
+        )
+
+        assert response.status_code == 404
+
+    def test_owning_landlord_denies(
+        self, api_client, landlord, renter, invoice
+    ):
+        claim = self._pending_claim(invoice, renter)
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-btc-claim-resolve", args=[invoice.id, claim.id]
+            ),
+            data={"accept": False},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        claim.refresh_from_db()
+        assert claim.status == "denied"
+
+    def test_owning_landlord_accepts_and_settles(
+        self, api_client, mocker, landlord, renter, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        item = InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        invoice.btc_address = "bc1qexample"
+        invoice.save(update_fields=["btc_address"])
+        invoice.btc_line_items.set([item])
+        claim = self._pending_claim(invoice, renter)
+        mocker.patch(
+            "payments.services.get_btc_usd_price", return_value=50000
+        )
+        mock_get = mocker.patch("payments.services.requests.get")
+        mock_get.return_value.json.return_value = [
+            {
+                "txid": "tx1",
+                "vout": [
+                    {
+                        "scriptpubkey_address": "bc1qexample",
+                        "value": 100000,
+                    }
+                ],
+                "status": {"confirmed": True},
+            }
+        ]
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-btc-claim-resolve", args=[invoice.id, claim.id]
+            ),
+            data={"accept": True},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == "paid"
+
+    def test_accept_with_unverifiable_tx_returns_409(
+        self, api_client, mocker, landlord, renter, invoice
+    ):
+        from billing.tests.factories import InvoiceLineItemFactory
+
+        InvoiceLineItemFactory(invoice=invoice, amount=Decimal("50.00"))
+        invoice.btc_address = "bc1qexample"
+        invoice.save(update_fields=["btc_address"])
+        claim = self._pending_claim(invoice, renter)
+        mock_get = mocker.patch("payments.services.requests.get")
+        mock_get.return_value.json.return_value = []
+        api_client.force_authenticate(user=landlord)
+
+        response = api_client.post(
+            reverse(
+                "invoice-btc-claim-resolve", args=[invoice.id, claim.id]
+            ),
+            data={"accept": True},
+            format="json",
+        )
+
+        assert response.status_code == 409
+
+    def test_already_resolved_claim_returns_409(
+        self, api_client, landlord, renter, invoice
+    ):
+        claim = self._pending_claim(invoice, renter)
+        api_client.force_authenticate(user=landlord)
+        api_client.post(
+            reverse(
+                "invoice-btc-claim-resolve", args=[invoice.id, claim.id]
+            ),
+            data={"accept": False},
+            format="json",
+        )
+
+        response = api_client.post(
+            reverse(
+                "invoice-btc-claim-resolve", args=[invoice.id, claim.id]
+            ),
+            data={"accept": False},
+            format="json",
+        )
+
+        assert response.status_code == 409
