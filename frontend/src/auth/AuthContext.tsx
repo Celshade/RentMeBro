@@ -5,8 +5,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { apiFetch, tokenStorage } from '../api/client';
-import type { User } from '../api/types';
+import { AUTH_LOGOUT_EVENT, apiFetch, tokenStorage } from '../api/client';
+import type { Role, User } from '../api/types';
 
 
 /**
@@ -24,14 +24,15 @@ interface VerifyResponse {
 /**
  * @property user - The currently authenticated user, or null if signed out.
  * @property loading - Whether an auth request is in flight.
- * @property requestMagicLink - Emails a sign-in link for the given address.
+ * @property requestMagicLink - Emails a sign-in link for the given address
+ *   and role.
  * @property verifyMagicLink - Exchanges an emailed token for a session.
  * @property logout - Clears the stored session.
  */
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  requestMagicLink: (email: string) => Promise<void>;
+  requestMagicLink: (email: string, role: Role) => Promise<void>;
   verifyMagicLink: (token: string) => Promise<void>;
   logout: () => void;
 }
@@ -60,21 +61,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  useEffect(() => {
+    function handleAuthLogout() {
+      setUser(null);
+    }
+    window.addEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
+    return () =>
+      window.removeEventListener(AUTH_LOGOUT_EVENT, handleAuthLogout);
+  }, []);
+
+
   /**
    * Requests a magic sign-in link be emailed to the given address.
    * @param email - The address to email the sign-in link to.
+   * @param role - Which role (landlord or renter) to sign in as.
    */
-  async function requestMagicLink(email: string) {
+  async function requestMagicLink(email: string, role: Role) {
     setLoading(true);
     try {
       await apiFetch('/api/auth/magic-link/', {
         method: 'POST',
-        body: { email },
+        body: { email, role },
       });
     } finally {
       setLoading(false);
     }
   }
+
 
   /**
    * Exchanges a magic-link token for a session and stores it.

@@ -21,7 +21,7 @@ import environ
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(DEBUG=(bool, False))
-environ.Env.read_env(BASE_DIR / '.env')
+environ.Env.read_env(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -30,119 +30,127 @@ environ.Env.read_env(BASE_DIR / '.env')
 # SECURITY WARNING: keep the secret key used in production secret!
 # No default: a shared fallback key would let anyone forge signed data
 # (sessions, tokens) across every install that forgot to set this.
-SECRET_KEY = env('DJANGO_SECRET_KEY')
+SECRET_KEY = env("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # Defaults to False so a deployment that forgets to set DEBUG doesn't
 # leak stack traces/settings; local dev sets DEBUG=True via .env.
-DEBUG = env('DEBUG')
+DEBUG = env("DEBUG")
 
 ALLOWED_HOSTS = env.list(
-    'DJANGO_ALLOWED_HOSTS', default=['localhost', '127.0.0.1']
+    "DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"]
 )
 
 
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'rest_framework',
-    'corsheaders',
-    'drf_spectacular',
-    'accounts',
-    'billing',
-    'payments',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "rest_framework",
+    "corsheaders",
+    "drf_spectacular",
+    "accounts",
+    "billing",
+    "payments",
 ]
 
-AUTH_USER_MODEL = 'accounts.User'
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 CORS_ALLOWED_ORIGINS = env.list(
-    'CORS_ALLOWED_ORIGINS', default=['http://localhost:5173']
+    "CORS_ALLOWED_ORIGINS", default=["http://localhost:5173"]
 )
 CORS_ALLOW_CREDENTIALS = True
 
 REST_FRAMEWORK = {
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     # Scoped throttles for the anonymous (AllowAny) auth endpoints, to
     # stop unlimited magic-link email sends / token-guessing attempts.
-    'DEFAULT_THROTTLE_RATES': {
-        'magic_link_request': '5/hour',
-        'magic_link_verify': '20/hour',
+    "DEFAULT_THROTTLE_RATES": {
+        "magic_link_request": "5/hour",
+        "magic_link_verify": "20/hour",
+        "btc_claim_submit": "10/hour",
     },
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'RentMeBro API',
-    'DESCRIPTION': 'Rent and utility billing API',
-    'VERSION': '0.1.0',
+    "TITLE": "RentMeBro API",
+    "DESCRIPTION": "Rent and utility billing API",
+    "VERSION": "0.1.0",
 }
 
 # JWT chosen over session/cookie auth: frontend and backend are on
 # separate origins, and a future mobile app can reuse bearer-token
 # auth without cookie/SameSite/CSRF complications.
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=14),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
 }
 
-FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 
 EMAIL_BACKEND = env(
-    'EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend'
+    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
 )
 DEFAULT_FROM_EMAIL = env(
-    'DEFAULT_FROM_EMAIL', default='noreply@rentmebro.local'
+    "DEFAULT_FROM_EMAIL", default="noreply@rentmebro.local"
 )
 
-STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
-STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', default='')
-STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+STRIPE_CONNECT_WEBHOOK_SECRET = env(
+    "STRIPE_CONNECT_WEBHOOK_SECRET", default=""
+)
 
-ROOT_URLCONF = 'config.urls'
+MEMPOOL_API_BASE_URL = env(
+    "MEMPOOL_API_BASE_URL", default="https://mempool.space/api"
+)
+
+ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
+WSGI_APPLICATION = "config.wsgi.application"
 
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': env.db(
-        'DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}'
+    "default": env.db(
+        "DATABASE_URL", default=f'sqlite:///{BASE_DIR / "db.sqlite3"}'
     )
 }
 
@@ -152,25 +160,25 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': (
-            'django.contrib.auth.password_validation'
-            '.UserAttributeSimilarityValidator'
+        "NAME": (
+            "django.contrib.auth.password_validation"
+            ".UserAttributeSimilarityValidator"
         ),
     },
     {
-        'NAME': (
-            'django.contrib.auth.password_validation.MinimumLengthValidator'
+        "NAME": (
+            "django.contrib.auth.password_validation.MinimumLengthValidator"
         ),
     },
     {
-        'NAME': (
-            'django.contrib.auth.password_validation.CommonPasswordValidator'
+        "NAME": (
+            "django.contrib.auth.password_validation.CommonPasswordValidator"
         ),
     },
     {
-        'NAME': (
-            'django.contrib.auth.password_validation'
-            '.NumericPasswordValidator'
+        "NAME": (
+            "django.contrib.auth.password_validation"
+            ".NumericPasswordValidator"
         ),
     },
 ]
@@ -179,9 +187,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "UTC"
 
 USE_I18N = True
 
@@ -191,4 +199,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
+
+# Media files (user uploads, e.g. custom lease documents)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"

@@ -6,27 +6,39 @@ from billing.views import (
     DrivenDayLogViewSet,
     GasPriceEntryViewSet,
     InvoiceViewSet,
+    LeaseRentRevisionView,
     LeaseViewSet,
     MileageProfileViewSet,
+    RenterLookupView,
 )
 
 router = DefaultRouter()
-router.register('leases', LeaseViewSet, basename='lease')
-router.register('driven-days', DrivenDayLogViewSet, basename='driven-day')
+router.register("leases", LeaseViewSet, basename="lease")
+router.register("driven-days", DrivenDayLogViewSet, basename="driven-day")
 router.register(
-    'mileage-profiles', MileageProfileViewSet, basename='mileage-profile'
+    "mileage-profiles", MileageProfileViewSet, basename="mileage-profile"
 )
 router.register(
-    'gas-price-entries', GasPriceEntryViewSet, basename='gas-price-entry'
+    "gas-price-entries", GasPriceEntryViewSet, basename="gas-price-entry"
 )
-router.register('invoices', InvoiceViewSet, basename='invoice')
+router.register("invoices", InvoiceViewSet, basename="invoice")
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
     path(
-        'leases/<int:lease_id>/billing-periods/'
-        '<int:year>-<int:month>/preview/',
+        "renters/<int:renter_id>/billing-periods/"
+        "<int:year>-<int:month>/preview/",
         BillingPeriodPreviewView.as_view(),
-        name='billing-period-preview',
+        name="billing-period-preview",
+    ),
+    path(
+        "renters/lookup/",
+        RenterLookupView.as_view(),
+        name="renter-lookup",
+    ),
+    path(
+        "leases/<int:lease_id>/rent-revisions/",
+        LeaseRentRevisionView.as_view(),
+        name="lease-rent-revision",
     ),
 ]
