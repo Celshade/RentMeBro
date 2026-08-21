@@ -587,9 +587,7 @@ def create_payment_intent_for_invoice(
                 intent.to_dict(),
                 connected_account_id=landlord.stripe_account_id,
             )
-            raise InvoiceAlreadyPaidError(
-                "This invoice was already paid."
-            )
+            raise InvoiceAlreadyPaidError("Invoice is already paid.")
         idempotency_key = (
             f"invoice-{invoice.id}-intent-retry-"
             f"{invoice.stripe_payment_intent_id}"
