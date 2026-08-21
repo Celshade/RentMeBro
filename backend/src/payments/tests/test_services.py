@@ -775,6 +775,39 @@ class TestHandlePaymentIntentSucceeded:
         assert settlement.credited_txid == "short-tx"
         assert settlement.credited_usd == Decimal("30.00")
 
+    def test_consumes_credit_when_intent_status_is_still_processing(
+        self,
+    ):
+        """Regression for #55: the credited item's `btc_round_line_items`
+        snapshot may be empty (falling back to `btc_scope_line_items`),
+        which excludes an item still `card_round_is_live`. Consumption
+        must not depend on `stripe_intent_status` already reading
+        "succeeded" -- this event is what makes it so.
+        """
+        invoice = _onboarded_invoice(
+            status=Invoice.Status.UNDERPAID,
+            remainder_owed_usd=Decimal("70.00"),
+            btc_credited_txid="short-tx",
+            btc_credited_usd=Decimal("30.00"),
+            stripe_intent_status="processing",
+        )
+        item = InvoiceLineItemFactory(
+            invoice=invoice, amount=Decimal("100.00")
+        )
+        invoice.btc_line_items.set([item])
+        invoice.stripe_round_line_items.set([item])
+
+        handle_payment_intent_succeeded(
+            {"metadata": {"invoice_id": str(invoice.id)}},
+            connected_account_id="acct_landlord",
+        )
+
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
+        assert invoice.remainder_owed_usd is None
+        assert invoice.btc_credited_txid == ""
+        assert invoice.btc_credited_usd is None
+
     def test_credit_survives_when_card_round_covers_other_items_only(
         self,
     ):
