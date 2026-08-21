@@ -94,6 +94,7 @@ frontend/
     renter/      # renter dashboard, payment UI
     invoices/    # shared invoice/payment components
     components/  # shared UI components
+    theme/       # system/light/dark theme toggle
 docker-compose.yml
 ```
 
