@@ -208,15 +208,17 @@ export function RenterDashboard({
                       )}
                     </span>
                     {payingInvoiceId === invoice.id && (
-                      <PayInvoice
-                        invoice={invoice}
-                        onPaid={() => {
-                          setPayingInvoiceId(null);
-                          apiFetch<Invoice[]>('/api/invoices/').then(
-                            setInvoices
-                          );
-                        }}
-                      />
+                      <div className="list-row__pay-panel">
+                        <PayInvoice
+                          invoice={invoice}
+                          onPaid={() => {
+                            setPayingInvoiceId(null);
+                            apiFetch<Invoice[]>('/api/invoices/').then(
+                              setInvoices
+                            );
+                          }}
+                        />
+                      </div>
                     )}
                   </li>
                 );
