@@ -29,6 +29,11 @@ Permitted uses under the [LICENSE](LICENSE):
 - ❌ Any commercial use, including running RentMeBro (or a derivative)
   as a paid or hosted service
 
+## Security
+
+Please don't open a public issue for vulnerabilities — see
+[SECURITY.md](SECURITY.md) for private reporting instructions.
+
 ## Known limitations / roadmap
 
 - **Session security** — refresh tokens don't yet support rotation,
