@@ -661,6 +661,14 @@ def handle_payment_intent_succeeded(
         if not billed_items:
             billed_items = invoice.stripe_scope_line_items
         intent_id = payment_intent.get("id") or invoice.stripe_payment_intent_id
+
+        if invoice.stripe_settled_at is None:
+            invoice.stripe_settled_at = timezone.now()
+        invoice.stripe_intent_status = "succeeded"
+        invoice.stripe_round_expires_at = None
+        invoice.stripe_round_line_items.clear()
+        invoice._prefetched_objects_cache = {}
+
         credited_txid, credited_usd = _consume_btc_credit(
             invoice, billed_items
         )
@@ -681,12 +689,6 @@ def handle_payment_intent_succeeded(
         if created:
             settlement.line_items.set(billed_items)
 
-        if invoice.stripe_settled_at is None:
-            invoice.stripe_settled_at = timezone.now()
-        invoice.stripe_intent_status = "succeeded"
-        invoice.stripe_round_expires_at = None
-        invoice.stripe_round_line_items.clear()
-        invoice._prefetched_objects_cache = {}
         invoice.status = resolve_settled_status(invoice)
         invoice.save(
             update_fields=[
