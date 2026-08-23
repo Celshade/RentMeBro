@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "drf_spectacular",
+    "rest_framework_simplejwt.token_blacklist",
     "accounts",
     "billing",
     "payments",
@@ -102,7 +103,12 @@ SPECTACULAR_SETTINGS = {
 # auth without cookie/SameSite/CSRF complications.
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    # A refresh is single-use: each one issues a new refresh token and
+    # blacklists the one just spent, so a stolen refresh token can't be
+    # replayed after the legitimate client next refreshes.
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
