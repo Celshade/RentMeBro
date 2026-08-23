@@ -32,7 +32,8 @@ interface VerifyResponse {
  * @property requestMagicLink - Emails a sign-in link for the given address
  *   and role.
  * @property verifyMagicLink - Exchanges an emailed token for a session.
- * @property logout - Clears the stored session.
+ * @property logout - Revokes the session server-side and clears it
+ *   locally.
  */
 interface AuthContextValue {
   user: User | null;
