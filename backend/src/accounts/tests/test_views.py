@@ -11,6 +11,7 @@ pytestmark = pytest.mark.django_db
 
 REQUEST_URL = reverse("magic-link-request")
 VERIFY_URL = reverse("magic-link-verify")
+LOGOUT_URL = reverse("logout")
 
 
 class TestMagicLinkRequestView:
@@ -82,7 +83,7 @@ class TestMagicLinkVerifyView:
     def test_valid_token_returns_jwt_pair_and_marks_used(self, api_client):
         token = MagicLinkTokenFactory()
 
-        response = api_client.post(VERIFY_URL, {"token": token.token})
+        response = api_client.post(VERIFY_URL, {"token": token.raw_token})
 
         assert response.status_code == 200
         assert "access" in response.data
@@ -93,9 +94,9 @@ class TestMagicLinkVerifyView:
 
     def test_token_cannot_be_reused(self, api_client):
         token = MagicLinkTokenFactory()
-        api_client.post(VERIFY_URL, {"token": token.token})
+        api_client.post(VERIFY_URL, {"token": token.raw_token})
 
-        second = api_client.post(VERIFY_URL, {"token": token.token})
+        second = api_client.post(VERIFY_URL, {"token": token.raw_token})
 
         assert second.status_code == 400
 
@@ -108,7 +109,7 @@ class TestMagicLinkVerifyView:
             expires_at=timezone.now() - timedelta(minutes=1)
         )
 
-        response = api_client.post(VERIFY_URL, {"token": token.token})
+        response = api_client.post(VERIFY_URL, {"token": token.raw_token})
 
         assert response.status_code == 400
         token.refresh_from_db()
@@ -117,6 +118,78 @@ class TestMagicLinkVerifyView:
     def test_unknown_token_returns_400(self, api_client):
         response = api_client.post(VERIFY_URL, {"token": "does-not-exist"})
         assert response.status_code == 400
+
+
+class TestTokenRotation:
+    def test_refresh_returns_a_new_refresh_token(self, api_client):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        user = UserFactory()
+        refresh = RefreshToken.for_user(user)
+
+        response = api_client.post(
+            reverse("token-refresh"), {"refresh": str(refresh)}
+        )
+
+        assert response.status_code == 200
+        assert "refresh" in response.data
+        assert response.data["refresh"] != str(refresh)
+
+    def test_spent_refresh_token_cannot_be_reused(self, api_client):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        user = UserFactory()
+        refresh = RefreshToken.for_user(user)
+        api_client.post(reverse("token-refresh"), {"refresh": str(refresh)})
+
+        second = api_client.post(
+            reverse("token-refresh"), {"refresh": str(refresh)}
+        )
+
+        assert second.status_code == 401
+
+
+class TestLogoutView:
+    def test_valid_refresh_token_is_blacklisted(self, api_client):
+        from rest_framework_simplejwt.token_blacklist.models import (
+            BlacklistedToken,
+            OutstandingToken,
+        )
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        user = UserFactory()
+        refresh = RefreshToken.for_user(user)
+
+        response = api_client.post(LOGOUT_URL, {"refresh": str(refresh)})
+
+        assert response.status_code == 204
+        outstanding = OutstandingToken.objects.get(jti=refresh["jti"])
+        assert BlacklistedToken.objects.filter(
+            token=outstanding
+        ).exists()
+
+    def test_blacklisted_refresh_token_can_no_longer_refresh(
+        self, api_client
+    ):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        user = UserFactory()
+        refresh = RefreshToken.for_user(user)
+        api_client.post(LOGOUT_URL, {"refresh": str(refresh)})
+
+        response = api_client.post(
+            reverse("token-refresh"), {"refresh": str(refresh)}
+        )
+
+        assert response.status_code == 401
+
+    def test_missing_refresh_token_still_returns_204(self, api_client):
+        response = api_client.post(LOGOUT_URL, {})
+        assert response.status_code == 204
+
+    def test_garbage_refresh_token_still_returns_204(self, api_client):
+        response = api_client.post(LOGOUT_URL, {"refresh": "not-a-token"})
+        assert response.status_code == 204
 
 
 class TestMagicLinkFullRoundTrip:
