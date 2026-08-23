@@ -5,7 +5,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { AUTH_LOGOUT_EVENT, apiFetch, tokenStorage } from '../api/client';
+import {
+  AUTH_LOGOUT_EVENT,
+  apiFetch,
+  logoutRequest,
+  tokenStorage,
+} from '../api/client';
 import type { Role, User } from '../api/types';
 
 
@@ -34,7 +39,7 @@ interface AuthContextValue {
   loading: boolean;
   requestMagicLink: (email: string, role: Role) => Promise<void>;
   verifyMagicLink: (token: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -107,8 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function logout() {
-    tokenStorage.clear();
+  /** Revokes the session server-side, then clears local auth state. */
+  async function logout() {
+    await logoutRequest();
     setUser(null);
   }
 

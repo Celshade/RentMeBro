@@ -53,6 +53,10 @@ let refreshPromise: Promise<string | null> | null = null;
 /**
  * Exchanges the stored refresh token for a new access token, storing
  * it on success. Concurrent callers share one in-flight request.
+ *
+ * The backend rotates refresh tokens on every use and blacklists the
+ * one just spent, so the rotated refresh token must be stored too —
+ * the old one won't work a second time.
  * @returns The new access token, or null if refresh isn't possible.
  */
 function refreshAccessToken(): Promise<string | null> {
@@ -68,8 +72,11 @@ function refreshAccessToken(): Promise<string | null> {
   })
     .then(async (response) => {
       if (!response.ok) return null;
-      const data = (await response.json()) as { access: string };
-      tokenStorage.setAccess(data.access);
+      const data = (await response.json()) as {
+        access: string;
+        refresh: string;
+      };
+      tokenStorage.set(data.access, data.refresh);
       return data.access;
     })
     .catch(() => null)
@@ -77,6 +84,27 @@ function refreshAccessToken(): Promise<string | null> {
       refreshPromise = null;
     });
   return refreshPromise;
+}
+
+/**
+ * Revokes the stored refresh token server-side, then clears storage.
+ * Best-effort: storage is cleared even if the request fails, since
+ * the client-side session is ending either way.
+ */
+export async function logoutRequest(): Promise<void> {
+  const refresh = tokenStorage.getRefresh();
+  if (refresh) {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh }),
+      });
+    } catch {
+      // Best-effort — storage is cleared regardless below.
+    }
+  }
+  tokenStorage.clear();
 }
 
 
