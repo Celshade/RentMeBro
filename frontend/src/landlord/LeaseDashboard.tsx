@@ -14,6 +14,7 @@ import type {
   MileageProfile,
 } from '../api/types';
 import {
+  amountDueUsd,
   gasChargeIsFrozen,
   paymentRails,
   railCoverage,
@@ -517,6 +518,11 @@ export function LeaseDashboard({
                         : {formatInvoiceKind(invoice.kind)}
                       </strong>{' '}
                       — ${invoice.total}
+                      {!isPaid && settled.length > 0 && (
+                        <span className="list-row__remaining">
+                          (${amountDueUsd(invoice)} remaining)
+                        </span>
+                      )}
                       <span className="list-row__due">
                         due {invoice.due_date}
                         {!isPaid && settled.length > 0 && (
