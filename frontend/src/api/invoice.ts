@@ -95,6 +95,23 @@ export function settledRailLabel(rail: Rail): string {
 
 
 /**
+ * Total USD settled against an invoice so far, across every rail and
+ * round -- for a "$X paid" note on a partly paid invoice row.
+ * @param invoice - The invoice to check.
+ * @returns The sum of `invoice.settlements[].amount_usd`, as a
+ *   2-decimal string. A split or multi-round payment naturally sums
+ *   for free, since each round is its own settlement row.
+ */
+export function settledAmountUsd(invoice: Invoice): string {
+  const total = invoice.settlements.reduce(
+    (sum, s) => sum + Number(s.amount_usd),
+    0
+  );
+  return total.toFixed(2);
+}
+
+
+/**
  * Which payment rails can pay a single line item right now.
  * @param invoice - The invoice the item belongs to.
  * @param item - The line item to check.
