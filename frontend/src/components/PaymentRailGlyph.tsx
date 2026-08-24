@@ -39,10 +39,26 @@ export const MANUAL_RAIL_EMOJI: Record<'cash' | 'check' | 'other', string> = {
 
 
 /**
+ * A single green checkmark for a settled-rail glyph group. When
+ * several rails paid the same invoice, render one of these after the
+ * whole group rather than one per glyph, so e.g. "💵💳✔" reads as one
+ * settlement rather than each rail claiming its own checkmark.
+ */
+export function SettledCheckmark() {
+  return (
+    <span className="rail-glyph__check" aria-hidden="true">
+      ✔
+    </span>
+  );
+}
+
+
+/**
  * A small symbol marking one payment rail as available on -- or, when
  * `settled` is set, as having paid -- an invoice, meant for glanceable
  * stat tiles and dashboard rows rather than spelling the rail out in
- * words.
+ * words. `settled` doesn't render a checkmark itself -- pair it with a
+ * single `SettledCheckmark` after the whole settled-rail group.
  * @param props.rail - Which rail to render: 'btc' for the ₿ glyph,
  *   'card' for an inline card icon representing Cash App, 'cash' for
  *   a coin icon, 'check' for a check icon, or 'other' for a generic
@@ -51,8 +67,7 @@ export const MANUAL_RAIL_EMOJI: Record<'cash' | 'check' | 'other', string> = {
  *   rail-appropriate description.
  * @param props.settled - Marks the glyph as a completed payment rather
  *   than an available one: for the manual rails, swaps the SVG icon
- *   for the same emoji used in `InvoiceDetail`'s settlement badge, and
- *   appends a small green checkmark to the glyph either way.
+ *   for the same emoji used in `InvoiceDetail`'s settlement badge.
  */
 export function PaymentRailGlyph({
   rail,
@@ -66,17 +81,11 @@ export function PaymentRailGlyph({
   const text =
     label ?? (settled ? SETTLED_DEFAULT_LABEL : DEFAULT_LABEL)[rail];
   const className = `rail-glyph rail-glyph--${rail}`;
-  const check = settled && (
-    <span className="rail-glyph__check" aria-hidden="true">
-      ✔
-    </span>
-  );
   const isManualRail = rail === 'cash' || rail === 'check' || rail === 'other';
   if (settled && isManualRail) {
     return (
       <span className={className} title={text} aria-label={text}>
         {MANUAL_RAIL_EMOJI[rail]}
-        {check}
       </span>
     );
   }
@@ -147,7 +156,6 @@ export function PaymentRailGlyph({
           <circle cx="12" cy="16" r="0.5" fill="currentColor" />
         </svg>
       )}
-      {check}
     </span>
   );
 }
