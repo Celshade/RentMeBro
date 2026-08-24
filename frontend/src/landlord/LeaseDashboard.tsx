@@ -18,6 +18,7 @@ import {
   paymentRails,
   railCoverage,
   railCoverageLabel,
+  settledAmountUsd,
   settledRailLabel,
   settledRails,
 } from '../api/invoice';
@@ -478,19 +479,23 @@ export function LeaseDashboard({
                 const rails = paymentRails(invoice);
                 const coverage = railCoverage(invoice);
                 const settled = settledRails(invoice);
+                const isPaid = invoice.status === 'paid';
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
                       <span className="list-row__rails">
-                        {settled.map((rail) => (
-                          <PaymentRailGlyph
-                            key={rail}
-                            rail={rail}
-                            settled
-                            label={settledRailLabel(rail)}
-                          />
-                        ))}
-                        {settled.length > 0 && <SettledCheckmark />}
+                        {isPaid &&
+                          settled.map((rail) => (
+                            <PaymentRailGlyph
+                              key={rail}
+                              rail={rail}
+                              settled
+                              label={settledRailLabel(rail)}
+                            />
+                          ))}
+                        {isPaid && settled.length > 0 && (
+                          <SettledCheckmark />
+                        )}
                         {rails.btc && (
                           <PaymentRailGlyph
                             rail="btc"
@@ -514,6 +519,19 @@ export function LeaseDashboard({
                       — ${invoice.total}
                       <span className="list-row__due">
                         due {invoice.due_date}
+                        {!isPaid && settled.length > 0 && (
+                          <span className="list-row__paid-note">
+                            — ${settledAmountUsd(invoice)} paid
+                            {settled.map((rail) => (
+                              <PaymentRailGlyph
+                                key={rail}
+                                rail={rail}
+                                settled
+                                label={settledRailLabel(rail)}
+                              />
+                            ))}
+                          </span>
+                        )}
                       </span>
                     </span>
                     <span
