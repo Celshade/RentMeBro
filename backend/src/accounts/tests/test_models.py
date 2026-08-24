@@ -46,7 +46,15 @@ class TestMagicLinkToken:
         )
         assert token.is_valid() is False
 
-    def test_token_is_unique_and_generated(self):
-        token = MagicLinkToken.objects.create(user=UserFactory())
-        assert token.token
-        assert len(token.token) > 20
+    def test_issue_generates_a_unique_hashed_token(self):
+        magic_link, raw_token = MagicLinkToken.issue(UserFactory())
+        assert magic_link.token_hash
+        assert len(raw_token) > 20
+        assert magic_link.token_hash != raw_token
+
+    def test_find_valid_returns_none_for_unknown_token(self):
+        assert MagicLinkToken.find_valid("does-not-exist") is None
+
+    def test_find_valid_returns_the_token_for_a_matching_raw_value(self):
+        magic_link, raw_token = MagicLinkToken.issue(UserFactory())
+        assert MagicLinkToken.find_valid(raw_token) == magic_link
