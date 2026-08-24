@@ -816,6 +816,15 @@ body {
   color: var(--accent);
 }
 
+/* A settled rail keeps its own color but sits in a green-tinted chip,
+   distinguishing "paid via X" from an available-but-unpaid glyph. */
+.rail-glyph--settled {
+  background: var(--paid-bg);
+  border: 1px solid var(--paid);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
 /* Fixed-width gutter so a line-item description stays aligned whether
    its row shows one glyph or two. */
 .list-row__rails {
