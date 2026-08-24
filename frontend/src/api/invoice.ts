@@ -112,6 +112,20 @@ export function settledAmountUsd(invoice: Invoice): string {
 
 
 /**
+ * USD still owed on an invoice, for a "($X remaining)" note next to
+ * the raw total on a partly paid invoice row.
+ * @param invoice - The invoice to check.
+ * @returns `invoice.total` minus `settledAmountUsd`, as a 2-decimal
+ *   string, clamped to zero so an overpaid BTC round never prints a
+ *   negative remainder.
+ */
+export function amountDueUsd(invoice: Invoice): string {
+  const remaining = Number(invoice.total) - Number(settledAmountUsd(invoice));
+  return Math.max(remaining, 0).toFixed(2);
+}
+
+
+/**
  * Which payment rails can pay a single line item right now.
  * @param invoice - The invoice the item belongs to.
  * @param item - The line item to check.
