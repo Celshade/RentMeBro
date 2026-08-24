@@ -682,6 +682,14 @@ body {
   gap: 8px;
 }
 
+/* Forces the status pill + Details link onto their own line below the
+   invoice text, instead of floating beside it when the row has room --
+   used only on the two dashboards' invoice lists, not per-line-item
+   rows, which keep the inline layout. */
+.list-row__actions--own-line {
+  flex-basis: 100%;
+}
+
 .list-row__pay-panel {
   flex-basis: 100%;
 }
