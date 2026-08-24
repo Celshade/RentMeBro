@@ -491,7 +491,10 @@ export function LeaseDashboard({
                               key={rail}
                               rail={rail}
                               settled
-                              label={settledRailLabel(rail)}
+                              label={settledRailLabel(
+                                rail,
+                                settledAmountUsd(invoice, rail)
+                              )}
                             />
                           ))}
                         {isPaid && settled.length > 0 && (
@@ -500,13 +503,21 @@ export function LeaseDashboard({
                         {rails.btc && (
                           <PaymentRailGlyph
                             rail="btc"
-                            label={railCoverageLabel('btc', coverage.btc)}
+                            label={railCoverageLabel(
+                              'btc',
+                              coverage.btc,
+                              invoice.btc_owed_usd
+                            )}
                           />
                         )}
                         {rails.card && (
                           <PaymentRailGlyph
                             rail="card"
-                            label={railCoverageLabel('card', coverage.card)}
+                            label={railCoverageLabel(
+                              'card',
+                              coverage.card,
+                              invoice.stripe_portion_usd
+                            )}
                           />
                         )}
                       </span>
