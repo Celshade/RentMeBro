@@ -18,6 +18,8 @@ import {
   paymentRails,
   railCoverage,
   railCoverageLabel,
+  settledRailLabel,
+  settledRails,
 } from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
@@ -472,10 +474,19 @@ export function LeaseDashboard({
                 const isEditing = editingInvoiceId === invoice.id;
                 const rails = paymentRails(invoice);
                 const coverage = railCoverage(invoice);
+                const settled = settledRails(invoice);
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
                       <span className="list-row__rails">
+                        {settled.map((rail) => (
+                          <PaymentRailGlyph
+                            key={rail}
+                            rail={rail}
+                            settled
+                            label={settledRailLabel(rail)}
+                          />
+                        ))}
                         {rails.btc && (
                           <PaymentRailGlyph
                             rail="btc"
