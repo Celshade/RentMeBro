@@ -512,7 +512,12 @@ export function LeaseDashboard({
                         due {invoice.due_date}
                       </span>
                     </span>
-                    <span className="renter-dashboard__invoice-actions">
+                    <span
+                      className={
+                        'renter-dashboard__invoice-actions ' +
+                        'list-row__actions--own-line'
+                      }
+                    >
                       <InvoiceStatusBadge
                         status={invoice.status}
                         isLate={invoice.is_late}
