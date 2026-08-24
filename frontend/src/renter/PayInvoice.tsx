@@ -95,15 +95,20 @@ const CANCELABLE_INTENT_STATUSES = new Set([
  * @param props.payFull - Bill the full card-payable balance instead
  *   of just the unscoped portion.
  * @param props.onPaid - Called after the renter successfully pays.
+ * @param props.onClose - Called once a cancelled payment attempt has
+ *   been torn down server-side, so the caller can collapse the panel
+ *   instead of it silently reopening on a fresh PaymentIntent.
  */
 function PayInvoiceCashApp({
   invoiceId,
   payFull,
   onPaid,
+  onClose,
 }: {
   invoiceId: number;
   payFull: boolean;
   onPaid: () => void;
+  onClose: () => void;
 }) {
   const [payIntent, setPayIntent] = useState<PayIntentResponse | null>(null);
   const [stripe, setStripe] = useState<Stripe | null>(null);
@@ -202,7 +207,7 @@ function PayInvoiceCashApp({
     setCancelling(true);
     setError(null);
     apiFetch(`/api/invoices/${invoiceId}/pay/cancel/`, { method: 'POST' })
-      .then(() => setRefreshKey((key) => key + 1))
+      .then(onClose)
       .catch((err: Error) => setError(err.message))
       .finally(() => setCancelling(false));
   }
@@ -288,13 +293,17 @@ function PayInvoiceCashApp({
  * still outstanding.
  * @param props.invoice - The invoice to pay.
  * @param props.onPaid - Called after the renter successfully pays.
+ * @param props.onClose - Called once a cancelled payment attempt has
+ *   been torn down server-side, so the caller can collapse the panel.
  */
 export function PayInvoice({
   invoice,
   onPaid,
+  onClose,
 }: {
   invoice: Invoice;
   onPaid: () => void;
+  onClose: () => void;
 }) {
   const hasBtcOption =
     invoice.btc_scope_line_items.length > 0 &&
@@ -429,6 +438,7 @@ export function PayInvoice({
             invoiceId={invoice.id}
             payFull={payFull}
             onPaid={onPaid}
+            onClose={onClose}
           />
         </>
       ) : hasBtcOption ? (
@@ -437,6 +447,7 @@ export function PayInvoice({
           lineItems={invoice.line_items}
           fullOwedUsd={invoice.btc_full_owed_usd}
           onPaid={onPaid}
+          onClose={onClose}
         />
       ) : (
         <p role="alert">
