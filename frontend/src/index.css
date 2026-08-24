@@ -676,6 +676,15 @@ body {
   color: var(--text);
 }
 
+/* Settled-rail glyphs ride the muted due line on a partly paid row, so
+   the row's gutter is left to mean "what can still pay this". */
+.list-row__paid-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
 .renter-dashboard__invoice-actions {
   display: flex;
   align-items: center;
