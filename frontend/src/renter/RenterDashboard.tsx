@@ -89,6 +89,16 @@ export function RenterDashboard({
     return () => onBackHandlerChange(null);
   }, [payingInvoiceId, onBackHandlerChange]);
 
+  /**
+   * Collapses the pay panel and re-fetches invoices, so a cancelled
+   * payment attempt (which unfreezes line items server-side) never
+   * leaves the row rendering stale, still-frozen data.
+   */
+  function closePayPanel() {
+    setPayingInvoiceId(null);
+    apiFetch<Invoice[]>('/api/invoices/').then(setInvoices);
+  }
+
   if (loading) return <p className="empty-state">Loading your rental…</p>;
   if (error) return <p className="empty-state">{error}</p>;
   if (!lease) return <p className="empty-state">No active lease found.</p>;
@@ -263,9 +273,15 @@ export function RenterDashboard({
                       {invoice.status !== 'paid' && (
                         <button
                           type="button"
-                          onClick={() => setPayingInvoiceId(invoice.id)}
+                          onClick={() =>
+                            payingInvoiceId === invoice.id
+                              ? closePayPanel()
+                              : setPayingInvoiceId(invoice.id)
+                          }
                         >
-                          Pay
+                          {payingInvoiceId === invoice.id
+                            ? 'Close payment options'
+                            : 'Pay'}
                         </button>
                       )}
                     </span>
@@ -273,12 +289,8 @@ export function RenterDashboard({
                       <div className="list-row__pay-panel">
                         <PayInvoice
                           invoice={invoice}
-                          onPaid={() => {
-                            setPayingInvoiceId(null);
-                            apiFetch<Invoice[]>('/api/invoices/').then(
-                              setInvoices
-                            );
-                          }}
+                          onPaid={closePayPanel}
+                          onClose={closePayPanel}
                         />
                       </div>
                     )}
