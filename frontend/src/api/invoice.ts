@@ -1,3 +1,7 @@
+import {
+  MANUAL_RAIL_LABEL,
+  type Rail,
+} from '../components/PaymentRailGlyph';
 import type { Invoice, InvoiceLineItem, InvoiceSettlement } from './types';
 
 
@@ -52,6 +56,41 @@ export function settlementForLineItem(
   itemId: number
 ): InvoiceSettlement | undefined {
   return invoice.settlements.find((s) => s.line_items.includes(itemId));
+}
+
+
+/** Stable display order for settled-rail glyphs, so a row's glyphs
+ * never reshuffle between renders. */
+const RAIL_ORDER: Rail[] = ['btc', 'card', 'cash', 'check', 'other'];
+
+
+/**
+ * Which rails have actually settled part of an invoice, for a
+ * persistent "how was this paid" indicator that survives a line item
+ * going from unpaid to paid -- unlike `paymentRails`, which only
+ * covers what's still payable.
+ * @param invoice - The invoice to check.
+ * @returns The distinct rails across `invoice.settlements`, in a
+ *   stable `btc, card, cash, check, other` order. A split or
+ *   multi-round payment naturally dedupes to one entry per rail.
+ */
+export function settledRails(invoice: Invoice): Rail[] {
+  const rails = new Set(invoice.settlements.map((s) => s.rail));
+  return RAIL_ORDER.filter((rail) => rails.has(rail));
+}
+
+
+/**
+ * Past-tense hover text for a settled-rail glyph.
+ * @param rail - The rail that settled the payment.
+ * @returns "Paid in Bitcoin" / "Paid by card (Cash App)" for btc/card,
+ *   or the manual rail's shared label (from `PaymentRailGlyph`) for
+ *   cash/check/other.
+ */
+export function settledRailLabel(rail: Rail): string {
+  if (rail === 'btc') return 'Paid in Bitcoin';
+  if (rail === 'card') return 'Paid by card (Cash App)';
+  return `Paid by ${MANUAL_RAIL_LABEL[rail]}`;
 }
 
 
