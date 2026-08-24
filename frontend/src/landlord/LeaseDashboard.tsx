@@ -507,7 +507,10 @@ export function LeaseDashboard({
                         )}
                         : {formatInvoiceKind(invoice.kind)}
                       </strong>{' '}
-                      — ${invoice.total} — due {invoice.due_date}
+                      — ${invoice.total}
+                      <span className="list-row__due">
+                        due {invoice.due_date}
+                      </span>
                     </span>
                     <span className="renter-dashboard__invoice-actions">
                       <InvoiceStatusBadge
