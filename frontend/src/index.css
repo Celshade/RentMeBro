@@ -821,7 +821,7 @@ body {
    available-but-unpaid glyph. */
 .rail-glyph__check {
   color: var(--paid);
-  margin-left: 2px;
+  margin-left: 4px;
   font-weight: 700;
 }
 
@@ -829,8 +829,10 @@ body {
    its row shows one glyph or two. */
 .list-row__rails {
   display: inline-flex;
+  align-items: center;
   gap: 4px;
   min-width: 34px;
+  margin-right: 6px;
 }
 
 .empty-state {
