@@ -2,6 +2,7 @@ import {
   MANUAL_RAIL_LABEL,
   type Rail,
 } from '../components/PaymentRailGlyph';
+import { formatMoney } from './format';
 import type { Invoice, InvoiceLineItem, InvoiceSettlement } from './types';
 
 
@@ -83,30 +84,37 @@ export function settledRails(invoice: Invoice): Rail[] {
 /**
  * Past-tense hover text for a settled-rail glyph.
  * @param rail - The rail that settled the payment.
+ * @param amountUsd - That rail's settled amount, as a raw decimal
+ *   string. When given, prefixes the label with the formatted dollar
+ *   figure so a multi-rail settlement shows its per-rail split.
  * @returns "Paid in Bitcoin" / "Paid by card (Cash App)" for btc/card,
  *   or the manual rail's shared label (from `PaymentRailGlyph`) for
- *   cash/check/other.
+ *   cash/check/other -- with "$X " prefixed when `amountUsd` is given.
  */
-export function settledRailLabel(rail: Rail): string {
-  if (rail === 'btc') return 'Paid in Bitcoin';
-  if (rail === 'card') return 'Paid by card (Cash App)';
-  return `Paid by ${MANUAL_RAIL_LABEL[rail]}`;
+export function settledRailLabel(rail: Rail, amountUsd?: string): string {
+  const prefix = amountUsd === undefined ? '' : `$${formatMoney(amountUsd)} `;
+  if (rail === 'btc') return `${prefix}Paid in Bitcoin`;
+  if (rail === 'card') return `${prefix}Paid by card (Cash App)`;
+  return `${prefix}Paid by ${MANUAL_RAIL_LABEL[rail]}`;
 }
 
 
 /**
- * Total USD settled against an invoice so far, across every rail and
- * round -- for a "$X paid" note on a partly paid invoice row.
+ * Total USD settled against an invoice so far, for a "$X paid" note on
+ * a partly paid invoice row, or a single rail's share of that for its
+ * gutter glyph's hover text.
  * @param invoice - The invoice to check.
- * @returns The sum of `invoice.settlements[].amount_usd`, as a
- *   2-decimal string. A split or multi-round payment naturally sums
- *   for free, since each round is its own settlement row.
+ * @param rail - When given, sum only this rail's settlements instead
+ *   of every rail.
+ * @returns The sum of `invoice.settlements[].amount_usd` (filtered to
+ *   `rail` when given), as a 2-decimal string. A split or multi-round
+ *   payment naturally sums for free, since each round is its own
+ *   settlement row.
  */
-export function settledAmountUsd(invoice: Invoice): string {
-  const total = invoice.settlements.reduce(
-    (sum, s) => sum + Number(s.amount_usd),
-    0
-  );
+export function settledAmountUsd(invoice: Invoice, rail?: Rail): string {
+  const total = invoice.settlements
+    .filter((s) => rail === undefined || s.rail === rail)
+    .reduce((sum, s) => sum + Number(s.amount_usd), 0);
   return total.toFixed(2);
 }
 
@@ -219,6 +227,9 @@ export function railCoverage(invoice: Invoice): {
  * The glyph hover label for a rail, given its coverage.
  * @param rail - Which rail the glyph is for.
  * @param coverage - That rail's coverage, from `railCoverage`.
+ * @param amountUsd - What this rail would still bill, as a raw decimal
+ *   string. When given, prefixes the label with the formatted dollar
+ *   figure, worded around whether the rail covers everything unpaid.
  * @returns undefined on 'none' so the glyph falls back to its default
  *   label -- callers only reach this for a rail that's visible at all,
  *   so 'none' shouldn't normally occur, but the fallback keeps a
@@ -226,10 +237,17 @@ export function railCoverage(invoice: Invoice): {
  */
 export function railCoverageLabel(
   rail: 'btc' | 'card',
-  coverage: RailCoverage
+  coverage: RailCoverage,
+  amountUsd?: string
 ): string | undefined {
   if (coverage === 'none') return undefined;
   const railName = rail === 'btc' ? 'Bitcoin' : 'card (Cash App)';
+  if (amountUsd !== undefined) {
+    const amount = `$${formatMoney(amountUsd)}`;
+    return coverage === 'full'
+      ? `${amount} payable in ${railName}`
+      : `${amount} of this invoice payable in ${railName}`;
+  }
   return coverage === 'full'
     ? `Payable in ${railName}`
     : `Partially payable in ${railName}`;
