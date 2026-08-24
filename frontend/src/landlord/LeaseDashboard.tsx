@@ -23,7 +23,10 @@ import {
 } from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
-import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
+import {
+  PaymentRailGlyph,
+  SettledCheckmark,
+} from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
@@ -487,6 +490,7 @@ export function LeaseDashboard({
                             label={settledRailLabel(rail)}
                           />
                         ))}
+                        {settled.length > 0 && <SettledCheckmark />}
                         {rails.btc && (
                           <PaymentRailGlyph
                             rail="btc"
