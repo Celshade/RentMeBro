@@ -291,6 +291,13 @@ export function DrivenDaysCalendar({
                     range.from <= weekEndKey &&
                     (range.to === null || range.to >= weekStartKey)
                 );
+                const weekPrice = priceForDate(
+                  weekStartKey,
+                  pricedWeekRanges ?? []
+                );
+                const weekPriceSuffix = weekPrice
+                  ? `$${weekPrice}/gal — `
+                  : '';
                 return (
                   <button
                     type="button"
@@ -301,7 +308,9 @@ export function DrivenDaysCalendar({
                         : '')
                     }
                     title={
-                      (isPriced ? 'Gas price set — ' : 'Set gas price for ') +
+                      (isPriced
+                        ? `Gas price set — ${weekPriceSuffix}`
+                        : 'Set gas price for ') +
                       `${weekStartKey} through ${weekEndKey}`
                     }
                     onClick={() =>
