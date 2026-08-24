@@ -114,7 +114,8 @@ SIMPLE_JWT = {
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 
 EMAIL_BACKEND = env(
-    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
+    "EMAIL_BACKEND",
+    default="config.email_backends.PlainTextConsoleEmailBackend",
 )
 DEFAULT_FROM_EMAIL = env(
     "DEFAULT_FROM_EMAIL", default="noreply@rentmebro.local"
