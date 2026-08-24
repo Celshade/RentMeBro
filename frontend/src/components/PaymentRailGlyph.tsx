@@ -50,9 +50,9 @@ export const MANUAL_RAIL_EMOJI: Record<'cash' | 'check' | 'other', string> = {
  * @param props.label - Tooltip/screen-reader text. Defaults to a
  *   rail-appropriate description.
  * @param props.settled - Marks the glyph as a completed payment rather
- *   than an available one: adds a `rail-glyph--settled` chip style and,
- *   for the manual rails, swaps the SVG icon for the same emoji used in
- *   `InvoiceDetail`'s settlement badge.
+ *   than an available one: for the manual rails, swaps the SVG icon
+ *   for the same emoji used in `InvoiceDetail`'s settlement badge, and
+ *   appends a small green checkmark to the glyph either way.
  */
 export function PaymentRailGlyph({
   rail,
@@ -65,13 +65,18 @@ export function PaymentRailGlyph({
 }) {
   const text =
     label ?? (settled ? SETTLED_DEFAULT_LABEL : DEFAULT_LABEL)[rail];
-  const className =
-    `rail-glyph rail-glyph--${rail}` + (settled ? ' rail-glyph--settled' : '');
+  const className = `rail-glyph rail-glyph--${rail}`;
+  const check = settled && (
+    <span className="rail-glyph__check" aria-hidden="true">
+      ✔
+    </span>
+  );
   const isManualRail = rail === 'cash' || rail === 'check' || rail === 'other';
   if (settled && isManualRail) {
     return (
       <span className={className} title={text} aria-label={text}>
         {MANUAL_RAIL_EMOJI[rail]}
+        {check}
       </span>
     );
   }
@@ -142,6 +147,7 @@ export function PaymentRailGlyph({
           <circle cx="12" cy="16" r="0.5" fill="currentColor" />
         </svg>
       )}
+      {check}
     </span>
   );
 }
