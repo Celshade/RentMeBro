@@ -25,10 +25,11 @@ it at your own risk.
 
 Permitted uses under the [LICENSE](LICENSE):
 - ✅ Personal use / self-hosting for noncommercial purposes
-- ✅ Education, research, and portfolio use
-- ✅ Contributions back to this repository
+- ✅ Education, research, and portfolio use, with no anticipated
+  commercial application
 - ❌ Any commercial use, including running RentMeBro (or a derivative)
   as a paid or hosted service
+- ✅ Contributions back to this repository
 
 ## Security
 
@@ -193,10 +194,12 @@ Backend test suites live under `src/{accounts,billing,payments}/tests/`.
 open source):
 
 - ✅ Study, modify, and contribute
-- ✅ Personal use and self-hosting for noncommercial purposes
+- ✅ Personal use and self-hosting for noncommercial purposes, with no
+  anticipated commercial application
 - ❌ No commercial use — including selling derivatives or running
   RentMeBro (or a fork) as a paid or hosted service
 - ℹ️ The creator and their business retain full commercial rights
+- ℹ️ Commercial use requires a separate license from the creator
 
 See [LICENSE](LICENSE) for the full text and the attribution requirements
 that apply when redistributing.
