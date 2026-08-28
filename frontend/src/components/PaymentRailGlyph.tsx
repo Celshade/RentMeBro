@@ -1,8 +1,9 @@
-/** Default tooltip/screen-reader text for each rail. */
-const DEFAULT_LABEL: Record<
-  'btc' | 'card' | 'cash' | 'check' | 'other',
-  string
-> = {
+/** A payment rail an invoice line item can be paid or settled on. */
+export type Rail = 'btc' | 'card' | 'cash' | 'check' | 'other';
+
+
+/** Default tooltip/screen-reader text for each rail, unsettled. */
+const DEFAULT_LABEL: Record<Rail, string> = {
   btc: 'Payable in Bitcoin',
   card: 'Payable by card (Cash App)',
   cash: 'Paid in cash',
@@ -11,32 +12,85 @@ const DEFAULT_LABEL: Record<
 };
 
 
+/** Default tooltip/screen-reader text for each rail, once settled. */
+const SETTLED_DEFAULT_LABEL: Record<Rail, string> = {
+  btc: 'Paid in Bitcoin',
+  card: 'Paid by card (Cash App)',
+  cash: 'Paid in cash',
+  check: 'Paid by check',
+  other: 'Paid by another method',
+};
+
+
+/** Short label for a manual rail, shown in its settled badge. */
+export const MANUAL_RAIL_LABEL: Record<'cash' | 'check' | 'other', string> = {
+  cash: 'Cash',
+  check: 'Check',
+  other: 'Other',
+};
+
+
+/** Emoji identifying a manual rail in its settled badge. */
+export const MANUAL_RAIL_EMOJI: Record<'cash' | 'check' | 'other', string> = {
+  cash: '💵',
+  check: '🧾',
+  other: '📝',
+};
+
+
 /**
- * A small symbol marking one payment rail as available on -- or, for
- * the manual rails, as having settled -- an invoice, meant for
- * glanceable stat tiles and dashboard rows rather than spelling the
- * rail out in words.
+ * A single green checkmark for a settled-rail glyph group. When
+ * several rails paid the same invoice, render one of these after the
+ * whole group rather than one per glyph, so e.g. "💵💳✔" reads as one
+ * settlement rather than each rail claiming its own checkmark.
+ */
+export function SettledCheckmark() {
+  return (
+    <span className="rail-glyph__check" aria-hidden="true">
+      ✔
+    </span>
+  );
+}
+
+
+/**
+ * A small symbol marking one payment rail as available on -- or, when
+ * `settled` is set, as having paid -- an invoice, meant for glanceable
+ * stat tiles and dashboard rows rather than spelling the rail out in
+ * words. `settled` doesn't render a checkmark itself -- pair it with a
+ * single `SettledCheckmark` after the whole settled-rail group.
  * @param props.rail - Which rail to render: 'btc' for the ₿ glyph,
  *   'card' for an inline card icon representing Cash App, 'cash' for
  *   a coin icon, 'check' for a check icon, or 'other' for a generic
  *   marker.
  * @param props.label - Tooltip/screen-reader text. Defaults to a
  *   rail-appropriate description.
+ * @param props.settled - Marks the glyph as a completed payment rather
+ *   than an available one: for the manual rails, swaps the SVG icon
+ *   for the same emoji used in `InvoiceDetail`'s settlement badge.
  */
 export function PaymentRailGlyph({
   rail,
   label,
+  settled,
 }: {
-  rail: 'btc' | 'card' | 'cash' | 'check' | 'other';
+  rail: Rail;
   label?: string;
+  settled?: boolean;
 }) {
-  const text = label ?? DEFAULT_LABEL[rail];
+  const text =
+    label ?? (settled ? SETTLED_DEFAULT_LABEL : DEFAULT_LABEL)[rail];
+  const className = `rail-glyph rail-glyph--${rail}`;
+  const isManualRail = rail === 'cash' || rail === 'check' || rail === 'other';
+  if (settled && isManualRail) {
+    return (
+      <span className={className} title={text} aria-label={text}>
+        {MANUAL_RAIL_EMOJI[rail]}
+      </span>
+    );
+  }
   return (
-    <span
-      className={`rail-glyph rail-glyph--${rail}`}
-      title={text}
-      aria-label={text}
-    >
+    <span className={className} title={text} aria-label={text}>
       {rail === 'btc' ? (
         '₿'
       ) : rail === 'card' ? (

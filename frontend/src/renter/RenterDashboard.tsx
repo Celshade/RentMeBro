@@ -13,10 +13,21 @@ import type {
   Lease,
   MileageProfile,
 } from '../api/types';
-import { paymentRails, railCoverage, railCoverageLabel } from '../api/invoice';
+import {
+  amountDueUsd,
+  paymentRails,
+  railCoverage,
+  railCoverageLabel,
+  settledAmountUsd,
+  settledRailLabel,
+  settledRails,
+} from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
-import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
+import {
+  PaymentRailGlyph,
+  SettledCheckmark,
+} from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
 import { PayInvoice } from './PayInvoice';
 
@@ -77,6 +88,16 @@ export function RenterDashboard({
     }
     return () => onBackHandlerChange(null);
   }, [payingInvoiceId, onBackHandlerChange]);
+
+  /**
+   * Collapses the pay panel and re-fetches invoices, so a cancelled
+   * payment attempt (which unfreezes line items server-side) never
+   * leaves the row rendering stale, still-frozen data.
+   */
+  function closePayPanel() {
+    setPayingInvoiceId(null);
+    apiFetch<Invoice[]>('/api/invoices/').then(setInvoices);
+  }
 
   if (loading) return <p className="empty-state">Loading your rental…</p>;
   if (error) return <p className="empty-state">{error}</p>;
@@ -164,20 +185,45 @@ export function RenterDashboard({
               ).map((invoice) => {
                 const rails = paymentRails(invoice);
                 const coverage = railCoverage(invoice);
+                const settled = settledRails(invoice);
+                const isPaid = invoice.status === 'paid';
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
                       <span className="list-row__rails">
+                        {isPaid &&
+                          settled.map((rail) => (
+                            <PaymentRailGlyph
+                              key={rail}
+                              rail={rail}
+                              settled
+                              label={settledRailLabel(
+                                rail,
+                                settledAmountUsd(invoice, rail)
+                              )}
+                            />
+                          ))}
+                        {isPaid && settled.length > 0 && (
+                          <SettledCheckmark />
+                        )}
                         {rails.btc && (
                           <PaymentRailGlyph
                             rail="btc"
-                            label={railCoverageLabel('btc', coverage.btc)}
+                            label={railCoverageLabel(
+                              'btc',
+                              coverage.btc,
+                              invoice.btc_owed_usd
+                            )}
                           />
                         )}
                         {rails.card && (
                           <PaymentRailGlyph
                             rail="card"
-                            label={railCoverageLabel('card', coverage.card)}
+                            label={railCoverageLabel(
+                              'card',
+                              coverage.card,
+                              invoice.stripe_portion_usd
+                            )}
                           />
                         )}
                       </span>
@@ -188,9 +234,35 @@ export function RenterDashboard({
                         )}
                         : {formatInvoiceKind(invoice.kind)}
                       </strong>{' '}
-                      — ${invoice.total} — due {invoice.due_date}
+                      — ${invoice.total}
+                      {!isPaid && settled.length > 0 && (
+                        <span className="list-row__remaining">
+                          (${amountDueUsd(invoice)} remaining)
+                        </span>
+                      )}
+                      <span className="list-row__due">
+                        due {invoice.due_date}
+                        {!isPaid && settled.length > 0 && (
+                          <span className="list-row__paid-note">
+                            — ${settledAmountUsd(invoice)} paid
+                            {settled.map((rail) => (
+                              <PaymentRailGlyph
+                                key={rail}
+                                rail={rail}
+                                settled
+                                label={settledRailLabel(rail)}
+                              />
+                            ))}
+                          </span>
+                        )}
+                      </span>
                     </span>
-                    <span className="renter-dashboard__invoice-actions">
+                    <span
+                      className={
+                        'renter-dashboard__invoice-actions ' +
+                        'list-row__actions--own-line'
+                      }
+                    >
                       <InvoiceStatusBadge
                         status={invoice.status}
                         isLate={invoice.is_late}
@@ -201,9 +273,15 @@ export function RenterDashboard({
                       {invoice.status !== 'paid' && (
                         <button
                           type="button"
-                          onClick={() => setPayingInvoiceId(invoice.id)}
+                          onClick={() =>
+                            payingInvoiceId === invoice.id
+                              ? closePayPanel()
+                              : setPayingInvoiceId(invoice.id)
+                          }
                         >
-                          Pay
+                          {payingInvoiceId === invoice.id
+                            ? 'Close payment options'
+                            : 'Pay'}
                         </button>
                       )}
                     </span>
@@ -211,12 +289,8 @@ export function RenterDashboard({
                       <div className="list-row__pay-panel">
                         <PayInvoice
                           invoice={invoice}
-                          onPaid={() => {
-                            setPayingInvoiceId(null);
-                            apiFetch<Invoice[]>('/api/invoices/').then(
-                              setInvoices
-                            );
-                          }}
+                          onPaid={closePayPanel}
+                          onClose={closePayPanel}
                         />
                       </div>
                     )}
