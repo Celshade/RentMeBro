@@ -38,9 +38,13 @@ Please don't open a public issue for vulnerabilities — see
 
 ## Known limitations / roadmap
 
-- **Session security** — refresh tokens don't yet support rotation,
-  revocation, or a real logout endpoint. Hardening is planned before
-  any real deployment.
+- **Scheduled cleanup** — token-pruning management commands exist but
+  aren't wired into a scheduler yet, so expired/spent auth records only
+  get cleaned up when run by hand. Scheduling is planned before any
+  real deployment.
+- **Manual review pass** — a style, modularity, and readability review
+  of the codebase is planned before any real deployment (tracked in
+  [#59](https://github.com/Celshade/RentMeBro/issues/59)).
 
 ## Features
 
