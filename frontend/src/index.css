@@ -670,10 +670,41 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.list-row__due {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* Settled-rail glyphs ride the muted due line on a partly paid row, so
+   the row's gutter is left to mean "what can still pay this". */
+.list-row__paid-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+/* Muted so the raw total stays the visual anchor and this reads as a
+   clarifying aside, not a second, competing number. */
+.list-row__remaining {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--text);
+}
+
 .renter-dashboard__invoice-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Forces the status pill + Details link onto their own line below the
+   invoice text, instead of floating beside it when the row has room --
+   used only on the two dashboards' invoice lists, not per-line-item
+   rows, which keep the inline layout. */
+.list-row__actions--own-line {
+  flex-basis: 100%;
 }
 
 .list-row__pay-panel {
@@ -816,12 +847,22 @@ body {
   color: var(--accent);
 }
 
+/* A settled rail keeps its glyph's own color and gets a small green
+   checkmark suffix, distinguishing "paid via X" from an
+   available-but-unpaid glyph. */
+.rail-glyph__check {
+  color: var(--paid);
+  font-weight: 700;
+}
+
 /* Fixed-width gutter so a line-item description stays aligned whether
    its row shows one glyph or two. */
 .list-row__rails {
   display: inline-flex;
+  align-items: center;
   gap: 4px;
   min-width: 34px;
+  margin-right: 6px;
 }
 
 .empty-state {

@@ -1,3 +1,8 @@
+import {
+  MANUAL_RAIL_LABEL,
+  type Rail,
+} from '../components/PaymentRailGlyph';
+import { formatMoney } from './format';
 import type { Invoice, InvoiceLineItem, InvoiceSettlement } from './types';
 
 
@@ -52,6 +57,79 @@ export function settlementForLineItem(
   itemId: number
 ): InvoiceSettlement | undefined {
   return invoice.settlements.find((s) => s.line_items.includes(itemId));
+}
+
+
+/** Stable display order for settled-rail glyphs, so a row's glyphs
+ * never reshuffle between renders. */
+const RAIL_ORDER: Rail[] = ['btc', 'card', 'cash', 'check', 'other'];
+
+
+/**
+ * Which rails have actually settled part of an invoice, for a
+ * persistent "how was this paid" indicator that survives a line item
+ * going from unpaid to paid -- unlike `paymentRails`, which only
+ * covers what's still payable.
+ * @param invoice - The invoice to check.
+ * @returns The distinct rails across `invoice.settlements`, in a
+ *   stable `btc, card, cash, check, other` order. A split or
+ *   multi-round payment naturally dedupes to one entry per rail.
+ */
+export function settledRails(invoice: Invoice): Rail[] {
+  const rails = new Set(invoice.settlements.map((s) => s.rail));
+  return RAIL_ORDER.filter((rail) => rails.has(rail));
+}
+
+
+/**
+ * Past-tense hover text for a settled-rail glyph.
+ * @param rail - The rail that settled the payment.
+ * @param amountUsd - That rail's settled amount, as a raw decimal
+ *   string. When given, prefixes the label with the formatted dollar
+ *   figure so a multi-rail settlement shows its per-rail split.
+ * @returns "Paid in Bitcoin" / "Paid by card (Cash App)" for btc/card,
+ *   or the manual rail's shared label (from `PaymentRailGlyph`) for
+ *   cash/check/other -- with "$X " prefixed when `amountUsd` is given.
+ */
+export function settledRailLabel(rail: Rail, amountUsd?: string): string {
+  const prefix = amountUsd === undefined ? '' : `$${formatMoney(amountUsd)} `;
+  if (rail === 'btc') return `${prefix}Paid in Bitcoin`;
+  if (rail === 'card') return `${prefix}Paid by card (Cash App)`;
+  return `${prefix}Paid by ${MANUAL_RAIL_LABEL[rail]}`;
+}
+
+
+/**
+ * Total USD settled against an invoice so far, for a "$X paid" note on
+ * a partly paid invoice row, or a single rail's share of that for its
+ * gutter glyph's hover text.
+ * @param invoice - The invoice to check.
+ * @param rail - When given, sum only this rail's settlements instead
+ *   of every rail.
+ * @returns The sum of `invoice.settlements[].amount_usd` (filtered to
+ *   `rail` when given), as a 2-decimal string. A split or multi-round
+ *   payment naturally sums for free, since each round is its own
+ *   settlement row.
+ */
+export function settledAmountUsd(invoice: Invoice, rail?: Rail): string {
+  const total = invoice.settlements
+    .filter((s) => rail === undefined || s.rail === rail)
+    .reduce((sum, s) => sum + Number(s.amount_usd), 0);
+  return total.toFixed(2);
+}
+
+
+/**
+ * USD still owed on an invoice, for a "($X remaining)" note next to
+ * the raw total on a partly paid invoice row.
+ * @param invoice - The invoice to check.
+ * @returns `invoice.total` minus `settledAmountUsd`, as a 2-decimal
+ *   string, clamped to zero so an overpaid BTC round never prints a
+ *   negative remainder.
+ */
+export function amountDueUsd(invoice: Invoice): string {
+  const remaining = Number(invoice.total) - Number(settledAmountUsd(invoice));
+  return Math.max(remaining, 0).toFixed(2);
 }
 
 
@@ -149,6 +227,9 @@ export function railCoverage(invoice: Invoice): {
  * The glyph hover label for a rail, given its coverage.
  * @param rail - Which rail the glyph is for.
  * @param coverage - That rail's coverage, from `railCoverage`.
+ * @param amountUsd - What this rail would still bill, as a raw decimal
+ *   string. When given, prefixes the label with the formatted dollar
+ *   figure, worded around whether the rail covers everything unpaid.
  * @returns undefined on 'none' so the glyph falls back to its default
  *   label -- callers only reach this for a rail that's visible at all,
  *   so 'none' shouldn't normally occur, but the fallback keeps a
@@ -156,10 +237,17 @@ export function railCoverage(invoice: Invoice): {
  */
 export function railCoverageLabel(
   rail: 'btc' | 'card',
-  coverage: RailCoverage
+  coverage: RailCoverage,
+  amountUsd?: string
 ): string | undefined {
   if (coverage === 'none') return undefined;
   const railName = rail === 'btc' ? 'Bitcoin' : 'card (Cash App)';
+  if (amountUsd !== undefined) {
+    const amount = `$${formatMoney(amountUsd)}`;
+    return coverage === 'full'
+      ? `${amount} payable in ${railName}`
+      : `${amount} of this invoice payable in ${railName}`;
+  }
   return coverage === 'full'
     ? `Payable in ${railName}`
     : `Partially payable in ${railName}`;

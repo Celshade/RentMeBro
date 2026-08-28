@@ -1,7 +1,11 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from accounts.views import MagicLinkRequestView, MagicLinkVerifyView
+from accounts.views import (
+    LogoutView,
+    MagicLinkRequestView,
+    MagicLinkVerifyView,
+)
 
 urlpatterns = [
     path(
@@ -19,4 +23,5 @@ urlpatterns = [
         TokenRefreshView.as_view(),
         name="token-refresh",
     ),
+    path("logout/", LogoutView.as_view(), name="logout"),
 ]

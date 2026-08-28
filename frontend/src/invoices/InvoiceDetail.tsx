@@ -30,27 +30,17 @@ import { useAuth } from '../auth/AuthContext';
 import { BtcTxLink } from '../components/BtcTxLink';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
-import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
+import {
+  MANUAL_RAIL_EMOJI,
+  MANUAL_RAIL_LABEL,
+  PaymentRailGlyph,
+} from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from '../landlord/DrivenDaysCalendar';
 
 // Only a whole-invoice settle/void locks everything; a not-yet-fully
 // paid invoice may still have individually re-scopable line items --
 // see `isLineItemFrozen` for the per-item check.
 const LOCKED_STATUSES = new Set(['paid', 'void']);
-
-/** Short label for a manual settlement's rail, shown in its badge. */
-const MANUAL_RAIL_LABEL: Record<'cash' | 'check' | 'other', string> = {
-  cash: 'Cash',
-  check: 'Check',
-  other: 'Other',
-};
-
-/** Emoji identifying a manual settlement's rail in its badge. */
-const MANUAL_RAIL_EMOJI: Record<'cash' | 'check' | 'other', string> = {
-  cash: '💵',
-  check: '🧾',
-  other: '📝',
-};
 
 /** Extracts a server-thrown Error's message, falling back to a generic one. */
 function errorMessage(err: unknown, fallback: string): string {

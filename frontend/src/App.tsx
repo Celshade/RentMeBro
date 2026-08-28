@@ -71,7 +71,13 @@ function AppShell({
             <button onClick={backHandler}>Back to dashboard</button>
           )}
           <ThemeToggle />
-          <button onClick={logout}>Log Out</button>
+          <button
+            onClick={() => {
+              void logout();
+            }}
+          >
+            Log Out
+          </button>
         </div>
       </header>
       <main className="app-main">{children(registerBackHandler)}</main>

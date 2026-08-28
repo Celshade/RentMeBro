@@ -14,14 +14,21 @@ import type {
   MileageProfile,
 } from '../api/types';
 import {
+  amountDueUsd,
   gasChargeIsFrozen,
   paymentRails,
   railCoverage,
   railCoverageLabel,
+  settledAmountUsd,
+  settledRailLabel,
+  settledRails,
 } from '../api/invoice';
 import { DrivenDaysCalendarKey } from '../components/DrivenDaysCalendarKey';
 import { InvoiceStatusBadge } from '../components/InvoiceStatusBadge';
-import { PaymentRailGlyph } from '../components/PaymentRailGlyph';
+import {
+  PaymentRailGlyph,
+  SettledCheckmark,
+} from '../components/PaymentRailGlyph';
 import { DrivenDaysCalendar } from './DrivenDaysCalendar';
 import { EditRent } from './EditRent';
 import { GenerateInvoice } from './GenerateInvoice';
@@ -472,20 +479,45 @@ export function LeaseDashboard({
                 const isEditing = editingInvoiceId === invoice.id;
                 const rails = paymentRails(invoice);
                 const coverage = railCoverage(invoice);
+                const settled = settledRails(invoice);
+                const isPaid = invoice.status === 'paid';
                 return (
                   <li key={invoice.id} className="list-row">
                     <span>
                       <span className="list-row__rails">
+                        {isPaid &&
+                          settled.map((rail) => (
+                            <PaymentRailGlyph
+                              key={rail}
+                              rail={rail}
+                              settled
+                              label={settledRailLabel(
+                                rail,
+                                settledAmountUsd(invoice, rail)
+                              )}
+                            />
+                          ))}
+                        {isPaid && settled.length > 0 && (
+                          <SettledCheckmark />
+                        )}
                         {rails.btc && (
                           <PaymentRailGlyph
                             rail="btc"
-                            label={railCoverageLabel('btc', coverage.btc)}
+                            label={railCoverageLabel(
+                              'btc',
+                              coverage.btc,
+                              invoice.btc_owed_usd
+                            )}
                           />
                         )}
                         {rails.card && (
                           <PaymentRailGlyph
                             rail="card"
-                            label={railCoverageLabel('card', coverage.card)}
+                            label={railCoverageLabel(
+                              'card',
+                              coverage.card,
+                              invoice.stripe_portion_usd
+                            )}
                           />
                         )}
                       </span>
@@ -496,9 +528,35 @@ export function LeaseDashboard({
                         )}
                         : {formatInvoiceKind(invoice.kind)}
                       </strong>{' '}
-                      — ${invoice.total} — due {invoice.due_date}
+                      — ${invoice.total}
+                      {!isPaid && settled.length > 0 && (
+                        <span className="list-row__remaining">
+                          (${amountDueUsd(invoice)} remaining)
+                        </span>
+                      )}
+                      <span className="list-row__due">
+                        due {invoice.due_date}
+                        {!isPaid && settled.length > 0 && (
+                          <span className="list-row__paid-note">
+                            — ${settledAmountUsd(invoice)} paid
+                            {settled.map((rail) => (
+                              <PaymentRailGlyph
+                                key={rail}
+                                rail={rail}
+                                settled
+                                label={settledRailLabel(rail)}
+                              />
+                            ))}
+                          </span>
+                        )}
+                      </span>
                     </span>
-                    <span className="renter-dashboard__invoice-actions">
+                    <span
+                      className={
+                        'renter-dashboard__invoice-actions ' +
+                        'list-row__actions--own-line'
+                      }
+                    >
                       <InvoiceStatusBadge
                         status={invoice.status}
                         isLate={invoice.is_late}

@@ -13,4 +13,4 @@ class RentMeBroUserAdmin(UserAdmin):
 @admin.register(MagicLinkToken)
 class MagicLinkTokenAdmin(admin.ModelAdmin):
     list_display = ("user", "created_at", "expires_at", "used_at")
-    readonly_fields = ("token", "created_at")
+    readonly_fields = ("token_hash", "created_at")

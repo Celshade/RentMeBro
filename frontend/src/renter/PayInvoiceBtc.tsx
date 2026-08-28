@@ -173,17 +173,21 @@ function BtcClaimForm({ invoiceId }: { invoiceId: number }) {
  *   decimal string, ignoring the landlord's BTC scope -- the opt-in
  *   "pay it all by BTC instead" figure.
  * @param props.onPaid - Called once the whole invoice is paid.
+ * @param props.onClose - Called once a cancelled quote has been torn
+ *   down server-side, so the caller can collapse the panel.
  */
 export function PayInvoiceBtc({
   invoiceId,
   lineItems,
   fullOwedUsd,
   onPaid,
+  onClose,
 }: {
   invoiceId: number;
   lineItems: InvoiceLineItem[];
   fullOwedUsd: string;
   onPaid: () => void;
+  onClose: () => void;
 }) {
   const [btcStatus, setBtcStatus] = useState<BtcInvoiceStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -195,6 +199,8 @@ export function PayInvoiceBtc({
   const [now, setNow] = useState(() => new Date());
   const onPaidRef = useRef(onPaid);
   onPaidRef.current = onPaid;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   // A settled round's txid is cleared from btcStatus.btc_txid the
   // moment it settles, so the confirmed views below can't read it
   // straight off the latest status -- this remembers the last
@@ -228,10 +234,7 @@ export function PayInvoiceBtc({
     apiFetch<BtcInvoiceStatus>(`/api/invoices/${invoiceId}/btc/cancel/`, {
       method: 'POST',
     })
-      .then((newStatus) => {
-        setQuoteRequested(false);
-        setBtcStatus(newStatus);
-      })
+      .then(() => onCloseRef.current())
       .catch((err: Error) => setError(err.message));
   }, [invoiceId]);
 
