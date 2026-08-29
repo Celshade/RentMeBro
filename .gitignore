@@ -27,3 +27,9 @@ frontend/dist/
 
 # BuildResources
 .BuildResources/
+
+# Terraform
+infra/
+*.tfvars
+*.tfstate*
+.terraform/
