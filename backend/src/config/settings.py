@@ -64,6 +64,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -83,6 +84,14 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
+    # Fail closed: every current view already sets its own
+    # permission_classes explicitly, so this changes no existing
+    # behavior. It exists so a future view that forgets to set
+    # permission_classes is private by default instead of silently
+    # public.
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
     # Scoped throttles for the anonymous (AllowAny) auth endpoints, to
     # stop unlimited magic-link email sends / token-guessing attempts.
     "DEFAULT_THROTTLE_RATES": {
@@ -90,6 +99,13 @@ REST_FRAMEWORK = {
         "magic_link_verify": "20/hour",
         "btc_claim_submit": "10/hour",
     },
+    # How many trusted reverse proxies sit in front of the app. 0 (the
+    # default) makes throttling key on REMOTE_ADDR and ignore
+    # X-Forwarded-For entirely, which is correct with no proxy in
+    # front (local dev). Behind CloudFront + Caddy in production this
+    # must be 1, or the magic-link throttles above key on the proxy's
+    # address instead of the real client's.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
 }
 
 SPECTACULAR_SETTINGS = {
@@ -113,12 +129,47 @@ SIMPLE_JWT = {
 
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 
+# TLS terminates in front of the app (CloudFront/Caddy in production),
+# so Django itself never sees a direct HTTPS connection. This tells it
+# to trust the proxy-injected header instead of REMOTE_ADDR's scheme,
+# which SECURE_SSL_REDIRECT and the "secure cookie" settings below all
+# depend on to work correctly.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Off by default so local dev (plain HTTP) isn't redirect-looped;
+# production sets these via env.
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
+SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
+    "SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False
+)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+# Path prefix for the Django admin, overridable so the real path isn't
+# published in a public repo. Defense-in-depth only: the primary
+# control is restricting administrative surfaces at the edge/proxy in
+# production, not this path being unguessable.
+ADMIN_URL = env("ADMIN_URL", default="admin/")
+
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
     default="config.email_backends.PlainTextConsoleEmailBackend",
 )
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+# .example is an IANA-reserved documentation TLD (RFC 2606): it is
+# syntactically valid but never delivers mail, unlike the previous
+# .local default, which is a real reserved TLD that some resolvers
+# treat as routable and others reject outright. A real deployment
+# always sets this via env.
 DEFAULT_FROM_EMAIL = env(
-    "DEFAULT_FROM_EMAIL", default="noreply@rentmebro.local"
+    "DEFAULT_FROM_EMAIL", default="noreply@rentmebro.example"
 )
 
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
@@ -159,6 +210,28 @@ DATABASES = {
     "default": env.db(
         "DATABASE_URL", default=f'sqlite:///{BASE_DIR / "db.sqlite3"}'
     )
+}
+# Reuse connections across requests instead of opening one per request.
+# 0 (Django's default) is correct for SQLite (no connection to reuse);
+# production Postgres sets this via env.
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("CONN_MAX_AGE", default=0)
+
+
+# Logging
+# https://docs.djangoproject.com/en/6.0/topics/logging/
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
 }
 
 
@@ -207,7 +280,35 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Media files (user uploads, e.g. custom lease documents)
+# Media files (user uploads, e.g. lease documents via Lease.document).
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# Media storage: S3 when a bucket is configured (production), local
+# filesystem otherwise (local dev, matching prior behavior). The
+# instance filesystem is not a durable home for lease PDFs in
+# production, so this is mandatory before deploy, not an optimization.
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
+AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="us-east-1")
+
+STORAGES = {
+    "default": (
+        {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "region_name": AWS_S3_REGION_NAME,
+                "querystring_auth": True,
+            },
+        }
+        if AWS_STORAGE_BUCKET_NAME
+        else {"BACKEND": "django.core.files.storage.FileSystemStorage"}
+    ),
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        ),
+    },
+}
