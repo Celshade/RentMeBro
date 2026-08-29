@@ -17,6 +17,7 @@ wheels/
 backend/db.sqlite3
 backend/media/
 backend/.coverage
+backend/staticfiles/
 
 # Node
 frontend/node_modules/
