@@ -5,15 +5,19 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.40.0",
     "django>=6.0.7",
     "django-cors-headers>=4.9.0",
     "django-environ>=0.14.0",
+    "django-storages[s3]>=1.14.6",
     "djangorestframework>=3.17.1",
     "djangorestframework-simplejwt>=5.5.1",
     "drf-spectacular>=0.30.0",
+    "gunicorn>=23.0.0",
     "psycopg[binary]>=3.3.4",
     "requests>=2.32.5",
     "stripe>=15.3.0",
+    "whitenoise>=6.11.0",
 ]
 
 [dependency-groups]
