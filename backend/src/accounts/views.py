@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
@@ -16,6 +18,8 @@ from accounts.serializers import (
     MagicLinkVerifySerializer,
     UserSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MagicLinkRequestView(APIView):
@@ -42,12 +46,23 @@ class MagicLinkRequestView(APIView):
                 f"{settings.FRONTEND_URL}/auth/verify"
                 f"?token={raw_token}"
             )
-            send_mail(
-                subject="Your RentMeBro sign-in link",
-                message=f"Sign in here: {verify_url}",
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[user.email],
-            )
+            # Wrapped: this endpoint deliberately returns 204 whether
+            # or not the email matched, to avoid leaking which
+            # addresses have accounts. An unwrapped send_mail would
+            # 500 on any SMTP failure, defeating that.
+            try:
+                send_mail(
+                    subject="Your RentMeBro sign-in link",
+                    message=f"Sign in here: {verify_url}",
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[user.email],
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to email magic link to user %s",
+                    user.id,
+                    exc_info=True,
+                )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

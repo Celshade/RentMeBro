@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -6,6 +7,8 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.db import models
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 class Lease(models.Model):
@@ -122,16 +125,27 @@ class LeaseRentRevision(models.Model):
             self._notify_renter()
 
     def _notify_renter(self) -> None:
-        send_mail(
-            subject="Your RentMeBro rent is changing",
-            message=(
-                f"Your monthly rent will change to "
-                f"${self.new_monthly_rent}, effective "
-                f"{self.effective_date}."
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[self.lease.renter.email],
-        )
+        # Wrapped: called from save() after super().save() has already
+        # committed the revision, so an unwrapped send_mail raising on
+        # SMTP failure would surface as a 500 for a write that already
+        # succeeded.
+        try:
+            send_mail(
+                subject="Your RentMeBro rent is changing",
+                message=(
+                    f"Your monthly rent will change to "
+                    f"${self.new_monthly_rent}, effective "
+                    f"{self.effective_date}."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[self.lease.renter.email],
+            )
+        except Exception:
+            logger.warning(
+                "Failed to email rent-change notice for lease %s",
+                self.lease_id,
+                exc_info=True,
+            )
 
 
 class MileageProfile(models.Model):
