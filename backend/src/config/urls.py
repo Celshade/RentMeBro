@@ -20,20 +20,33 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from config.views import healthcheck
+
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path(
-        "api/schema/swagger/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
-        name="swagger-ui",
-    ),
+    path("healthz/", healthcheck, name="healthcheck"),
+    path(settings.ADMIN_URL, admin.site.urls),
     path("api/auth/", include("accounts.urls")),
     path("api/", include("billing.urls")),
     path("api/", include("payments.urls")),
 ]
 
+# Schema endpoints publish a live, unauthenticated map of every
+# endpoint/parameter/model field. They serve no runtime role, so they
+# are dropped from the URL conf entirely in production rather than
+# guarded. The schema stays generatable on demand via
+# `manage.py spectacular --file schema.yml`, and Swagger UI remains
+# available in development.
 if settings.DEBUG:
+    urlpatterns += [
+        path(
+            "api/schema/", SpectacularAPIView.as_view(), name="schema"
+        ),
+        path(
+            "api/schema/swagger/",
+            SpectacularSwaggerView.as_view(url_name="schema"),
+            name="swagger-ui",
+        ),
+    ]
     urlpatterns += static(
         settings.MEDIA_URL, document_root=settings.MEDIA_ROOT
     )

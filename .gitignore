@@ -17,6 +17,7 @@ wheels/
 backend/db.sqlite3
 backend/media/
 backend/.coverage
+backend/staticfiles/
 
 # Node
 frontend/node_modules/
@@ -27,3 +28,9 @@ frontend/dist/
 
 # BuildResources
 .BuildResources/
+
+# Terraform
+infra/
+*.tfvars
+*.tfstate*
+.terraform/
