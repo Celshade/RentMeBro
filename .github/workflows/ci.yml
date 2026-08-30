@@ -39,6 +39,11 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+    env:
+      # No repo secrets needed: the build only checks that these are
+      # present, not that they're real (see vite.config.ts).
+      VITE_API_BASE_URL: http://localhost:8000
+      VITE_STRIPE_PUBLISHABLE_KEY: pk_test_ci-not-a-real-key
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
